@@ -10,6 +10,7 @@ DB 서비스를 구성하여 클라우드 기반 서비스 운영 환경을
 및 운영 환경을 확장한다.
 ---
 <img width="2432" height="1350" alt="image" src="https://github.com/user-attachments/assets/302c2bda-b52b-449c-b8ba-3249fd798501" />
+
 ---
 
 # 2. IAM 사용자 및 권한 관리

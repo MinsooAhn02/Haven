@@ -259,7 +259,7 @@ ECS·ALB·RDS·네트워크 관련 고정비가 부담이라면 **개발/시연 
 
 ### 7.1. 이미지 기반 구성도
 
-![AWS 기반 보안 문서 관리 플랫폼 전체 아키텍처](assets/architecture.png)
+<img width="1387" height="728" alt="image" src="https://github.com/user-attachments/assets/c1805c5e-2d1a-48f7-a3ce-027afa824e30" />
 
 > **설명:** 정적 웹은 CloudFront+비공개 S3로 제공하고, API는 ALB를 통해 ECS Fargate의 FastAPI로 연결한다. 문서 본문은 별도의 S3 버킷에 두며, PostgreSQL에는 문서 메타데이터와 권한·감사 정보를 저장한다. GuardDuty 검사 결과는 EventBridge → SQS → ECS 워커를 통해 DB 상태에 반영한다. 그림은 개념도이며 자세한 서브넷/인터넷 경계는 아래에서 정의한다.
 
@@ -506,7 +506,7 @@ def can_read_document(user, document, published_version, now):
 
 ### 10.1. 문서 생명주기 그림
 
-![문서 업로드 및 검사·승인 상태 흐름](assets/upload_workflow.png)
+<img width="1565" height="245" alt="image" src="https://github.com/user-attachments/assets/f848d2c2-25ee-414f-8ac5-d50e64aae05f" />
 
 ```mermaid
 flowchart TD

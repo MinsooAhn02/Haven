@@ -359,4 +359,13 @@ def lambda_handler(event, context):
 - 사람이 매번 확인하지 않아도 **매일 정기 점검**
 - 점검용 Lambda 역시 **읽기 + 알림 권한만** 부여하여 최소 권한 원칙 유지
 
+---
+
+<img width="1266" height="1379" alt="image" src="https://github.com/user-attachments/assets/ae93cad1-0866-4b49-8fa2-4ab8f915196e" />
+
+---
+
+
+
+
 

@@ -365,6 +365,201 @@ def lambda_handler(event, context):
 
 ---
 
+# 4. 클라우드 보안 장비 구축 및 정책 고도화
+
+### 필수.
+클라우드 환경에 보안 장비(WAF, IPS 등) 및 서비스를 적용
+하고, 네트워크와 서버에 대한 보안 정책 및 접근 통제 기
+능을 구성한다.
+
+---
+
+### 도전.
+클라우드 보안 정책과 장비 설정을 분석하
+고, 보안 취약 요소에 대한 개선 및 추가 보
+안 기능을 적용하여 보안 수준을 향상한다.
+
+---
+
+## 1. 계층별 보안 장비 및 서비스
+
+| 계층 | 장비/서비스 | 역할 |
+|---|---|---|
+| 웹 (L7) | **AWS WAF** + ALB | SQL 인젝션, XSS, 악성 봇, 비정상 요청 차단 |
+| 네트워크 | **AWS Network Firewall** 또는 **Suricata / fail2ban** | IPS: 악성 트래픽 패턴 탐지·차단 |
+| DDoS | AWS Shield Standard | L3/L4 DDoS 기본 방어 (자동 적용) |
+| 서버 | Session Manager, IMDSv2, EBS 암호화 | SSH 포트 제거, 메타데이터 탈취 방지, 저장 데이터 보호 |
+| 탐지·분석 | GuardDuty, Inspector, Security Hub | 위협 탐지, 취약점 스캔, 보안 기준 점검 |
+| 로그 | CloudTrail, VPC Flow Logs | API 호출 기록, 네트워크 트래픽 기록 |
+
+---
+
+## 2. WAF 구성 (ALB 앞단 배치)
+
+> AWS WAF는 EC2에 직접 연결할 수 없으며, ALB·CloudFront·API Gateway에 연결한다.
+> 본 구성에서는 **ALB에 WAF를 연결**하여 Web EC2 앞단에서 트래픽을 검사한다.
+
+### 구성 순서
+1. **추가 퍼블릭 서브넷 생성**: `10.0.3.0/24` (다른 가용영역) → ALB는 2개 이상의 AZ 서브넷 필요
+2. **대상 그룹 생성**: 프로토콜 HTTP:80, 대상 = Web EC2
+3. **ALB 생성**: 인터넷 경계(internet-facing), 퍼블릭 서브넷 2개 선택
+4. **ACM 인증서 발급**: 도메인 인증서 발급 후 ALB 443 리스너에 연결
+5. **리스너 설정**: 80 → 443 리디렉션, 443 → 대상 그룹 전달
+6. **Route 53 수정**: A 레코드를 EC2 IP → **ALB 별칭(Alias)** 으로 변경
+7. **보안 그룹 수정**: Web EC2는 ALB에서 오는 트래픽만 허용 (WAF 우회 차단)
+
+### 보안 그룹 변경
+
+| 보안 그룹 | 방향 | 포트 | 소스 | 비고 |
+|---|---|---|---|---|
+| ALB-SG (신규) | 인바운드 | 80, 443 | `0.0.0.0/0` | 외부 웹 요청 수신 |
+| Web-SG (변경) | 인바운드 | 80 | **ALB-SG** | 기존 `0.0.0.0/0` 제거 |
+| Web-SG (변경) | 인바운드 | 22 | ~~관리자 IP~~ | Session Manager로 대체 후 제거 |
+
+### WAF Web ACL 규칙
+
+| 우선순위 | 규칙 | 유형 | 동작 | 목적 |
+|---|---|---|---|---|
+| 1 | `AWSManagedRulesAmazonIpReputationList` | AWS 관리형 | 차단 | 악성 IP·봇 차단 |
+| 2 | `AWSManagedRulesCommonRuleSet` | AWS 관리형 | 차단 | OWASP Top 10 (XSS 등) |
+| 3 | `AWSManagedRulesSQLiRuleSet` | AWS 관리형 | 차단 | SQL 인젝션 |
+| 4 | `AWSManagedRulesKnownBadInputsRuleSet` | AWS 관리형 | 차단 | 알려진 악성 입력 (Log4j 등) |
+| 5 | Rate-Limit (사용자 지정) | 속도 기반 | 차단 | 동일 IP 5분 1,000건 초과 시 차단 |
+
+### 테스트
+| 테스트 요청 | 기대 결과 |
+|---|---|
+| `https://도메인/` | 200 OK (정상 접속) |
+| `https://도메인/?id=1' OR '1'='1` | **403 Forbidden** (SQLi 차단) |
+| `https://도메인/?q=<script>alert(1)</script>` | **403 Forbidden** (XSS 차단) |
+| EC2 퍼블릭 IP로 직접 접속 | 연결 실패 (WAF 우회 차단) |
+
+→ WAF 콘솔 **샘플 요청(Sampled requests)** 에서 차단 기록 확인
+
+---
+
+## 3. IPS 구성
+
+### 방법 A: AWS Network Firewall (네트워크 기반 IPS)
+- 방화벽 전용 서브넷 생성 후 **인터넷 게이트웨이 ↔ 퍼블릭 서브넷** 사이로 트래픽이 지나가도록 라우팅 변경
+- 규칙 그룹
+  - AWS 관리형 위협 규칙 (악성 도메인, 봇넷 C&C 등)
+  - Suricata 호환 상태 저장 규칙 (예: 특정 패턴 차단)
+- 시간당 요금이 높으므로 **구성·검증·캡처 후 삭제** 권장
+
+```
+# Suricata 규칙 예시: SQL 인젝션 패턴 탐지 시 차단
+drop http any any -> $HOME_NET 80 (msg:"SQLi attempt"; content:"OR 1=1"; nocase; sid:1000001; rev:1;)
+```
+
+### 방법 B: 호스트 기반 IPS (fail2ban)
+- Web EC2에 설치하여 반복 공격 IP를 자동 차단
+
+```bash
+sudo apt install -y fail2ban
+sudo nano /etc/fail2ban/jail.local
+```
+
+```ini
+[sshd]
+enabled  = true
+maxretry = 5
+findtime = 10m
+bantime  = 1h
+
+[apache-auth]
+enabled  = true
+maxretry = 5
+bantime  = 1h
+```
+
+```bash
+sudo systemctl enable --now fail2ban
+sudo fail2ban-client status sshd   # 차단된 IP 확인
+```
+
+| 구분 | Network Firewall | fail2ban / Suricata |
+|---|---|---|
+| 위치 | 네트워크 (서브넷 경계) | 서버 내부 |
+| 범위 | VPC 전체 트래픽 | 설치된 서버만 |
+| 비용 | 높음 (시간당 과금) | 무료 |
+| 관리 | AWS 관리형 | 직접 설치·관리 |
+
+---
+
+## 4. 서버 보안 강화
+
+### ① Session Manager (SSH 22번 포트 제거)
+1. IAM 역할에 `AmazonSSMManagedInstanceCore` 정책 연결 → EC2에 역할 연결
+2. Systems Manager → 세션 관리자 → 세션 시작 → 인스턴스 선택
+3. 접속 확인 후 **Web-SG, DB-SG의 22번 인바운드 규칙 삭제**
+- 효과: 열린 관리 포트 0개, 접속 기록이 CloudTrail에 남음
+
+### ② IMDSv2 강제 (메타데이터 탈취 방지)
+```bash
+aws ec2 modify-instance-metadata-options \
+  --instance-id i-xxxxxxxx \
+  --http-tokens required \
+  --http-endpoint enabled
+```
+- 콘솔: 인스턴스 → 작업 → 인스턴스 설정 → 인스턴스 메타데이터 옵션 수정 → IMDSv2 **필수**
+
+### ③ DB 비밀번호 분리 (Secrets Manager)
+- PHP 코드의 평문 비밀번호 제거 → Secrets Manager에 저장
+- Web EC2 역할에 해당 비밀만 읽는 권한 부여 (`secretsmanager:GetSecretValue`, 특정 ARN)
+
+### ④ 데이터 암호화 및 S3 보호
+| 대상 | 설정 |
+|---|---|
+| EBS 볼륨 | 기본 암호화 활성화 (EC2 → 설정 → EBS 암호화) |
+| S3 백업 버킷 | 기본 암호화(SSE-S3), 퍼블릭 액세스 차단, 버전 관리 활성화 |
+
+---
+
+## 5. 탐지 및 분석 서비스
+
+| 서비스 | 기능 | 확인 항목 |
+|---|---|---|
+| **GuardDuty** | CloudTrail·VPC Flow Logs·DNS 로그 기반 위협 탐지 | 무차별 대입, 악성 IP 통신, 비정상 API 호출 |
+| **Inspector** | EC2 패키지 취약점(CVE) 및 네트워크 노출 스캔 | 심각도별 취약점 목록 → 패치 후 재스캔 |
+| **Security Hub** | AWS 보안 모범 사례(FSBP), CIS 기준 자동 점검 | 보안 점수 및 실패 항목 → **개선 전/후 점수 비교** |
+| **CloudTrail** | 모든 API 호출 기록 (누가, 언제, 무엇을) | 콘솔 로그인, 보안 그룹 변경 이력 |
+| **VPC Flow Logs** | VPC 네트워크 트래픽 기록 (CloudWatch Logs 저장) | 거부(REJECT)된 접속 시도 분석 |
+
+---
+
+## 6. 취약점 분석 및 개선
+
+### 개선 전/후 비교
+
+| No | 현재 취약 요소 | 위험 | 개선 조치 | 적용 서비스 |
+|---|---|---|---|---|
+| 1 | Web EC2가 인터넷에 직접 노출 | 웹 공격(SQLi, XSS) 직접 노출 | ALB + WAF 앞단 배치, Web-SG는 ALB-SG만 허용 | WAF, ALB |
+| 2 | SSH 22번 포트 개방 | 무차별 대입 공격 | Session Manager로 대체, 22번 규칙 제거 | Systems Manager |
+| 3 | 악성 트래픽 탐지·차단 없음 | 침입 시도 인지 불가 | 네트워크/호스트 IPS 적용 | Network Firewall / fail2ban |
+| 4 | DB 비밀번호가 코드에 평문 저장 | 코드 유출 시 DB 탈취 | 비밀 정보 분리 저장 | Secrets Manager |
+| 5 | IMDSv1 허용 | SSRF로 IAM 자격 증명 탈취 | IMDSv2 필수 설정 | EC2 |
+| 6 | HTTPS 인증서 서버 수동 관리 | 인증서 만료·관리 누락 | ALB에 ACM 인증서 적용, 자동 갱신 | ACM |
+| 7 | 로그 및 위협 탐지 부재 | 사고 발생 시 추적 불가 | API·트래픽 로그 수집, 위협 탐지 | CloudTrail, Flow Logs, GuardDuty |
+| 8 | 서버 패키지 취약점 미확인 | 알려진 CVE 공격 | 취약점 스캔 후 패치 | Inspector |
+| 9 | 저장 데이터 암호화 미적용 | 디스크·백업 유출 시 노출 | EBS·S3 암호화, S3 퍼블릭 차단 | EBS, S3 |
+
+### 개선 결과 요약
+
+| 항목 | 개선 전 | 개선 후 |
+|---|---|---|
+| 외부에 열린 포트 (Web EC2) | 80, 443, 22 | **없음** (ALB만 접근) |
+| 관리 접속 방식 | SSH 키 + 22번 포트 | Session Manager (포트 불필요) |
+| 웹 공격 방어 | 없음 | WAF 관리형 규칙 4종 + 속도 제한 |
+| 침입 탐지·차단 | 없음 | IPS + GuardDuty |
+| Security Hub 점수 | (개선 전 캡처) | (개선 후 캡처) |
+
+---
+
+<img width="1266" height="1723" alt="image" src="https://github.com/user-attachments/assets/370d616d-5a95-4f47-b728-8f4d180a2282" />
+
+---
+
 
 
 

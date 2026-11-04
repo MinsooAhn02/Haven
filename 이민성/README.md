@@ -137,6 +137,7 @@ AWS IAM 사용자와 그룹을 생성하고, 정책을 적용하여 사
 | DB-EC2-Backup-Role-Policy | DB EC2 (IAM 역할) | 백업 버킷 업로드 | 읽기·삭제 |
 ---
 <img width="1266" height="1046" alt="image" src="https://github.com/user-attachments/assets/02553e47-b3ff-4aa5-b571-0fb04759cfed" />
+
 ---
 
 # 3. 클라우드 네트워크 보안 설정 및 접근 통제
@@ -186,7 +187,176 @@ VPC, 서브넷, 보안 그룹 및 네트워크 접근 설정을 구성하고
 - **내부 통신**: 같은 VPC 안의 서브넷끼리는 `local` 경로로 자동 통신 → Web EC2가 DB EC2의 사설 IP로 접속
 - **아웃바운드 제한**: NAT 게이트웨이는 내부 → 외부 요청만 허용하고, 외부 → 내부 접속은 차단
 - **비용 및 보안**: S3 엔드포인트로 백업 트래픽이 인터넷에 노출되지 않으며 NAT 데이터 처리 비용도 절감
+
 ---
 
+## 2. 보안 그룹 (인스턴스 단위 접근 통제)
+
+### Web-SG (Web EC2)
+
+| 방향 | 프로토콜 | 포트 | 소스/대상 | 이유 |
+|---|---|---|---|---|
+| 인바운드 | TCP | 80 | `0.0.0.0/0` | HTTP 웹 서비스 공개 |
+| 인바운드 | TCP | 443 | `0.0.0.0/0` | HTTPS 웹 서비스 공개 |
+| 인바운드 | TCP | 22 | 관리자 IP `/32` | 관리자만 SSH 접속 |
+| 아웃바운드 | 전체 | 전체 | `0.0.0.0/0` | 기본값 (응답 및 외부 요청) |
+
+### DB-SG (DB EC2)
+
+| 방향 | 프로토콜 | 포트 | 소스/대상 | 이유 |
+|---|---|---|---|---|
+| 인바운드 | TCP | 3306 | Web-SG | 웹 서버만 DB 접근 |
+| 인바운드 | TCP | 22 | Web-SG | 점프 서버(Web EC2) 경유 SSH만 허용 |
+| 아웃바운드 | 전체 | 전체 | `0.0.0.0/0` | 기본값 (NAT·S3 엔드포인트 경유) |
+
+### 설계 의도
+- 소스를 IP가 아닌 **보안 그룹(Web-SG)으로 지정** → Web EC2의 IP가 바뀌어도 규칙 유지
+- DB는 퍼블릭 IP가 없고 보안 그룹도 Web-SG만 허용 → **외부에서 DB 직접 접근 불가**
+- SSH(22)는 `0.0.0.0/0`으로 열지 않고 관리자 IP로 제한
+- 보안 그룹은 **상태 저장(stateful)** → 허용된 요청의 응답은 자동 허용
+
+---
+
+## 3. 네트워크 ACL (서브넷 단위, 이중 방어)
+
+> NACL은 **상태 비저장(stateless)** → 응답 트래픽용 임시 포트(1024-65535)를 인바운드·아웃바운드 모두 허용해야 함.
+> 규칙 번호가 낮은 순서대로 평가되며, 마지막에 기본 거부(`*` DENY) 규칙이 적용됨.
+
+### Public-NACL (퍼블릭 서브넷)
+
+| 방향 | 규칙 번호 | 포트 | 소스/대상 | 허용/거부 |
+|---|---|---|---|---|
+| 인바운드 | 100 | 80 | `0.0.0.0/0` | 허용 |
+| 인바운드 | 110 | 443 | `0.0.0.0/0` | 허용 |
+| 인바운드 | 120 | 22 | 관리자 IP `/32` | 허용 |
+| 인바운드 | 130 | 1024-65535 | `0.0.0.0/0` | 허용 (응답 트래픽) |
+| 인바운드 | * | 전체 | `0.0.0.0/0` | 거부 |
+| 아웃바운드 | 100 | 80, 443 | `0.0.0.0/0` | 허용 |
+| 아웃바운드 | 110 | 3306, 22 | `10.0.2.0/24` | 허용 (DB 접속) |
+| 아웃바운드 | 120 | 1024-65535 | `0.0.0.0/0` | 허용 (응답 트래픽) |
+| 아웃바운드 | * | 전체 | `0.0.0.0/0` | 거부 |
+
+### Private-NACL (프라이빗 서브넷)
+
+| 방향 | 규칙 번호 | 포트 | 소스/대상 | 허용/거부 |
+|---|---|---|---|---|
+| 인바운드 | 100 | 3306 | `10.0.1.0/24` | 허용 (Web → DB) |
+| 인바운드 | 110 | 22 | `10.0.1.0/24` | 허용 (점프 서버 SSH) |
+| 인바운드 | 120 | 1024-65535 | `0.0.0.0/0` | 허용 (NAT·S3 응답) |
+| 인바운드 | * | 전체 | `0.0.0.0/0` | 거부 |
+| 아웃바운드 | 100 | 80, 443 | `0.0.0.0/0` | 허용 (NAT·S3 엔드포인트) |
+| 아웃바운드 | 110 | 1024-65535 | `10.0.1.0/24` | 허용 (Web으로 응답) |
+| 아웃바운드 | * | 전체 | `0.0.0.0/0` | 거부 |
+
+### 보안 그룹 vs NACL
+
+| 구분 | 보안 그룹 | 네트워크 ACL |
+|---|---|---|
+| 적용 단위 | 인스턴스(ENI) | 서브넷 |
+| 상태 | Stateful (응답 자동 허용) | Stateless (응답 포트 별도 허용) |
+| 규칙 | 허용만 가능 | 허용·거부 모두 가능 |
+| 평가 | 모든 규칙 종합 | 번호 순서대로 평가 |
+
+---
+
+## 4. 개방 포트 자동 점검 기능
+
+### 동작 구조
+```
+EventBridge (매일 실행)
+   ↓
+Lambda (모든 보안 그룹 검사)
+   ↓  0.0.0.0/0 에 80·443 외 포트가 열려 있으면
+SNS (관리자에게 경고 메일 발송)
+```
+
+### 점검 기준
+- `0.0.0.0/0` 또는 `::/0`(전체 인터넷)에 열린 규칙만 검사
+- **허용 포트**: 80, 443 (웹 서비스)
+- **탐지 대상**: 그 외 모든 포트 (예: 22, 3306, 전체 포트 개방)
+
+### ① SNS 설정
+1. SNS → 주제 생성 → 유형: 표준 → 이름: `sg-alert`
+2. 구독 생성 → 프로토콜: 이메일 → 관리자 이메일 입력
+3. 수신한 메일에서 **구독 확인(Confirm subscription)** 클릭
+
+### ② Lambda 함수 (Python 3.12)
+- 함수 이름: `sg-open-port-checker`
+- 환경 변수: `TOPIC_ARN` = SNS 주제 ARN
+
+```python
+import boto3, os
+
+ALLOWED_PUBLIC_PORTS = {80, 443}
+ec2 = boto3.client('ec2')
+sns = boto3.client('sns')
+
+def lambda_handler(event, context):
+    findings = []
+    for page in ec2.get_paginator('describe_security_groups').paginate():
+        for sg in page['SecurityGroups']:
+            for p in sg['IpPermissions']:
+                public = any(r.get('CidrIp') == '0.0.0.0/0' for r in p.get('IpRanges', [])) \
+                      or any(r.get('CidrIpv6') == '::/0' for r in p.get('Ipv6Ranges', []))
+                if not public:
+                    continue
+                name = f"{sg['GroupId']} ({sg['GroupName']})"
+                if p['IpProtocol'] == '-1':
+                    findings.append(f"{name}: 모든 포트가 전체 개방됨")
+                else:
+                    fr, to = p.get('FromPort'), p.get('ToPort')
+                    if not (fr == to and fr in ALLOWED_PUBLIC_PORTS):
+                        findings.append(f"{name}: {p['IpProtocol']} {fr}-{to} 포트가 전체 개방됨")
+    if findings:
+        sns.publish(
+            TopicArn=os.environ['TOPIC_ARN'],
+            Subject='[경고] 보안 그룹 개방 포트 점검 결과',
+            Message='\n'.join(findings)
+        )
+    return {'count': len(findings), 'findings': findings}
+```
+
+### ③ Lambda 실행 역할 (최소 권한)
+- `AWSLambdaBasicExecutionRole` (CloudWatch 로그 기록용)
+- 사용자 지정 정책:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadSecurityGroups",
+      "Effect": "Allow",
+      "Action": "ec2:DescribeSecurityGroups",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PublishAlert",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:ap-northeast-2:계정ID:sg-alert"
+    }
+  ]
+}
+```
+
+### ④ EventBridge 스케줄
+- EventBridge → 일정(Scheduler) → 일정 생성
+- 일정 패턴: `rate(1 day)` (또는 cron `0 9 * * ? *` → 매일 오전 9시 UTC)
+- 대상: Lambda → `sg-open-port-checker`
+
+### ⑤ 테스트 시나리오
+
+| 단계 | 작업 | 기대 결과 |
+|---|---|---|
+| 1 | 테스트용 보안 그룹에 22번을 `0.0.0.0/0`으로 개방 | - |
+| 2 | Lambda **테스트** 실행 | `count: 1`, 경고 메일 수신 |
+| 3 | 해당 규칙 삭제 후 재실행 | `count: 0`, 메일 미발송 |
+| 4 | CloudWatch Logs 확인 | 실행 기록 확인 |
+
+### 기대 효과
+- 실수로 열린 SSH·DB 포트 등 **불필요한 외부 개방을 자동 탐지**
+- 사람이 매번 확인하지 않아도 **매일 정기 점검**
+- 점검용 Lambda 역시 **읽기 + 알림 권한만** 부여하여 최소 권한 원칙 유지
 
 

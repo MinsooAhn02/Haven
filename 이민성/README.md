@@ -556,7 +556,8 @@ aws ec2 modify-instance-metadata-options \
 
 ---
 
-<img width="1266" height="1723" alt="image" src="https://github.com/user-attachments/assets/370d616d-5a95-4f47-b728-8f4d180a2282" />
+<img width="1266" height="1723" alt="image" src="https://github.com/user-attachments/assets/59b6c337-7f0a-48ec-ad41-ebc55ff36a53" />
+
 
 ---
 

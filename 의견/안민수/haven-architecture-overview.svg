@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1660" viewBox="0 0 2200 1660" role="img" aria-labelledby="title desc">
+<title id="title">Haven 클라우드 보안 전체 구성도</title>
+<desc id="desc">Haven 기본 프로젝트의 AWS 구조와 DNS, HTTPS, SES 이메일, IAM, 점검 도구, 공격 재현 검증, 후속 암호화 범위를 한눈에 보여주는 다이어그램.</desc>
+<defs>
+ <marker id="arrow" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#475569"/></marker>
+ <marker id="blue" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#2563eb"/></marker>
+ <marker id="orange" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#ea580c"/></marker>
+ <marker id="green" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#16a34a"/></marker>
+ <style>
+ text{font-family:'Segoe UI','Malgun Gothic',Arial,sans-serif;fill:#182235}.title{font-size:36px;font-weight:700}.subtitle{font-size:18px;fill:#526176}.zone{fill:#f8fafc;stroke:#64748b;stroke-width:3}.subnet{fill:#fff;stroke:#94a3b8;stroke-width:2;stroke-dasharray:9 6}.box{fill:#fff;stroke:#475569;stroke-width:2.5;rx:14}.bluebox{fill:#eff6ff;stroke:#2563eb;stroke-width:2.5;rx:14}.orangebox{fill:#fff7ed;stroke:#ea580c;stroke-width:2.5;rx:14}.greenbox{fill:#f0fdf4;stroke:#16a34a;stroke-width:2.5;rx:14}.yellowbox{fill:#fffbeb;stroke:#d97706;stroke-width:2;stroke-dasharray:7 5;rx:12}.head{font-size:21px;font-weight:700}.body{font-size:16px}.small{font-size:14px;fill:#526176}.tiny{font-size:13px;fill:#526176}.label{font-size:14px;font-weight:600;fill:#334155}.flow{fill:none;stroke:#475569;stroke-width:3;marker-end:url(#arrow)}.mgmt{fill:none;stroke:#2563eb;stroke-width:2.5;stroke-dasharray:8 6;marker-end:url(#blue)}.policy{fill:none;stroke:#ea580c;stroke-width:2.5;stroke-dasharray:8 6;marker-end:url(#orange)}.evidence{fill:none;stroke:#16a34a;stroke-width:2.5;stroke-dasharray:8 6;marker-end:url(#green)}.tag{fill:#e2e8f0;rx:10}.tagtxt{font-size:13px;font-weight:700;fill:#334155}
+ </style>
+</defs>
+<rect width="2200" height="1660" fill="#fff"/>
+<text x="50" y="58" class="title">Haven · 클라우드 보안 전체 구성도</text>
+<text x="50" y="93" class="subtitle">기본 필수 B1–B4 · 선택 C1–C4 · 공격 재현 스크립트 포함 · 암호화 심화는 별도 후속 범위로 구분</text>
+
+<!-- DNS and mail setup -->
+<rect x="45" y="155" width="430" height="415" class="bluebox"/>
+<text x="70" y="194" class="head">Route 53 · DNS · HTTPS</text>
+<text x="70" y="230" class="body">Public Hosted Zone</text>
+<text x="70" y="258" class="body">• www A/ALIAS → ALB</text>
+<text x="70" y="286" class="body">• ACM 검증 CNAME · 필요 시 CAA 제한</text>
+<text x="70" y="325" class="body">HTTPS (기본 배포)</text>
+<text x="70" y="353" class="body">• ACM 인증서를 ALB 443에 연결</text>
+<text x="70" y="381" class="body">• HTTP 80 → HTTPS 443 리다이렉트</text>
+<line x1="70" y1="402" x2="450" y2="402" stroke="#bfdbfe" stroke-width="2"/>
+<text x="70" y="435" class="body">SES 발신 도메인 인증</text>
+<text x="70" y="463" class="body">• SES identity TXT + DKIM CNAME 3개</text>
+<text x="70" y="491" class="body">• SPF TXT: v=spf1 include:amazonses.com ~all</text>
+<text x="70" y="519" class="body">• _dmarc TXT: DMARC1; p=none; rua=&lt;팀 메일&gt;</text>
+<text x="70" y="547" class="small">발신 전용 · MX/수신 서버 불필요 · 값은 도메인별 발급</text>
+
+<!-- IAM -->
+<rect x="45" y="600" width="430" height="205" class="box"/>
+<text x="70" y="640" class="head">IAM · 계정 접근 통제</text>
+<text x="70" y="676" class="body">• 일상 작업은 IAM 사용자 + MFA</text>
+<text x="70" y="704" class="body">• 그룹 정책으로 허용/거부 검증</text>
+<text x="70" y="732" class="body">• 운영 권한과 감사/점검 권한 분리</text>
+<text x="70" y="765" class="small">Web 인스턴스 역할은 SSM·메일 발송 등 최소 권한</text>
+<text x="70" y="788" class="small">정확한 사용자/그룹명과 정책 값은 구축 시 확정</text>
+
+<!-- SES verification workflow -->
+<rect x="45" y="835" width="430" height="150" class="greenbox"/>
+<text x="70" y="875" class="head">메일 연동 완료 증거 (C1)</text>
+<text x="70" y="911" class="body">발신/테스트 수신 주소 검증 · SES Sandbox 확인</text>
+<text x="70" y="939" class="body">Django → SES API → 테스트 수신자</text>
+<text x="70" y="967" class="small">수신 화면과 SPF/DKIM/DMARC 결과를 기록</text>
+
+<!-- User above VPC -->
+<rect x="900" y="120" width="360" height="75" class="box"/>
+<text x="1080" y="151" text-anchor="middle" class="head">사용자 브라우저</text>
+<text x="1080" y="178" text-anchor="middle" class="body">도메인으로 HTTPS 접속</text>
+
+<!-- VPC -->
+<rect x="520" y="215" width="1120" height="790" rx="24" class="zone"/>
+<text x="552" y="254" class="head">AWS VPC · Web/DB 비공개 구성</text>
+<rect x="560" y="280" width="1040" height="165" rx="18" class="subnet"/>
+<text x="586" y="314" class="head">공개 서브넷 · 서로 다른 AZ 2개</text>
+<rect x="815" y="340" width="530" height="82" class="bluebox"/>
+<text x="1080" y="374" text-anchor="middle" class="head">Application Load Balancer</text>
+<text x="1080" y="401" text-anchor="middle" class="body">HTTPS 443 · HTTP→HTTPS · Web 대상 그룹</text>
+
+<rect x="620" y="490" width="930" height="170" rx="18" class="subnet"/>
+<text x="648" y="526" class="head">비공개 Web 서브넷 · 공인 IP 없음</text>
+<rect x="785" y="545" width="590" height="90" class="box"/>
+<text x="1080" y="576" text-anchor="middle" class="head">Web EC2 · Nginx → Gunicorn → Django</text>
+<text x="1080" y="604" text-anchor="middle" class="body">로그인/기록 · Django 비밀번호 해시 · 앱 로그</text>
+<text x="1080" y="627" text-anchor="middle" class="small">인스턴스 역할: SSM 관리 + SES 발송 최소 권한</text>
+
+<rect x="680" y="705" width="810" height="160" rx="18" class="subnet"/>
+<text x="708" y="741" class="head">비공개 DB 서브넷 · 공인 IP 없음</text>
+<rect x="785" y="765" width="590" height="78" class="greenbox"/>
+<text x="1080" y="797" text-anchor="middle" class="head">DB EC2 · PostgreSQL</text>
+<text x="1080" y="824" text-anchor="middle" class="body">앱 전용 DB 계정 · TCP 5432 · DB 로그</text>
+
+<rect x="575" y="890" width="1010" height="82" class="yellowbox"/>
+<text x="1080" y="921" text-anchor="middle" class="label">미결정: Web/DB 패키지 설치·외부 API outbound (NAT 또는 필요한 VPC Endpoint)</text>
+<text x="1080" y="949" text-anchor="middle" class="small">SSM 관리 경로는 일반 인터넷 접속 경로를 자동 제공하지 않음</text>
+
+<!-- AWS managed services -->
+<rect x="1700" y="200" width="455" height="125" class="orangebox"/>
+<text x="1927" y="239" text-anchor="middle" class="head">AWS WAF · ALB에 연결</text>
+<text x="1927" y="269" text-anchor="middle" class="body">관리 규칙 · Count 관찰 → Block</text>
+<text x="1927" y="297" text-anchor="middle" class="small">SQLi/XSS · 정상 요청 · Rate 제한</text>
+<rect x="1700" y="365" width="455" height="110" class="bluebox"/>
+<text x="1927" y="402" text-anchor="middle" class="head">CloudWatch Logs</text>
+<text x="1927" y="431" text-anchor="middle" class="body">aws-waf-logs-haven · 보존/마스킹</text>
+<text x="1927" y="458" text-anchor="middle" class="small">응답과 WAF 로그를 함께 대조</text>
+<rect x="1700" y="510" width="455" height="125" class="bluebox"/>
+<text x="1927" y="549" text-anchor="middle" class="head">AWS Systems Manager</text>
+<text x="1927" y="578" text-anchor="middle" class="body">Session Manager · SSH 인바운드 없음</text>
+<text x="1927" y="606" text-anchor="middle" class="small">IAM + 인스턴스 역할 + Agent 연결</text>
+<rect x="1700" y="670" width="455" height="155" class="bluebox"/>
+<text x="1927" y="709" text-anchor="middle" class="head">Amazon SES · 발신 전용</text>
+<text x="1927" y="739" text-anchor="middle" class="body">Django → SendEmail API</text>
+<text x="1927" y="767" text-anchor="middle" class="body">Sandbox/리전/검증 주소 조건 확인</text>
+<text x="1927" y="797" text-anchor="middle" class="small">테스트 수신 결과 · 인증 DNS 확인</text>
+<rect x="1700" y="860" width="455" height="112" class="greenbox"/>
+<text x="1927" y="897" text-anchor="middle" class="head">DB 백업 / 복원 시험</text>
+<text x="1927" y="926" text-anchor="middle" class="body">백업 → 별도 시험 DB로 복원</text>
+<text x="1927" y="954" text-anchor="middle" class="small">저장 대상/보존 방식은 미확정</text>
+
+<!-- AWS architecture arrows -->
+<path d="M1080 195 L1080 332" class="flow"/><text x="1096" y="282" class="label">HTTPS</text>
+<path d="M1080 422 L1080 538" class="flow"/><text x="1097" y="485" class="label">HTTP 80 · ALB SG → Web SG</text>
+<path d="M1080 635 L1080 758" class="flow"/><text x="1097" y="705" class="label">TCP 5432 · Web SG → DB SG</text>
+<path d="M1700 262 C1570 262 1500 330 1350 370" class="policy"/><text x="1482" y="294" class="label">Web ACL 정책</text>
+<path d="M1927 325 L1927 357" class="evidence"/>
+<path d="M1700 572 C1640 572 1600 572 1555 572" class="mgmt"/><text x="1570" y="552" class="label">Web/DB 세션 관리</text>
+<path d="M1375 592 C1510 592 1580 740 1700 740" class="flow"/><text x="1480" y="660" class="label">SES 발송 API</text>
+<path d="M1375 805 C1515 805 1590 905 1700 905" class="evidence"/><text x="1490" y="850" class="label">백업/복원 시험</text>
+
+<!-- Basic scope and evidence -->
+<rect x="45" y="1030" width="430" height="290" class="greenbox"/>
+<text x="70" y="1070" class="head">기본 목표 · 산출물 대응</text>
+<text x="70" y="1108" class="body">B1 Web/DB · 저장/조회·구성도</text>
+<text x="70" y="1140" class="body">C1 DNS/HTTPS/메일 연동</text>
+<text x="70" y="1172" class="body">B2 IAM 허용/거부 · C2 최소 권한 개선</text>
+<text x="70" y="1204" class="body">B3 네트워크 통제 · C3 자동점검</text>
+<text x="70" y="1236" class="body">B4 WAF · C4 정책 개선/재시험</text>
+<line x1="70" y1="1256" x2="450" y2="1256" stroke="#bbf7d0" stroke-width="2"/>
+<text x="70" y="1284" class="small">증거: 응답·설정·로그·JSON/CSV·전후 비교</text>
+<text x="70" y="1308" class="small">docs/evidence/ · 비밀값/실제 민감정보 제외</text>
+
+<!-- Tooling -->
+<rect x="520" y="1030" width="1635" height="290" rx="20" class="zone"/>
+<text x="552" y="1070" class="head">점검 · 공격 재현 · 개선 검증 (기본 C2–C4)</text>
+<rect x="550" y="1100" width="245" height="125" class="box"/><text x="672" y="1135" text-anchor="middle" class="head">Prowler CLI</text><text x="672" y="1164" text-anchor="middle" class="small">AWS IAM/EC2/네트워크</text><text x="672" y="1192" text-anchor="middle" class="small">감사 권한 · 오류 구분</text>
+<rect x="815" y="1100" width="245" height="125" class="box"/><text x="937" y="1135" text-anchor="middle" class="head">자체 boto3 점검</text><text x="937" y="1164" text-anchor="middle" class="small">SG · IPv4/IPv6 · 포트범위</text><text x="937" y="1192" text-anchor="middle" class="small">정상/위험/오류 fixture</text>
+<rect x="1080" y="1100" width="245" height="125" class="box"/><text x="1202" y="1135" text-anchor="middle" class="head">Lynis</text><text x="1202" y="1164" text-anchor="middle" class="small">Web/DB Linux 내부 점검</text><text x="1202" y="1192" text-anchor="middle" class="small">SSM 관리 경로로 실행</text>
+<rect x="1345" y="1100" width="245" height="125" class="box"/><text x="1467" y="1135" text-anchor="middle" class="head">pip-audit</text><text x="1467" y="1164" text-anchor="middle" class="small">고정한 Python 의존성</text><text x="1467" y="1192" text-anchor="middle" class="small">수정 후 기능/재점검</text>
+<rect x="1610" y="1100" width="245" height="125" class="box"/><text x="1732" y="1135" text-anchor="middle" class="head">ZAP Baseline</text><text x="1732" y="1164" text-anchor="middle" class="small">공개 화면·웹 설정 점검</text><text x="1732" y="1192" text-anchor="middle" class="small">범위/인증 상태 기록</text>
+<rect x="1875" y="1100" width="250" height="125" class="orangebox"/><text x="2000" y="1135" text-anchor="middle" class="head">공격/정상 재현 스크립트</text><text x="2000" y="1164" text-anchor="middle" class="small">SQLi/XSS/Rate · 권한/우회</text><text x="2000" y="1192" text-anchor="middle" class="small">더미 입력 · Haven ALB만</text>
+<text x="552" y="1260" class="body">흐름: 최초 점검 → 로그/응답 대조 → 조치 → 동일 케이스 재실행 → 전후 증거 저장</text>
+<text x="552" y="1292" class="small">허가된 Haven 도메인만 시험 · 실제 데이터 변경/서비스 방해용 공격은 하지 않음 · 403만으로 WAF 차단을 단정하지 않음</text>
+
+<!-- Crypto/advanced scope -->
+<rect x="45" y="1360" width="2110" height="220" rx="20" class="yellowbox"/>
+<text x="75" y="1402" class="head">후속 심화 · 암호/PKI 트랙 (기본 완료 범위와 분리)</text>
+<rect x="75" y="1425" width="650" height="115" class="box"/><text x="100" y="1458" class="head">A1 · 데이터 암호화 / 키 관리</text><text x="100" y="1487" class="body">개인정보 필드 AES-256-GCM · KMS 봉투 암호화</text><text x="100" y="1516" class="small">DEK 버전 · AAD · 평문 이전 · 키 교체 시험</text>
+<rect x="760" y="1425" width="650" height="115" class="box"/><text x="785" y="1458" class="head">A2 · PKI / 인증서 검증</text><text x="785" y="1487" class="body">실습 CA · 서버 인증서 · HTTPS 신뢰 검증</text><text x="785" y="1516" class="small">ACM 공개 인증서 기반 기본 HTTPS와 별도 학습</text>
+<rect x="1445" y="1425" width="680" height="115" class="box"/><text x="1470" y="1458" class="head">A3 · 인증/인가·통합 검증</text><text x="1470" y="1487" class="body">IAM과 웹 권한 구분 · 암호화/HTTPS/인가 통합</text><text x="1470" y="1516" class="small">선택 확장: mTLS · 최신 보안 기술은 별도 판단</text>
+<text x="50" y="1620" class="small">주의: 비밀번호는 복호화 가능한 암호화가 아니라 Django의 적응형 해시로 저장합니다. 다이어그램은 계획이며 구축 완료 증거가 아닙니다.</text>
+
+<!-- Legend -->
+<line x1="1220" y1="1640" x2="1275" y2="1640" class="flow"/><text x="1290" y="1646" class="tiny">서비스 흐름</text>
+<line x1="1390" y1="1640" x2="1445" y2="1640" class="mgmt"/><text x="1460" y="1646" class="tiny">관리/점검</text>
+<line x1="1555" y1="1640" x2="1610" y2="1640" class="policy"/><text x="1625" y="1646" class="tiny">보안 정책</text>
+<line x1="1710" y1="1640" x2="1765" y2="1640" class="evidence"/><text x="1780" y="1646" class="tiny">로그/증거</text>
+</svg>
+

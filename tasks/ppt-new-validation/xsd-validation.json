@@ -1,6 +1,0 @@
-{
-  "parts": 37,
-  "errors": [
-    "ppt/presentation.xml Error The element 'presentation' in namespace 'http://schemas.openxmlformats.org/presentationml/2006/main' has invalid child element 'notesMasterIdLst' in namespace 'http://schemas.openxmlformats.org/presentationml/2006/main'. List of possible elements expected: 'sldSz, notesSz' in namespace 'http://schemas.openxmlformats.org/presentationml/2006/main'."
-  ]
-}

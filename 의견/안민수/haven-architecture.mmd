@@ -1,0 +1,23 @@
+graph LR
+  U[사용자] -->|HTTPS 443| ALB[공개 ALB]
+  DNS[Route 53 DNS] -.->|도메인 연결| ALB
+  WAF[AWS WAF Web ACL] -.->|규칙 적용| ALB
+  subgraph VPC[AWS VPC]
+    subgraph PUB[공개 서브넷 · AZ 2개]
+      ALB
+    end
+    subgraph WEBNET[비공개 Web 서브넷]
+      WEB[Web EC2<br/>Nginx · Gunicorn · Django]
+    end
+    subgraph DBNET[비공개 DB 서브넷]
+      DB[DB EC2<br/>PostgreSQL]
+    end
+    ALB -->|HTTP 80 · ALB SG만 허용| WEB
+    WEB -->|TCP 5432 · Web SG만 허용| DB
+    SSM[Systems Manager] -.->|세션 관리 · SSH 인바운드 없음| WEB
+    SSM -.->|세션 관리| DB
+    WEB -->|API · 발송 권한 최소화| SES[Amazon SES]
+    WAF -.->|요청 로그| CW[CloudWatch Logs]
+    DB -.->|백업 경로 · 세부 방식 결정 필요| S3[S3 백업 저장소]
+  end
+  NOTE[Web/DB outbound 경로<br/>NAT 또는 VPC Endpoint 결정 필요] -.-> WEB

@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "sample_slides": 3,
+  "final_slides": [
+    4,
+    7,
+    8
+  ],
+  "protected_files_unchanged": 12,
+  "errors": []
+}

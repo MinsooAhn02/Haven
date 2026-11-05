@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "moved_files": 34,
+  "content_preserved_files": 31,
+  "ppt_png_content_preserved": 25,
+  "updated_source_or_text_files": 3,
+  "local_links_checked": 23,
+  "current_ppt_matches_committed_final": true,
+  "slide_count": 14,
+  "errors": []
+}

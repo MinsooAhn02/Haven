@@ -1,6 +1,6 @@
 # 2번 노푸른 TODO
 
-**브랜치:** `codex/pureun`
+**브랜치:** `Pureun`
 
 **담당:** 화면·Django Templates·CSS·사용자 흐름 시험
 

@@ -1,6 +1,6 @@
 # 3번 권혁민 TODO
 
-**브랜치:** `codex/hyukmin`
+**브랜치:** `Hyeokmin`
 
 **담당:** 레드팀 시험·요청 재현 CLI·WAF·로그 검증
 

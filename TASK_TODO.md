@@ -6,12 +6,12 @@
 
 | 번호 | 담당 | 브랜치 | 개인 TODO | 맡을 일 |
 |---|---|---|---|---|
-| 1 | 안민수 | `codex/minsoo` | [안민수/TODO.md](안민수/TODO.md) | 팀장·공통 환경·CI·DB·배포·메일·백업 복원 |
-| 2 | 노푸른 | `codex/pureun` | [노푸른/TODO.md](노푸른/TODO.md) | 화면·Django Templates·CSS·사용자 흐름 시험 |
-| 3 | 권혁민 | `codex/hyukmin` | [권혁민/TODO.md](권혁민/TODO.md) | 레드팀 시험·요청 재현 CLI·WAF·로그 검증 |
-| 4 | 김보람 | `codex/boram` | [김보람/TODO.md](김보람/TODO.md) | 계정 소유·IAM·개인별 접근·비용/자원 관리 |
-| 5 | 신요찬 | `codex/yochan` | [신요찬/TODO.md](신요찬/TODO.md) | Django 인증·모델·CRUD·공유·첨부·서버 인가 |
-| 6 | 이민성 | `codex/minseong` | [이민성/TODO.md](이민성/TODO.md) | AWS 네트워크·EC2·SSM·ALB/HTTPS·SG CLI |
+| 1 | 안민수 | `Minsoo` | [안민수/TODO.md](안민수/TODO.md) | 팀장·공통 환경·CI·DB·배포·메일·백업 복원 |
+| 2 | 노푸른 | `Pureun` | [노푸른/TODO.md](노푸른/TODO.md) | 화면·Django Templates·CSS·사용자 흐름 시험 |
+| 3 | 권혁민 | `Hyeokmin` | [권혁민/TODO.md](권혁민/TODO.md) | 레드팀 시험·요청 재현 CLI·WAF·로그 검증 |
+| 4 | 김보람 | `Boram` | [김보람/TODO.md](김보람/TODO.md) | 계정 소유·IAM·개인별 접근·비용/자원 관리 |
+| 5 | 신요찬 | `Yochan` | [신요찬/TODO.md](신요찬/TODO.md) | Django 인증·모델·CRUD·공유·첨부·서버 인가 |
+| 6 | 이민성 | `Minsung` | [이민성/TODO.md](이민성/TODO.md) | AWS 네트워크·EC2·SSM·ALB/HTTPS·SG CLI |
 
 ## 공통 규칙
 
@@ -93,4 +93,4 @@
 - [ ] WAF 전후 결과·UNKNOWN/ERROR·한계, 명세 누락과 가림 증거 정리
 - [ ] 보존·종료 책임/잔여 비용 확인. 실제 삭제는 별도 확인 후 담당자가 수행
 
-기능·오류·시험의 상세 기준은 [기본 계획](기본프로젝트_계획.md)과 [기본 구현 명세](docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 개인 브랜치 생성 및 실제 AWS 작업의 완료를 이 문서가 의미하지는 않는다.
+기능·오류·시험의 상세 기준은 [기본 계획](기본프로젝트_계획.md)과 [기본 구현 명세](docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 실제 AWS 작업의 완료를 이 문서가 의미하지는 않는다.

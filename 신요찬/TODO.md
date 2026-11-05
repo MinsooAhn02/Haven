@@ -1,6 +1,6 @@
 # 5번 신요찬 TODO
 
-**브랜치:** `codex/yochan`
+**브랜치:** `Yochan`
 
 **담당:** Django 인증·모델·CRUD·공유·첨부·서버 인가
 

@@ -1,6 +1,6 @@
 # 6번 이민성 TODO
 
-**브랜치:** `codex/minseong`
+**브랜치:** `Minsung`
 
 **담당:** AWS 네트워크·EC2·SSM·ALB/HTTPS·SG CLI
 

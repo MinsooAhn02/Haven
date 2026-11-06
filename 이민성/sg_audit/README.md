@@ -134,19 +134,61 @@
 - 결과 종류: PASS / FAIL / UNKNOWN(근거 부족) / ERROR(수집·실행 실패).
 - 종료 코드: 0=PASS, 1=FAIL, 2=ERROR, 3=UNKNOWN. 섞이면 ERROR > UNKNOWN > FAIL > PASS 순.
 
-## fixture 목록
+## 판정 규칙 (check_id)
 
-| 파일 | 상황 | 기대 결과 |
+허용표에 없는 규칙은 아래 순서로 확인해 처음 걸리는 하나로 판정한다(같은 규칙에 FAIL을 중복으로 매기지 않음).
+
+| check_id | 조건 | 판정 |
 |---|---|---|
-| `pass.json` | 설계대로 설정됨 | PASS (0) |
-| `fail_public_db.json` | DB 5432가 `0.0.0.0/0`에 열림 | FAIL (1) |
-| `unknown_role.json` | baseline에 없는 서버·SG가 있음 | UNKNOWN (3) |
-| `error_access_denied.json` | 권한 오류로 SG 목록을 못 읽음 | ERROR (2) |
+| SG-01 | 들어오는 규칙의 출발지가 `0.0.0.0/0`·`::/0`이고 22(SSH)·3389(RDP)·5432(PostgreSQL) 포트를 포함 | FAIL |
+| SG-02 | 전체 프로토콜(`-1`) 허용 | FAIL |
+| SG-03 | Web TCP 80의 출발지가 ALB SG가 아님 | FAIL |
+| SG-04 | DB TCP 5432의 출발지가 Web SG가 아님 | FAIL |
+| SG-05 | 그 외 baseline에 없는 규칙 / baseline 규칙이 실제로 없음 / 기대 SG 미연결 | FAIL |
+| SG-06 | baseline에 없는 자산, 연결되지 않은 SG, 역할을 모르는 SG 참조, SG 규칙 수집 결과 없음 | UNKNOWN |
+
+- baseline 규칙과 정확히 일치하는 규칙은 PASS로 기록한다.
+- fixture에 `errors`가 있으면 채점하지 않고 ERROR로 끝낸다(반쯤 읽은 데이터로 PASS를 내지 않기 위해).
 
 ## 실행 방법
 
-(6단계에서 작성)
+요구 사항: Python 3.10 이상(시험 환경 3.13.2), 추가 패키지 없음. 1회차는 `fixture` 모드만 구현했고 `live` 모드는 3회차 예정이다.
+
+`sg_audit` 폴더에서 실행한다.
+
+```powershell
+cd 이민성\sg_audit
+python network_audit.py fixture --fixture fixtures\pass.json --baseline baseline.json --output-dir out\pass
+echo $LASTEXITCODE
+```
+
+| 옵션 | 뜻 |
+|---|---|
+| `--fixture` | 채점할 fixture(가짜 AWS 응답) 파일 |
+| `--baseline` | 정답지(허용 규칙표) 파일 |
+| `--output-dir` | 결과를 저장할 **새 폴더**. 이미 내용이 있는 폴더면 덮어쓰지 않고 ERROR(2)로 멈춘다 |
+
+결과 파일:
+- `results.json`: 실행 정보(run_id, 시각, 모드, 계정, 리전, 수집 상태, 판정 개수)와 전체 finding, errors
+- `findings.csv`: finding을 한 줄씩 기록한 표(엑셀에서 한글이 깨지지 않도록 UTF-8 BOM으로 저장)
+
+`out/` 폴더는 실행할 때마다 새로 만들어지는 결과물이라 `.gitignore`로 Git에서 제외한다.
 
 ## 시험 결과
 
-(7단계에서 작성)
+환경: Windows, Python 3.13.2, `network_audit.py` 0.1.0, 2026-11-06 실행.
+
+| 시험 ID | fixture | 결과 개수 | 기대 | 실제 | 종료 코드 |
+|---|---|---|---|---|---|
+| AUD-01 | `pass.json` | PASS 8 | PASS | PASS | 0 |
+| AUD-02 | `fail_public_db.json` | PASS 8, FAIL 1 | FAIL | FAIL (SG-01: 인터넷 전체에 PostgreSQL 5432 개방) | 1 |
+| AUD-09 | `unknown_role.json` | PASS 8, UNKNOWN 1 | UNKNOWN | UNKNOWN (SG-06: tmp-1은 baseline에 없는 자산) | 3 |
+| AUD-08 | `error_access_denied.json` | ERROR 1 | ERROR | ERROR (DescribeSecurityGroups: UnauthorizedOperation) | 2 |
+
+추가 확인:
+- 같은 `--output-dir`로 다시 실행하면 덮어쓰지 않고 ERROR(2)로 멈춘다.
+- 없는 파일을 지정하면 ERROR(2)로 멈춘다.
+
+미구현(다음 회차): `live` 모드(실제 AWS 읽기 전용 수집, 3회차), AUD-03~07·10·11 추가 fixture.
+
+코드가 어떻게 판정하는지는 [코드설명.md](코드설명.md)를 본다.

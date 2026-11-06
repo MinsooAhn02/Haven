@@ -151,7 +151,7 @@
 | SG-06 | baseline에 없는 자산, 연결되지 않은 SG, 역할을 모르는 SG 참조, SG 규칙 수집 결과 없음 | UNKNOWN |
 
 - baseline 규칙과 정확히 일치하는 규칙은 PASS로 기록한다.
-- fixture에 `errors`가 있으면 채점하지 않고 ERROR로 끝낸다(반쯤 읽은 데이터로 PASS를 내지 않기 위해).
+- fixture에 `errors`가 있으면 수집된 개별 finding은 보존하고 전체 판정은 ERROR로 끝낸다. baseline의 기대 자산이 수집 결과에서 누락되면 UNKNOWN으로 남긴다.
 
 ## 실행 방법
 

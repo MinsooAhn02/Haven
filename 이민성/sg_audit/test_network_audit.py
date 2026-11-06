@@ -33,6 +33,7 @@ class NetworkAuditTests(unittest.TestCase):
     def test_missing_expected_asset_is_unknown(self):
         fixture = json.loads((FIXTURES / "pass.json").read_text(encoding="utf-8"))
         fixture["attachments"] = [a for a in fixture["attachments"] if a["asset_id"] != "db-1"]
+        fixture["security_groups"] = [sg for sg in fixture["security_groups"] if sg["GroupId"] != "sg-fixture-db"]
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "fixture.json"
             source.write_text(json.dumps(fixture), encoding="utf-8")

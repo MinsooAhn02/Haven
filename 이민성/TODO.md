@@ -14,7 +14,7 @@
 
 ### 1회차 · 1~2일차
 
-- [ ] VPC/CIDR·공개 ALB용 2개 서브넷·비공개 Web/DB·SG 연결표·SSM 및 설치/로그/메일 목적지별 출구/비용을 설계한다. SG CLI fixture로 정상/위반/ERROR/UNKNOWN·출력을 시험한다.
+- [x] VPC/CIDR·공개 ALB용 2개 서브넷·비공개 Web/DB·SG 연결표·SSM 및 설치/로그/메일 목적지별 출구/비용을 설계한다. SG CLI fixture로 정상/위반/ERROR/UNKNOWN·출력을 시험한다.
 - [ ] 검증 결과를 아래에 기록하고 main 통합용 PR 제출
 
 ### 2회차 · 3~4일차

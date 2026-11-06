@@ -1,0 +1,7 @@
+{
+  "csrf_mode": "invalid",
+  "fields": {
+    "title": "잘못된 CSRF 검증",
+    "body": "이 POST는 서버에서 거부되어야 합니다."
+  }
+}

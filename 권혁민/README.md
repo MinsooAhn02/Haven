@@ -6,24 +6,25 @@
 
 ```text
 권혁민/
-├── request_verify.py                # run / correlate CLI
-├── mock_server.py                   # 외부 네트워크를 사용하지 않는 가상 앱 + 가상 WAF 로그
-├── README.md                        # 사용법, 입력/출력 계약
+├── request_verify.py             # 요청 재현(run)·로그 대조(correlate) CLI
+├── mock_server.py                # 로컬 가상 서버·가상 WAF/앱 로그
+├── README.md                     # 사용법·입출력 형식·검증 범위
+├── TODO.md                       # 회차별 진행 상태·검증 결과
+├── Basic test plan.md            # 명세 ID별 기본 기능·보안 시험표
+├── Attack test plan.md           # 공격 유형별 시험 계획
 ├── fixtures/
-│   ├── allowlist_local.json         # 허용 서버 주소, 현재는 테스트 서버만 있고, Haven 주소 등록 필요
-│   ├── cases_body_boundary.json     # APP-11, 8191/8192/8193 정확한 요청 크기
-│   ├── cases_haven_template.json    # 실제 Haven 앱 개발 후 사용할 테스트 (그대로 실행 금지, 실제 서버 개발 후 수정)
-│   ├── cases_local.json             # 테스트 서버용 동작 실행 파일 (나중에 삭제 예정)
-│   ├── pad_8191.json, pad_8192.json, pad_8193.json # 글 작성 최대 크기 경계 테스트
-│   ├── post_without_csrf.json       # csrf 누락 post
-│   ├── sample.txt                   # 업로드용 sample 파일
-│   ├── sec_dummy_php_upload.json    # php 파일 업로드 테스트
-│   ├── sec_foreign_origin.json      # 외부 origin 요청 테스트
-│   ├── sec_login_sql_username.json  # SQL injection 공격 테스트
-│   └── sec_stored_xss.json          # stored XSS 공격 테스트
-├── tests/test_request_verify.py     # requests_verify.py 검사용 테스트 파일
-└── requirements.txt                 # CLI 실행에 필요한 python 라이브러리
+│   ├── allowlist_local.json      # 로컬 시험 대상 허용목록
+│   ├── cases_local.json          # 로컬 mock·CLI 회귀 시험
+│   ├── cases_haven_template.json # 실제 앱 연동용 시험표·회차 구분
+│   ├── cases_body_boundary.json  # 요청 body 8191/8192/8193바이트 경계 시험
+│   └── ...                      # 인증 기초 시험·POST 입력·업로드 샘플 등
+├── tests/
+│   └── test_request_verify.py    # CLI 단위·로컬 통합 테스트
+└── requirements.txt             # 실행·테스트 의존성
 ```
+
+`fixtures/`는 주요 파일만 표시했다. Haven 앱 연동용 케이스는
+실제 URL·폼 계약과 시험 데이터에 맞춰 확인·조정한 뒤 실행한다.
 
 > **중요:** `mock_server.py`의 `synthetic_fixture=true` 로그는 AWS WAF 로그가 아니다. 이 로그로 PASS가 나오더라도 **CLI의 로그 상관분석이 정상 작동한다는 뜻만** 가진다. Django 취약점 부재, AWS WAF 차단 성공 또는 실제 침투시험 결과를 의미하지 않는다.
 
@@ -70,7 +71,7 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
 
 ## 3. Case JSON 계약
 
-명세에서 요구한 루트/케이스 필드를 유지하고, 시험 편의를 위한 옵션 1개(`verification_mode`)를 추가하였다.
+명세에서 요구한 루트/케이스 필드를 유지하고, 시험 편의를 위해 `verification_mode`와 선택 필드 `phase`를 추가하였다.
 
 ```json
 {

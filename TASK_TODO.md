@@ -140,7 +140,7 @@ flowchart LR
 
 | 담당 | 상태 | 대기/다음 인계 | 근거 |
 |---|---|---|---|
-| 안민수 | [PR #4](https://github.com/MinsooAhn02/Haven/pull/4): 공용 순서·인계·공통 실행 안내 정리; Django 앱·requirements·CI는 아직 없음 | 요찬 앱 계약 인계 후 실제 환경·CI 구현 | 문서 링크 검사·diff 검사, PR #2·#3 main 통합 |
+| 안민수 | [PR #4](https://github.com/MinsooAhn02/Haven/pull/4): 공용 순서·인계·공통 실행 안내 정리; 앱·requirements는 아직 없음; 앱 독립 SG fixture CI는 `Minsoo` 브랜치에 추가, 원격 실행/병합 대기 | 요찬 앱 계약 인계 후 실제 환경·CI 구현 | 문서 링크 검사·diff 검사, PR #2·#3 main 통합 |
 | 신요찬 | `Yochan` `f2130f9`; 원격에 앱 코드 없음, 로컬 작업 미확인 | 앱 루트·settings/WSGI·의존성·migration/시험 명령 전달 | 브랜치/PR 확인 기록 |
 | 노푸른 | [PR #3](https://github.com/MinsooAhn02/Haven/pull/3) main 병합 완료: 정적 화면 시안 | 요찬 URL·폼/context 인계 후 Django 연결·브라우저 시험 | 설명·검증 범위 정리, HTML 7개 링크/조각 44건 확인, merge `36db226` |
 | 권혁민 | `Hyeokmin` `aa7c0f3`; 요청 CLI/fixture/mock pytest, PR 없음 | fixture 인계 후 CI 연결; 전체 pytest는 미실행 | 로컬 Python 3.13 mock HTTP 200/302/403/403→UNKNOWN, exit 3; synthetic log correlation PASS, exit 0; 원 JSON 미변경 |

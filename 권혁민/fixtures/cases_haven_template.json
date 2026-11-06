@@ -232,6 +232,21 @@
       "verification_mode": "manual_required",
       "note": "사전조건 P2=id2·ACTIVE·owner A. GET은 삭제 확인만, P2 DB 상태 불변"
     },
+        {
+      "case_id": "APP-02-OWNER-AFTER-DELETE-CONFIRM",
+      "category": "crud",
+      "method": "GET",
+      "path": "/posts/2/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P2 삭제 확인 GET 직후 상세 재조회. P2는 여전히 조회 가능해야 하며 DB의 상태와 내용이 변경되지 않았는지 확인"
+    },
     {
       "case_id": "APP-03-UNSHARED-B-LIST",
       "category": "authorization",
@@ -306,6 +321,36 @@
       "max_requests": 1,
       "verification_mode": "manual_required",
       "note": "B가 A의 P1 수정 POST 시 404. P1 DB 값이 변하지 않았는지 수동 확인"
+    },
+        {
+      "case_id": "APP-03-UNSHARED-B-DELETE-GET",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/delete/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전조건 P1=id1은 A 소유이며 B에 미공유. B의 삭제 확인 화면 접근은 404, 본문 미노출 및 P1 상태 미변경 확인"
+    },
+    {
+      "case_id": "APP-03-UNSHARED-B-DELETE-POST",
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/delete/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B의 로그인 세션과 유효 CSRF로 A 소유 P1 삭제 요청. 404이며 P1이 삭제되거나 상태 변경되지 않았는지 DB에서 확인"
     },
     {
       "case_id": "APP-05-OWNER-NO-CSRF",
@@ -472,6 +517,21 @@
       "verification_mode": "manual_required",
       "note": "최후반 파괴적 시험: P2는 A가 소유한 삭제 전용 테스트 글. POST 후 P2 접근 차단/DB 정리 확인"
     },
+        {
+      "case_id": "APP-02-OWNER-AFTER-DELETE",
+      "category": "crud",
+      "method": "GET",
+      "path": "/posts/2/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A의 P2 삭제 POST 직후 상세 재조회. 404와 본문 미노출 확인. 삭제 POST의 실제 처리 결과와 DB 상태도 함께 확인"
+    },
     {
       "case_id": "APP-01-LOGOUT-POST",
       "category": "authentication",
@@ -486,7 +546,23 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "마지막 사례: A 세션 정상 로그아웃 POST, 이후 이전 세션 재사용 불가 확인"
+      "note": "A 세션 정상 로그아웃 POST. 바로 다음 보호 페이지 GET에서 로그아웃 후 접근 거부 확인"
+    },
+    {
+      "case_id": "APP-01-AFTER-LOGOUT",
+      "category": "authentication",
+      "method": "GET",
+      "path": "/posts/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "로그아웃 POST 직후 같은 member_a HTTP 세션으로 보호 목록 GET. 재로그인 없이 로그인 화면으로 이동하고 기록 내용이 노출되지 않는지 확인"
     }
   ]
 }

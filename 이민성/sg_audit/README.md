@@ -188,6 +188,8 @@ echo $LASTEXITCODE
 | AUD-09 | `unknown_role.json` | PASS 8, UNKNOWN 1 | UNKNOWN | UNKNOWN (SG-06: tmp-1은 baseline에 없는 자산) | 3 |
 | AUD-08 | `error_access_denied.json` | ERROR 1 | ERROR | ERROR (DescribeSecurityGroups: UnauthorizedOperation) | 2 |
 
+회귀 시험은 `python -m unittest -v test_network_audit`로 실행한다.
+
 추가 확인:
 - 같은 `--output-dir`로 다시 실행하면 덮어쓰지 않고 ERROR(2)로 멈춘다.
 - 없는 파일을 지정하면 ERROR(2)로 멈춘다.

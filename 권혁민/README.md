@@ -133,6 +133,28 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
 | `--max-duration` | 300초 | 900초 |
 | `--max-response-bytes` | 2097152 | 2097152 |
 
+### 회차별 케이스 선택
+
+`run`에 `--phase 1`을 지정하면 케이스의 `phase`가 1인 항목만
+파일에 정의된 순서대로 실행한다. 옵션을 생략하면 전체 케이스를 실행한다.
+
+- 허용 값: 1, 2, 3, 4
+- 회차 선택 시 모든 케이스에 `phase`가 있어야 한다.
+- 선택한 회차에 케이스가 없으면 요청 전 오류로 종료한다.
+- 결과 JSON에 selected_phase, total_suite_cases,
+  selected_cases, excluded_cases를 기록한다.
+- 제외된 다른 회차 케이스는 미실행 오류로 계산하지 않는다.
+
+현재 Haven 템플릿은 총 37개이며,
+1회차 32개·2회차 4개·3회차 1개로 구성되어 있다.
+이는 현재 준비된 케이스의 분류이며, 회차별 전체 요구사항을
+모두 구현했다는 의미는 아니다.
+
+Haven 템플릿은 실제 Django 앱과 시험 데이터가 준비된 뒤 사용한다.
+로컬 mock 서버에서 앱의 권한·공유·첨부 기능을 검증할 수는 없다.
+
+### 인증과 결과 기록
+
 인증된 role이 있으면 최초 실행 시 username과 비밀번호를 **대화형**으로 입력받는다. 비밀번호는 화면에 표시하지 않는다. 각 role의 쿠키와 CSRF는 메모리 세션에만 유지하며, 기존 `accounts/login/` 경로의 실제 필드/동작은 신요찬 담당자와 합의해야 한다. 현재 로컬 mock는 실제 Django 인증이 아니며 가상 요청 동작만 구현한다.
 
 출력에는 명세 필수 필드인 `run_id`, `request_id`, `case_id`, UTC 시각, 응답시간, HTTP status, redirect 대상, `expected_app`, `expected_waf`, `app_observed`, `waf_action`, `rule_id`, `waf_verdict`, `app_validity`, `transport_status`, `correlation_status`, `evidence_path` 등을 포함한다. `X-Haven-Request-ID`와 `X-Haven-Run-ID`를 요청 헤더에 넣어 대응 로그에서 식별한다. **응답 본문 원문·다운로드 파일·비밀번호·세션/CSRF 토큰은 출력하지 않는다.**

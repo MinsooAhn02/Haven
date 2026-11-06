@@ -513,12 +513,45 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
     return fields, headers, file_info
 
 
-def check_http_expected(detail: dict, expected: dict) -> bool:
+def check_http_expected(detail: dict, expected: dict, *, target_origin: str | None = None) -> bool:
     """응답 코드·리다이렉트·길이·해시·헤더의 명시적 기대값을 비교."""
     ok = detail["status"] == expected["http_status"]
     if "redirect_path" in expected:
-        # If a local redirect contains a next query, compare only the path.
-        ok = ok and urlsplit(detail["location"] or "").path == expected["redirect_path"]
+        location = detail.get("location")
+        redirect_ok = False
+
+        if location:
+            try:
+                destination = urlsplit(location)
+
+                if destination.scheme or destination.netloc:
+                    # 절대 URL은 대상 origin과 일치해야 한다.
+                    if target_origin is not None:
+                        destination_origin = canonical_origin(
+                            urlunsplit((
+                                destination.scheme or urlsplit(target_origin).scheme,
+                                destination.netloc,
+                                "",
+                                "",
+                                "",
+                            ))
+                        )
+                        redirect_ok = (
+                            destination_origin == canonical_origin(target_origin)
+                        )
+                else:
+                    # 루트 기준 상대 경로만 허용한다.
+                    validate_path(location)
+                    redirect_ok = True
+
+                redirect_ok = (
+                    redirect_ok
+                    and destination.path == expected["redirect_path"]
+                )
+            except (ValueError, ConfigError):
+                redirect_ok = False
+
+        ok = ok and redirect_ok
     if "body_bytes" in expected:
         ok = ok and detail["body_bytes"] == expected["body_bytes"]
     if "sha256" in expected:
@@ -655,7 +688,7 @@ def run(args) -> int:
                               redirect_target=detail["location"],
                               response_summary={"request_body_bytes": detail["request_body_bytes"], "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],
                                                 "headers": detail["headers"]}, transport_status="OK",
-                              http_expectation_match=check_http_expected(detail, case["expected_app"]))
+                              http_expectation_match=check_http_expected(detail, case["expected_app"], target_origin=target))
                 # No WAF/app log evidence in run: do not invent a pass based on HTTP 403.
                 record["verdict"] = "UNKNOWN"
             except (ExecutionError, ConfigError, KeyboardInterrupt) as exc:

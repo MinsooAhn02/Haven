@@ -293,3 +293,172 @@ def test_haven_template_schema_and_fixture_references():
     suite = cli.load_json(fixture_root / "cases_haven_template.json")
 
     cli.validate_suite(suite, fixture_root)
+
+def test_phase_selection_preserves_order_and_original():
+    """선택한 회차만 반환하고, 순서와 원본을 유지한다."""
+    suite = {
+        "suite_id": "phase-test",
+        "cases": [
+            {"case_id": "FIRST", "phase": 1},
+            {"case_id": "SECOND", "phase": 2},
+            {"case_id": "THIRD", "phase": 1},
+        ],
+    }
+    before = json.dumps(suite, sort_keys=True)
+
+    selected = cli.select_phase(suite, 1)
+
+    assert [case["case_id"] for case in selected["cases"]] == [
+        "FIRST", "THIRD"
+    ]
+    assert selected["suite_id"] == "phase-test"
+    assert json.dumps(suite, sort_keys=True) == before
+
+
+def test_phase_omitted_accepts_legacy_suite():
+    """phase 없는 기존 로컬 fixture도 옵션 생략 시 사용 가능하다."""
+    suite = cli.load_json(ROOT / "fixtures" / "cases_local.json")
+
+    cli.validate_suite(suite, ROOT / "fixtures")
+    selected = cli.select_phase(suite, None)
+
+    assert selected == suite
+
+
+def test_phase_selection_rejects_missing_phase():
+    """일부 케이스에 phase가 없으면 조용히 제외하지 않고 거부한다."""
+    suite = {
+        "cases": [
+            {"case_id": "WITH-PHASE", "phase": 1},
+            {"case_id": "MISSING-PHASE"},
+        ]
+    }
+
+    with pytest.raises(cli.ConfigError, match="MISSING-PHASE"):
+        cli.select_phase(suite, 1)
+
+
+def test_phase_selection_rejects_empty_phase():
+    """선택 회차에 케이스가 없으면 거부한다."""
+    suite = {
+        "cases": [
+            {"case_id": "ONLY-PHASE-ONE", "phase": 1},
+        ]
+    }
+
+    with pytest.raises(cli.ConfigError, match="해당하는 케이스가 없습니다"):
+        cli.select_phase(suite, 4)
+
+
+@pytest.mark.parametrize("bad_phase", [0, 5, "1", True, 1.5, None])
+def test_suite_rejects_invalid_phase(bad_phase):
+    """JSON에 명시한 phase는 1~4 정수만 허용한다."""
+    suite = cli.load_json(ROOT / "fixtures" / "cases_local.json")
+    suite["cases"][0]["phase"] = bad_phase
+
+    with pytest.raises(cli.ConfigError, match="phase"):
+        cli.validate_suite(suite, ROOT / "fixtures")
+
+
+def test_run_phase_filters_requests_and_records_counts(tmp_path):
+    """실제로 선택된 요청만 보내고 결과·로그·개수를 대조한다."""
+    with server(tmp_path) as (port, waf, app):
+        suite = cli.load_json(ROOT / "fixtures" / "cases_local.json")
+
+        # 기존 로컬 fixture 4개를 1·2회차로 번갈아 배정한다.
+        for index, case in enumerate(suite["cases"]):
+            case["phase"] = 1 if index % 2 == 0 else 2
+
+        expected_ids = [
+            case["case_id"]
+            for case in suite["cases"]
+            if case["phase"] == 1
+        ]
+
+        case_file = tmp_path / "phase_cases.json"
+        case_file.write_text(
+            json.dumps(suite, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        args = inputs(tmp_path, port)
+        args.cases = case_file
+        args.phase = 1
+
+        # run 단계는 아직 로그 대조 전이므로 UNKNOWN(3).
+        assert cli.run(args) == 3
+
+        result = cli.load_json(args.output_dir / "results.json")
+        records = result["results"]
+
+        assert [row["case_id"] for row in records] == expected_ids
+        assert result["selected_phase"] == 1
+        assert result["total_suite_cases"] == 4
+        assert result["selected_cases"] == 2
+        assert result["excluded_cases"] == 2
+        assert result["unexecuted_cases"] == 0
+        assert result["stopped_reason"] is None
+
+        # 로컬 fixture는 인증 준비가 없는 요청이므로 정확히 2회.
+        assert result["total_http_requests_including_preparation"] == 2
+        assert all(row["transport_status"] == "OK" for row in records)
+        assert all(row["http_expectation_match"] is True for row in records)
+
+        # 결과 기록뿐 아니라 서버가 실제로 받은 요청 ID도 확인한다.
+        waf_events = cli.log_lines(waf)
+        assert [event["request_id"] for event in waf_events] == [
+            row["request_id"] for row in records
+        ]
+
+        # 로그 대조 후에도 회차 정보가 유지되는지 확인한다.
+        corr = Namespace(
+            run_json=args.output_dir / "results.json",
+            waf_log=waf,
+            app_log=app,
+            output_dir=tmp_path / "phase_corr",
+        )
+        assert cli.correlate(corr) == 0
+
+        correlated = cli.load_json(
+            corr.output_dir / "correlated_results.json"
+        )
+        assert correlated["selected_phase"] == 1
+        assert correlated["selected_cases"] == 2
+        assert correlated["excluded_cases"] == 2
+        assert all(
+            row["verdict"] == "PASS"
+            for row in correlated["results"]
+        )
+
+
+@pytest.mark.parametrize(
+    "location, expected_match",
+    [
+        ("/accounts/login/?next=/posts/", True),
+        ("https://haven.example/accounts/login/", True),
+        ("https://haven.example:443/accounts/login/", True),
+        ("//haven.example/accounts/login/", True),
+        ("https://other.example/accounts/login/", False),
+        ("//other.example/accounts/login/", False),
+        ("http://haven.example/accounts/login/", False),
+        ("https://haven.example:444/accounts/login/", False),
+        ("/posts/", False),
+        (None, False),
+    ],
+)
+def test_redirect_requires_expected_origin_and_path(location, expected_match):
+    detail = {
+        "status": 302,
+        "location": location,
+        "headers": {},
+    }
+    expected = {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/",
+    }
+
+    assert cli.check_http_expected(
+        detail,
+        expected,
+        target_origin="https://haven.example:443",
+    ) is expected_match

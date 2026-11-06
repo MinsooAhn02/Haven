@@ -44,7 +44,7 @@
 
 | 회차 | 상태 | 환경·실행 명령·기대/실제 결과 | PR·가림 증거 | 다음 담당자에게 전달할 것 |
 |---|---|---|---|---|
-| 1 | 검증 대기 | Windows 11, Python 3.13.1 / `python -m pytest -q tests` 실행 결과: 19 passed in 7.77s / 로컬 mock 기반 CLI 검증 완료, 실제 Django·AWS WAF 검증은 미실행 | 테스트 실행 출력 확인 | Django URL·폼·로그 계약 확인 및 실제 시험 케이스 확장 |
+| 1 | 검증 대기 | Windows 11, Python 3.13.1 / `python -m pytest -q tests`: 40 passed in 8.56s / Haven 템플릿 37개 구조 검증, 회차 선택 및 리다이렉트 목적지 비교 테스트 통과 / 실제 Django·AWS WAF 검증은 미실행 | 테스트 실행 출력 확인 | Django URL·폼·세션·로그 계약 및 시험 데이터 초기화 방법 확인 후 앱 연동 시험 |
 | 2 | 미착수 | 미확인 | — | — |
 | 3 | 미착수 | 미확인 | — | — |
 | 4 | 미착수 | 미확인 | — | — |

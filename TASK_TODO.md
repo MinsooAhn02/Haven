@@ -140,13 +140,13 @@ flowchart LR
 
 | 담당 | 상태 | 대기/다음 인계 | 근거 |
 |---|---|---|---|
-| 안민수 | 기반 문서 작업 중; main `daa6c1c`, 앱·requirements·CI 없음 | 계약 확정 후 실행 안내·기반 PR | 로컬 checkout / 저장소 파일 |
+| 안민수 | [PR #4](https://github.com/MinsooAhn02/Haven/pull/4): 공용 순서·인계·공통 실행 안내 정리; Django 앱·requirements·CI는 아직 없음 | 요찬 앱 계약 인계 후 실제 환경·CI 구현 | 문서 링크 검사·diff 검사, PR #2·#3 main 통합 |
 | 신요찬 | `Yochan` `f2130f9`; 원격에 앱 코드 없음, 로컬 작업 미확인 | 앱 루트·settings/WSGI·의존성·migration/시험 명령 전달 | 브랜치/PR 확인 기록 |
-| 노푸른 | [PR #3](https://github.com/MinsooAhn02/Haven/pull/3) `MERGEABLE`, GitGuardian만 통과 | 본문이 브라우저 미시험 기록과 어긋남; 없는 `1회차_화면배치초안.md` 참조도 정리한 뒤 시안으로 통합 | 검증 기록 66행과 PR 설명 대조 필요 |
+| 노푸른 | [PR #3](https://github.com/MinsooAhn02/Haven/pull/3) main 병합 완료: 정적 화면 시안 | 요찬 URL·폼/context 인계 후 Django 연결·브라우저 시험 | 설명·검증 범위 정리, HTML 7개 링크/조각 44건 확인, merge `36db226` |
 | 권혁민 | `Hyeokmin` `aa7c0f3`; 요청 CLI/fixture/mock pytest, PR 없음 | fixture 인계 후 CI 연결; 전체 pytest는 미실행 | 로컬 Python 3.13 mock HTTP 200/302/403/403→UNKNOWN, exit 3; synthetic log correlation PASS, exit 0; 원 JSON 미변경 |
 | 김보람 | `Boram` `f8410e6`; 문서, PR 없음 | 개인 접근·IAM·리전·예산 확정 결과를 민성/민수에게 전달 | 브랜치 확인 기록 |
-| 이민성 | [PR #2](https://github.com/MinsooAhn02/Haven/pull/2) `MERGEABLE`; 네트워크·SG fixture, 수정 후 재시험 대기 | baseline 필수 DB 누락은 false PASS 가능; baseline `[]`의 `AttributeError`, 기존 파일인 출력 경로의 `NotADirectoryError` 수정 후 재시험, 이후 승인된 AWS 연결 증거 전달 | PR 검토 기록; fixture 출력 `PASS 0 / FAIL 1 / UNKNOWN 3 / ERROR 2` |
+| 이민성 | [PR #2](https://github.com/MinsooAhn02/Haven/pull/2) main 병합 완료: 네트워크 설계·SG fixture CLI | 리전·예산·출구·권한 승인 후 구축, live 수집·추가 fixture는 후속 작업 | 기본 fixture 4종 및 회귀 시험 5개 통과: 기대 DB/SG 동시 누락 UNKNOWN·입출력 ERROR·부분 결과 보존, merge `6d61d6c` |
 
-PR #3은 본문과 검증 증거를 일치시킨 뒤, PR #2는 fixture 결함과 재시험 결과를 확인한 뒤 통합한다. 이 표는 로컬·PR 검토 결과의 스냅샷이며 실제 AWS 구축/연결 완료를 뜻하지 않는다.
+PR #3은 화면 시안, PR #2는 설계·fixture 단계로 merge commit 병합했다. 두 PR의 GitGuardian 검사도 통과했다. Django 연결·live AWS 수집·실제 AWS 구축/연결은 후속 작업이며, 위 병합으로 회차 전체를 완료 처리하지 않는다.
 
 기능·오류·시험의 상세 기준은 [기본 계획](기본프로젝트_계획.md)과 [기본 구현 명세](docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 실제 AWS 작업의 완료를 이 문서가 의미하지는 않는다.

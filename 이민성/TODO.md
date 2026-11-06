@@ -15,7 +15,7 @@
 ### 1회차 · 1~2일차
 
 - [x] VPC/CIDR·공개 ALB용 2개 서브넷·비공개 Web/DB·SG 연결표·SSM 및 설치/로그/메일 목적지별 출구/비용을 설계한다. SG CLI fixture로 정상/위반/ERROR/UNKNOWN·출력을 시험한다.
-- [ ] 검증 결과를 아래에 기록하고 main 통합용 PR 제출
+- [x] 검증 결과를 아래에 기록하고 main 통합용 PR 제출
 
 ### 2회차 · 3~4일차
 
@@ -44,7 +44,7 @@
 
 | 회차 | 상태 | 환경·실행 명령·기대/실제 결과 | PR·가림 증거 | 다음 담당자에게 전달할 것 |
 |---|---|---|---|---|
-| 1 | 검증 대기 | 설계: `network/설계.md`(VPC·서브넷·라우팅·SG·출구/비용, 리전·D6는 김보람 권장, 팀장 승인 대기). SG CLI: Windows·Python 3.13.2, `sg_audit`에서 `python network_audit.py fixture --fixture fixtures\<이름>.json --baseline baseline.json --output-dir out\<이름>` 실행. 기대/실제 종료 코드 일치: pass 0(AUD-01), fail_public_db 1(AUD-02, SG-01), unknown_role 3(AUD-09, SG-06), error_access_denied 2(AUD-08). 덮어쓰기·없는 파일 시 ERROR(2) 확인 | PR 링크(올린 뒤 기입). 결과 요약 `sg_audit/README.md` 시험 결과. fixture는 가상 데이터라 가림 대상 없음 | 김보람: 리전·D6 승인, 생성 자원·NAT 운영 기간(설계.md 5·6장). 권혁민: 기대 접근표(설계.md 4.3). 안민수: OS(패키지 80 여부)·메일 방식 회신 요청. 미완료: live 모드·AUD-03~07·10·11(3회차 이후) |
+| 1 | 검증 대기 | 설계: `network/설계.md`(VPC·서브넷·라우팅·SG·출구/비용, 리전·D6는 김보람 권장, 팀장 승인 대기). SG CLI: Windows·Python 3.13.2, `sg_audit`에서 `python network_audit.py fixture --fixture fixtures\<이름>.json --baseline baseline.json --output-dir out\<이름>` 실행. 기대/실제 종료 코드 일치: pass 0(AUD-01), fail_public_db 1(AUD-02, SG-01), unknown_role 3(AUD-09, SG-06), error_access_denied 2(AUD-08). 덮어쓰기·없는 파일 시 ERROR(2) 확인 | PR 링크(https://github.com/MinsooAhn02/Haven/pull/2). 결과 요약 `sg_audit/README.md` 시험 결과. fixture는 가상 데이터라 가림 대상 없음 | 김보람: 리전·D6 승인, 생성 자원·NAT 운영 기간(설계.md 5·6장). 권혁민: 기대 접근표(설계.md 4.3). 안민수: OS(패키지 80 여부)·메일 방식 회신 요청. 미완료: live 모드·AUD-03~07·10·11(3회차 이후) |
 | 2 | 미착수 | 미확인 | — | — |
 | 3 | 미착수 | 미확인 | — | — |
 | 4 | 미착수 | 미확인 | — | — |

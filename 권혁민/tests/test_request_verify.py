@@ -4,11 +4,12 @@ from __future__ import annotations
 from argparse import Namespace
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from http.server import ThreadingHTTPServer
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import json
 from pathlib import Path
 import sys
 import threading
+import time
 
 import pytest
 
@@ -462,3 +463,223 @@ def test_redirect_requires_expected_origin_and_path(location, expected_match):
         expected,
         target_origin="https://haven.example:443",
     ) is expected_match
+
+
+@contextmanager
+def probe_server(*, redirect_to=None):
+    """CLI 동작 관찰용 로컬 서버. 실제 인증·WAF는 구현하지 않는다."""
+    received = []
+    release_slow = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_GET(self):
+            received.append({
+                "path": self.path,
+                "cookie": self.headers.get("Cookie", ""),
+            })
+
+            if self.path == "/slow":
+                release_slow.wait(timeout=5)
+
+            status = 302 if self.path == "/redirect" else 200
+            body = b"probe"
+
+            try:
+                self.send_response(status)
+                if status == 302:
+                    self.send_header("Location", redirect_to)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except OSError:
+                # timeout으로 클라이언트가 먼저 연결을 끊은 경우.
+                pass
+
+    host = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=host.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        yield host.server_port, received
+    finally:
+        release_slow.set()
+        host.shutdown()
+        thread.join(timeout=3)
+        host.server_close()
+
+
+def probe_inputs(tmp_path, port, paths, roles=None):
+    """기존 로컬 케이스 형식을 재사용해 임시 시험표를 만든다."""
+    args = inputs(tmp_path, port)
+    suite = cli.load_json(ROOT / "fixtures" / "cases_local.json")
+    template = suite["cases"][0]
+    roles = roles or ["anonymous"] * len(paths)
+
+    suite["cases"] = [
+        {
+            **template,
+            "case_id": f"PROBE-{index}",
+            "method": "GET",
+            "path": path,
+            "auth_role": role,
+            "input_reference": None,
+            "expected_app": {
+                "http_status": 302 if path == "/redirect" else 200
+            },
+            "expected_waf": "NOT_APPLICABLE",
+            "verification_mode": "http_only",
+        }
+        for index, (path, role) in enumerate(zip(paths, roles))
+    ]
+
+    args.cases = tmp_path / "probe_cases.json"
+    args.cases.write_text(
+        json.dumps(suite, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return args
+
+
+def test_probe_sessions_are_isolated(tmp_path, monkeypatch):
+    """역할별 쿠키가 실제 전송에서도 분리되는지 확인한다."""
+    prepared_roles = []
+
+    def fake_login(session, target, budget, role, *args, **kwargs):
+        prepared_roles.append(role)
+        session.cookies.set(
+            "sessionid",
+            f"dummy-{role}",
+            domain="127.0.0.1",
+            path="/",
+        )
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz"] * 4,
+            ["member_a", "member_b", "anonymous", "member_a"],
+        )
+
+        assert cli.run(args) == 3
+
+        assert prepared_roles == ["member_a", "member_b"]
+        assert [item["cookie"] for item in received] == [
+            "sessionid=dummy-member_a",
+            "sessionid=dummy-member_b",
+            "",
+            "sessionid=dummy-member_a",
+        ]
+
+
+def test_probe_rate_limits_send_intervals(tmp_path, monkeypatch):
+    """rate=1일 때 실제 HTTP 전송 시작 간격을 확인한다."""
+    send_times = []
+    original_send = cli.requests.Session.send
+
+    def observed_send(session, request, **kwargs):
+        send_times.append(time.monotonic())
+        return original_send(session, request, **kwargs)
+
+    monkeypatch.setattr(cli.requests.Session, "send", observed_send)
+
+    with probe_server() as (port, received):
+        args = probe_inputs(tmp_path, port, ["/healthz"] * 3)
+        args.rate = 1
+
+        assert cli.run(args) == 3
+        assert len(received) == 3
+        assert len(send_times) == 3
+
+        intervals = [
+            later - earlier
+            for earlier, later in zip(send_times, send_times[1:])
+        ]
+
+        # 실행 시계·스케줄링 차이를 고려한 20ms 허용 오차.
+        assert all(interval >= 0.98 for interval in intervals), intervals
+
+
+def test_probe_timeout_preserves_partial_results(tmp_path):
+    """응답 헤더 지연 시 timeout 오류와 미실행 케이스를 기록한다."""
+    with probe_server() as (port, received):
+        args = probe_inputs(tmp_path, port, ["/slow", "/healthz"])
+        args.timeout = 0.2
+
+        assert cli.run(args) == 2
+
+        result = cli.load_json(args.output_dir / "results.json")
+
+        assert [item["path"] for item in received] == ["/slow"]
+        assert result["total_http_requests_including_preparation"] == 1
+        assert result["unexecuted_cases"] == 1
+        assert result["stopped_reason"]
+        assert len(result["results"]) == 1
+
+        row = result["results"][0]
+        assert row["transport_status"] == "ERROR"
+        assert row["verdict"] == "ERROR"
+        assert "ReadTimeout" in row["response_summary"]["error"]
+
+
+def test_probe_unapproved_origin_sends_nothing(tmp_path, monkeypatch):
+    """미승인 target은 HTTP 전송 함수 호출 전 거부한다."""
+    attempted_urls = []
+    original_send = cli.requests.Session.send
+
+    def observed_send(session, request, **kwargs):
+        attempted_urls.append(request.url)
+        return original_send(session, request, **kwargs)
+
+    monkeypatch.setattr(cli.requests.Session, "send", observed_send)
+
+    with probe_server() as (approved_port, approved_received):
+        with probe_server() as (other_port, other_received):
+            args = probe_inputs(tmp_path, approved_port, ["/healthz"])
+
+            # allowlist는 첫 번째 서버만 허용한 상태로 유지.
+            args.target = f"http://127.0.0.1:{other_port}"
+
+            with pytest.raises(cli.ConfigError, match="allowlist"):
+                cli.run(args)
+
+            assert attempted_urls == []
+            assert approved_received == []
+            assert other_received == []
+            assert not args.output_dir.exists()
+
+
+def test_probe_external_redirect_is_not_followed(tmp_path, monkeypatch):
+    """허용 서버가 다른 origin으로 유도해도 후속 요청은 보내지 않는다."""
+    attempted_urls = []
+    original_send = cli.requests.Session.send
+
+    def observed_send(session, request, **kwargs):
+        attempted_urls.append(request.url)
+        return original_send(session, request, **kwargs)
+
+    monkeypatch.setattr(cli.requests.Session, "send", observed_send)
+
+    with probe_server() as (other_port, other_received):
+        destination = f"http://127.0.0.1:{other_port}/healthz"
+
+        with probe_server(redirect_to=destination) as (port, received):
+            args = probe_inputs(tmp_path, port, ["/redirect"])
+
+            assert cli.run(args) == 3
+
+            assert attempted_urls == [
+                f"http://127.0.0.1:{port}/redirect"
+            ]
+            assert len(received) == 1
+            assert other_received == []
+
+            result = cli.load_json(args.output_dir / "results.json")
+            assert result["total_http_requests_including_preparation"] == 1
+            assert result["results"][0]["http_status"] == 302
+            assert result["results"][0]["redirect_target"] == destination

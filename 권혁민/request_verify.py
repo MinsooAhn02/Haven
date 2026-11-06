@@ -182,6 +182,9 @@ def validate_suite(suite: object, fixtures: Path):
         if not isinstance(cid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{2,64}", cid) or cid in found:
             raise ConfigError("case_id가 중복되었거나 유효하지 않습니다")
         found.add(cid)
+        if "phase" in item:
+            if type(item["phase"]) is not int or item["phase"] not in {1, 2, 3, 4}:
+                raise ConfigError(f"{cid}: phase는 1~4 정수여야 합니다")
         if item["method"] not in METHODS or item["auth_role"] not in ROLES:
             raise ConfigError(f"{cid}: method/auth_role 오류")
         validate_path(item["path"])
@@ -215,6 +218,35 @@ def validate_suite(suite: object, fixtures: Path):
         if ref is not None:
             payload = load_json(safe_relative(fixtures, ref))
             validate_payload(payload, fixtures)
+
+
+def select_phase(suite: dict, phase: int | None) -> dict:
+    """선택한 회차만 원래 순서대로 반환한다. 원본 suite는 변경하지 않는다."""
+    if phase is None:
+        return suite
+
+    if type(phase) is not int or phase not in {1, 2, 3, 4}:
+        raise ConfigError("phase는 1~4 정수여야 합니다")
+
+    missing = [
+        case["case_id"]
+        for case in suite["cases"]
+        if "phase" not in case
+    ]
+    if missing:
+        raise ConfigError(
+            "--phase 사용 시 모든 케이스에 phase가 필요합니다: "
+            + ", ".join(missing)
+        )
+
+    selected = [
+        case for case in suite["cases"]
+        if case["phase"] == phase
+    ]
+    if not selected:
+        raise ConfigError(f"{phase}회차에 해당하는 케이스가 없습니다")
+
+    return {**suite, "cases": selected}
 
 
 def validate_payload(payload: object, root: Path):
@@ -565,9 +597,18 @@ def run(args) -> int:
     root = args.fixture_dir.resolve(strict=True)
     suite = load_json(args.cases)
     validate_suite(suite, root)
-    print(f"대상={target}  suite={suite['suite_id']}  사례={len(suite['cases'])}  ",
-          f"timeout={args.timeout}s  요청≤{args.max_requests}  초당≤{args.rate}  시간≤{args.max_duration}s",
-          file=sys.stderr)
+
+    total_cases = len(suite["cases"])
+    phase = getattr(args, "phase", None)
+    suite = select_phase(suite, phase)
+    phase_label = "전체" if phase is None else f"{phase}회차"
+    print(
+        f"대상={target}  suite={suite['suite_id']}  "
+        f"회차={phase_label}  선택={len(suite['cases'])}/{total_cases}  "
+        f"timeout={args.timeout}s  요청≤{args.max_requests}  "
+        f"초당≤{args.rate}  시간≤{args.max_duration}s",
+        file=sys.stderr,
+    )
     if args.output_dir.exists():
         raise ConfigError("출력 폴더가 이미 있습니다. 새 경로를 지정하세요")
     args.output_dir.mkdir(parents=True, exist_ok=False)
@@ -581,6 +622,12 @@ def run(args) -> int:
              "suite_kind": suite["suite_kind"], "target_origin": target, "started_utc": utc_now(),
              "source": "live_http_run", "stopped_reason": None, "unexecuted_cases": len(suite["cases"]),
              "total_http_requests_including_preparation": 0, "preparation_events": prep_events}
+    state.update(
+        selected_phase=phase,
+        total_suite_cases=total_cases,
+        selected_cases=len(suite["cases"]),
+        excluded_cases=total_cases - len(suite["cases"]),
+    )
     records = []
     failed = False
     try:
@@ -799,6 +846,7 @@ def create_parser():
     r.add_argument("--target", required=True)
     r.add_argument("--allowlist", required=True, type=Path)
     r.add_argument("--cases", required=True, type=Path)
+    r.add_argument("--phase", type=int, choices=[1, 2, 3, 4], default=None, help="지정한 회차의 케이스만 실행 (생략 시 전체)")
     r.add_argument("--fixture-dir", type=Path, default=Path("fixtures"))
     r.add_argument("--output-dir", required=True, type=Path)
     r.add_argument("--timeout", type=float, default=10)

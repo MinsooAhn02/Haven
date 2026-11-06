@@ -5,6 +5,7 @@
   "cases": [
     {
       "case_id": "APP-01-SIGNUP-GET",
+      "phase": 1,
       "category": "authentication",
       "method": "GET",
       "path": "/accounts/signup/",
@@ -20,6 +21,7 @@
     },
     {
       "case_id": "APP-01-LOGIN-GET",
+      "phase": 1,
       "category": "authentication",
       "method": "GET",
       "path": "/accounts/login/",
@@ -35,6 +37,7 @@
     },
     {
       "case_id": "APP-01-SIGNUP-INVALID",
+      "phase": 1,
       "category": "authentication",
       "method": "POST",
       "path": "/accounts/signup/",
@@ -50,6 +53,7 @@
     },
     {
       "case_id": "APP-01-LOGIN-INVALID",
+      "phase": 1,
       "category": "authentication",
       "method": "POST",
       "path": "/accounts/login/",
@@ -65,6 +69,7 @@
     },
     {
       "case_id": "APP-04-ANON-GET",
+      "phase": 1,
       "category": "authentication",
       "method": "GET",
       "path": "/posts/",
@@ -81,6 +86,7 @@
     },
     {
       "case_id": "APP-04-ANON-DETAIL",
+      "phase": 1,
       "category": "authentication",
       "method": "GET",
       "path": "/posts/1/",
@@ -97,6 +103,7 @@
     },
     {
       "case_id": "APP-04-ANON-NEW-GET",
+      "phase": 1,
       "category": "authentication",
       "method": "GET",
       "path": "/posts/new/",
@@ -113,6 +120,7 @@
     },
     {
       "case_id": "APP-04-ANON-POST-NO-CSRF",
+      "phase": 1,
       "category": "csrf",
       "method": "POST",
       "path": "/posts/new/",
@@ -128,6 +136,7 @@
     },
     {
       "case_id": "APP-04-ANON-POST-VALID-CSRF",
+      "phase": 1,
       "category": "authentication",
       "method": "POST",
       "path": "/posts/new/",
@@ -144,6 +153,7 @@
     },
     {
       "case_id": "APP-01-LOGOUT-GET",
+      "phase": 1,
       "category": "authentication",
       "method": "GET",
       "path": "/accounts/logout/",
@@ -159,6 +169,7 @@
     },
     {
       "case_id": "APP-02-OWNER-LIST",
+      "phase": 1,
       "category": "crud",
       "method": "GET",
       "path": "/posts/",
@@ -174,6 +185,7 @@
     },
     {
       "case_id": "APP-02-OWNER-NEW-GET",
+      "phase": 1,
       "category": "crud",
       "method": "GET",
       "path": "/posts/new/",
@@ -189,6 +201,7 @@
     },
     {
       "case_id": "APP-02-OWNER-DETAIL",
+      "phase": 1,
       "category": "crud",
       "method": "GET",
       "path": "/posts/1/",
@@ -204,6 +217,7 @@
     },
     {
       "case_id": "APP-02-OWNER-EDIT-GET",
+      "phase": 1,
       "category": "crud",
       "method": "GET",
       "path": "/posts/1/edit/",
@@ -219,6 +233,7 @@
     },
     {
       "case_id": "APP-02-OWNER-DELETE-CONFIRM",
+      "phase": 1,
       "category": "crud",
       "method": "GET",
       "path": "/posts/2/delete/",
@@ -234,6 +249,7 @@
     },
         {
       "case_id": "APP-02-OWNER-AFTER-DELETE-CONFIRM",
+      "phase": 1,
       "category": "crud",
       "method": "GET",
       "path": "/posts/2/",
@@ -249,6 +265,7 @@
     },
     {
       "case_id": "APP-03-UNSHARED-B-LIST",
+      "phase": 1,
       "category": "authorization",
       "method": "GET",
       "path": "/posts/",
@@ -264,6 +281,7 @@
     },
     {
       "case_id": "APP-03-UNSHARED-B-DETAIL",
+      "phase": 1,
       "category": "authorization",
       "method": "GET",
       "path": "/posts/1/",
@@ -279,6 +297,7 @@
     },
     {
       "case_id": "APP-03-UNSHARED-C-DETAIL",
+      "phase": 1,
       "category": "authorization",
       "method": "GET",
       "path": "/posts/1/",
@@ -294,6 +313,7 @@
     },
     {
       "case_id": "APP-03-UNSHARED-B-EDIT-GET",
+      "phase": 1,
       "category": "authorization",
       "method": "GET",
       "path": "/posts/1/edit/",
@@ -309,6 +329,7 @@
     },
     {
       "case_id": "APP-03-UNSHARED-B-EDIT-POST",
+      "phase": 1,
       "category": "authorization",
       "method": "POST",
       "path": "/posts/1/edit/",
@@ -324,6 +345,7 @@
     },
         {
       "case_id": "APP-03-UNSHARED-B-DELETE-GET",
+      "phase": 1,
       "category": "authorization",
       "method": "GET",
       "path": "/posts/1/delete/",
@@ -339,6 +361,7 @@
     },
     {
       "case_id": "APP-03-UNSHARED-B-DELETE-POST",
+      "phase": 1,
       "category": "authorization",
       "method": "POST",
       "path": "/posts/1/delete/",
@@ -354,6 +377,7 @@
     },
     {
       "case_id": "APP-05-OWNER-NO-CSRF",
+      "phase": 1,
       "category": "csrf",
       "method": "POST",
       "path": "/posts/new/",
@@ -369,6 +393,7 @@
     },
     {
       "case_id": "APP-05-OWNER-INVALID-CSRF",
+      "phase": 1,
       "category": "csrf",
       "method": "POST",
       "path": "/posts/new/",
@@ -384,6 +409,7 @@
     },
     {
       "case_id": "APP-02-OWNER-CREATE-INVALID",
+      "phase": 1,
       "category": "crud",
       "method": "POST",
       "path": "/posts/new/",
@@ -399,6 +425,7 @@
     },
     {
       "case_id": "APP-02-OWNER-CREATE",
+      "phase": 1,
       "category": "crud",
       "method": "POST",
       "path": "/posts/new/",
@@ -414,6 +441,7 @@
     },
     {
       "case_id": "APP-02-OWNER-EDIT",
+      "phase": 1,
       "category": "crud",
       "method": "POST",
       "path": "/posts/1/edit/",
@@ -429,6 +457,7 @@
     },
     {
       "case_id": "SEC-03",
+      "phase": 2,
       "category": "sqli",
       "method": "GET",
       "path": "/posts/1%20OR%201%3D1/",
@@ -444,6 +473,7 @@
     },
     {
       "case_id": "SEC-23",
+      "phase": 2,
       "category": "idor",
       "method": "GET",
       "path": "/posts/1/",
@@ -459,6 +489,7 @@
     },
     {
       "case_id": "SEC-09",
+      "phase": 2,
       "category": "stored_xss",
       "method": "POST",
       "path": "/posts/new/",
@@ -474,6 +505,7 @@
     },
     {
       "case_id": "SEC-32",
+      "phase": 3,
       "category": "file_upload",
       "method": "POST",
       "path": "/posts/1/attachments/",
@@ -489,6 +521,7 @@
     },
     {
       "case_id": "SEC-44",
+      "phase": 2,
       "category": "csrf",
       "method": "POST",
       "path": "/posts/new/",
@@ -504,6 +537,7 @@
     },
     {
       "case_id": "APP-02-OWNER-DELETE",
+      "phase": 1,
       "category": "crud",
       "method": "POST",
       "path": "/posts/2/delete/",
@@ -519,6 +553,7 @@
     },
         {
       "case_id": "APP-02-OWNER-AFTER-DELETE",
+      "phase": 1,
       "category": "crud",
       "method": "GET",
       "path": "/posts/2/",
@@ -534,6 +569,7 @@
     },
     {
       "case_id": "APP-01-LOGOUT-POST",
+      "phase": 1,
       "category": "authentication",
       "method": "POST",
       "path": "/accounts/logout/",
@@ -550,6 +586,7 @@
     },
     {
       "case_id": "APP-01-AFTER-LOGOUT",
+      "phase": 1,
       "category": "authentication",
       "method": "GET",
       "path": "/posts/",

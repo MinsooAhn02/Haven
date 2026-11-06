@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Haven: approved, bounded HTTP request replay and evidence correlation.
-
-Only runs declared cases on an exactly allowlisted origin; no attack generation.
-See README_CLI.md for the fixture JSON schema and expected log formats.
+"""
+run()       → 대상/시험표 검증 → 역할별 세션·CSRF 준비 → 제한된 요청 → JSON/CSV 기록
+correlate() → run 결과와 WAF·앱 JSONL 로그를 요청 ID로 결합 → 신뢰도·판정 기록
 """
 from __future__ import annotations
 
@@ -23,13 +22,13 @@ import uuid
 
 import requests
 
-ROLES = {"anonymous", "member_a", "member_b", "member_c", "operator"}           # user 역할
-METHODS = {"GET", "POST"}                                                       # HTTP 메서드
-WAF_EXPECT = {"ALLOW", "BLOCK", "COUNT", "NOT_APPLICABLE"}                      # WAF 예상 동작
+ROLES = {"anonymous", "member_a", "member_b", "member_c", "operator"}
+METHODS = {"GET", "POST"}
+WAF_EXPECT = {"ALLOW", "BLOCK", "COUNT", "NOT_APPLICABLE"}
 REQ_ID_HEADER = "X-Haven-Request-ID"
 RUN_ID_HEADER = "X-Haven-Run-ID"
-MAX_RESPONSE = 2 * 1024 * 1024                                                  # 응답 최대 크기 2MiB
-RESULT_FIELDS = [                                                               # csv 기록 필드
+MAX_RESPONSE = 2 * 1024 * 1024
+RESULT_FIELDS = [
     "run_id", "request_id", "case_id", "timestamp_utc", "elapsed_ms",
     "auth_role", "category", "method", "path", "expected_app", "expected_waf",
     "http_status", "redirect_target", "response_summary", "app_observed",
@@ -37,23 +36,29 @@ RESULT_FIELDS = [                                                               
     "correlation_status", "evidence_path",
 ]
 
-# 설정 및 실행 오류 처리
-# --------------------------------------------
+
 class ConfigError(Exception):
+    """잘못된 실행 설정·파일·입력값을 나타내는 오류."""
     pass
+
 
 class ExecutionError(Exception):
+    """시간·속도 제한 또는 네트워크 실행 단계의 오류."""
     pass
+
 
 class TooLargeResponse(ExecutionError):
+    """수신 응답의 크기 한도 초과."""
     pass
-# --------------------------------------------
+
 
 def utc_now() -> str:
+    """UTC ISO 타임스탬프를 반환한다. 로컬 시각과 섞이지 않도록 모든 증거에 사용."""
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def load_json(path: Path):
+    """UTF-8 JSON을 읽는다. 파일/형식 오류는 CLI 설정 오류로 통일."""
     try:
         with path.open("r", encoding="utf-8") as fh:
             return json.load(fh)
@@ -62,6 +67,7 @@ def load_json(path: Path):
 
 
 def safe_relative(base: Path, rel: str) -> Path:
+    """상대 fixture 경로만 허용한다. .., 절대경로, 루트 밖 심볼릭 링크를 거부."""
     if not isinstance(rel, str) or not rel or rel.startswith(("/", "\\")) or "\\" in rel:
         raise ConfigError("fixture 파일 경로는 내부 상대 경로여야 합니다")
     # Reject traversal even if the file has not yet been created.
@@ -75,6 +81,7 @@ def safe_relative(base: Path, rel: str) -> Path:
 
 
 def canonical_origin(value: str) -> str:
+    """주소를 scheme://host:port 형태로 정규화하고 승인 불가 HTTP를 거절."""
     if not isinstance(value, str) or not value or value.strip() != value or re.search(r"[\x00-\x20\\]", value):
         raise ConfigError("origin에 잘못된 문자가 있습니다")
     try:
@@ -85,7 +92,7 @@ def canonical_origin(value: str) -> str:
             raise ValueError("origin에 경로/쿼리가 있습니다")
         if p.hostname.endswith(".") or "%" in p.hostname:
             raise ValueError("host 형식")
-        port = p.port if p.port is not None else (443 if p.scheme == "https" else 80)
+        port = p.port or (443 if p.scheme == "https" else 80)
         if not 1 <= port <= 65535:
             raise ValueError("port")
         host = p.hostname.lower()
@@ -104,6 +111,7 @@ def canonical_origin(value: str) -> str:
 
 
 def validate_path(path: str) -> str:
+    """현재 origin 안에서만 사용할 수 있는 안전한 상대 URL 경로인지 검사."""
     if not isinstance(path, str) or not path.startswith("/") or path.startswith("//"):
         raise ConfigError("케이스 path는 / 로 시작하는 같은 origin의 상대 경로여야 합니다")
     if re.search(r"[\x00-\x1f\x7f\\#]", path) or len(path) > 4096:
@@ -115,6 +123,7 @@ def validate_path(path: str) -> str:
 
 
 def safe_path_log(path: str) -> str:
+    """query의 값만 가려 기록한다. 원본 query는 출력에 남기지 않는다."""
     p = urlsplit(path)
     if not p.query:
         return p.path
@@ -123,6 +132,7 @@ def safe_path_log(path: str) -> str:
 
 
 def safe_location(raw: str | None) -> str | None:
+    """HTTP Location 헤더에서 토큰성 query 값·자격증명을 제거."""
     if not raw:
         return None
     try:
@@ -139,6 +149,7 @@ def safe_location(raw: str | None) -> str | None:
 
 
 def validate_limits(args):
+    """요청 수/초당 속도/timeout/전체 실행시간/응답 크기의 상한 검사."""
     for name, maximum in (("timeout", 30), ("max_requests", 1000), ("rate", 5),
                           ("max_duration", 900), ("max_response_bytes", MAX_RESPONSE)):
         value = getattr(args, name)
@@ -147,6 +158,7 @@ def validate_limits(args):
 
 
 def validate_suite(suite: object, fixtures: Path):
+    """케이스의 공통 스키마 및 fixture 참조를 전송 전에 검증."""
     if not isinstance(suite, dict) or suite.get("schema_version") != 1 or not isinstance(suite.get("suite_id"), str):
         raise ConfigError("suite에는 schema_version=1 및 suite_id가 필요합니다")
     if not suite["suite_id"].strip() or suite.get("suite_kind") not in {"regression", "confirmation"}:
@@ -200,6 +212,7 @@ def validate_suite(suite: object, fixtures: Path):
 
 
 def validate_payload(payload: object, root: Path):
+    """POST payload의 지원 필드, 파일명, content type, 크기 등을 검사."""
     if not isinstance(payload, dict) or payload.get("csrf_mode", "valid") not in {"valid", "missing", "invalid"}:
         raise ConfigError("payload csrf_mode가 잘못되었습니다")
     fields = payload.get("fields", {})
@@ -229,10 +242,12 @@ def validate_payload(payload: object, root: Path):
 
 
 def read_payload(root: Path, ref: str) -> dict:
+    """검증된 fixture 루트에서 입력 JSON을 읽는다."""
     return load_json(safe_relative(root, ref))
 
 
 class CsrfHtmlParser(HTMLParser):
+    """로그인 페이지 HTML에서 csrfmiddlewaretoken hidden input만 찾는다."""
     def __init__(self):
         super().__init__()
         self.value = None
@@ -245,7 +260,9 @@ class CsrfHtmlParser(HTMLParser):
 
 
 class RequestBudget:
+    """로그인/CSRF 준비 포함 전체 요청 수·속도·시간 예산 관리."""
     def __init__(self, args):
+        """CLI 한도 옵션을 복사하고 실행 시작 시각 기록."""
         self.maximum = args.max_requests
         self.rate = args.rate
         self.duration = args.max_duration
@@ -255,6 +272,7 @@ class RequestBudget:
         self.last_request = None
 
     def begin(self):
+        """요청 1건의 예산을 선점한 뒤 허용 timeout을 반환."""
         if self.count >= self.maximum:
             raise ExecutionError("요청 수 한도 도달")
         elapsed = time.monotonic() - self.started
@@ -275,6 +293,7 @@ class RequestBudget:
 
 
 def new_session() -> requests.Session:
+    """역할 간 쿠키 분리. 환경 proxy/.netrc의 암묵적 인증도 사용하지 않음."""
     s = requests.Session()
     s.trust_env = False  # avoid implicit .netrc / environment proxy credentials
     return s
@@ -283,6 +302,7 @@ def new_session() -> requests.Session:
 def bounded_send(s: requests.Session, method: str, target: str, path: str, budget: RequestBudget,
                  request_id: str, *, fields=None, file_info=None, headers=None,
                  max_response_bytes=MAX_RESPONSE) -> tuple[dict, bytes | None]:
+    """HTTP를 최대 1회 전송한다. 리다이렉트 미추적·TLS 확인·응답 상한 적용."""
     url = target + validate_path(path)
     h = {REQ_ID_HEADER: request_id}
     if headers:
@@ -337,11 +357,13 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
 
 
 def get_csrf_token(s: requests.Session) -> str | None:
+    """현재 역할 session의 CSRF 쿠키를 읽는다. 결과 파일에는 저장하지 않음."""
     return s.cookies.get("csrftoken")
 
 
 def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: str,
                run_id: str, prep_events: list, max_response_bytes: int) -> None:
+    """역할별 시험 계정으로 로그인한다. 비밀번호는 대화형 입력하고 기록 금지."""
     print(f"[인증 준비] {role}: 가상 시험 계정 정보를 대화형으로 입력하세요", file=sys.stderr)
     username = input(f"  {role} 사용자 이름: ").strip()
     if not username:
@@ -373,6 +395,7 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
 
 def csrf_for_post(s: requests.Session, target: str, budget: RequestBudget,
                   prep_events: list, max_response_bytes: int, mode: str, run_id: str):
+    """POST에 쓰일 CSRF 토큰을 얻는다. missing/invalid 시험은 의도적 예외."""
     if mode == "missing":
         return None
     if mode == "invalid":
@@ -392,7 +415,57 @@ def csrf_for_post(s: requests.Session, target: str, budget: RequestBudget,
     return csrf
 
 
+
+def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, target: str,
+                         budget: RequestBudget, run_id: str, prep_events: list,
+                         max_response_bytes: int):
+    """시험 케이스의 POST 데이터를 구성한다. 네트워크 전송은 bounded_send가 담당.
+
+    반환값: (fields 또는 None, headers, file_info 또는 None)
+    GET 요청은 payload를 읽지 않는다. POST는 사용자의 기존 session에서 CSRF를 가져오며,
+    로그인/CSRF 준비 요청까지 RequestBudget에 포함한다.
+    """
+    headers = {RUN_ID_HEADER: run_id}
+    if case["method"] == "GET":
+        return None, headers, None
+
+    payload = read_payload(fixture_root, case["input_reference"])
+    fields = dict(payload.get("fields", {}))
+    csrf = csrf_for_post(s, target, budget, prep_events, max_response_bytes,
+                         payload.get("csrf_mode", "valid"), run_id)
+    if csrf:
+        fields["csrfmiddlewaretoken"] = csrf
+        headers["X-CSRFToken"] = csrf
+
+    # Origin 공격은 '목적지' 변경이 아니라 헤더만 변경한다.
+    origin_mode = payload.get("origin_mode", "absent")
+    if origin_mode == "same":
+        headers["Origin"] = target
+    elif origin_mode == "foreign":
+        headers["Origin"] = "https://attacker.invalid"
+
+    # 테스트의 실제 form-urlencoded 직렬화 크기를 정확하게 맞춘다.
+    if "pad_form_body_to" in payload:
+        target_size = payload["pad_form_body_to"]
+        serialized = requests.Request("POST", target + case["path"], data=fields).prepare().body
+        current_size = len(serialized.encode("utf-8") if isinstance(serialized, str) else serialized)
+        if current_size > target_size:
+            raise ExecutionError(f"요청 기본 body 크기 {current_size}가 목표 {target_size}바이트보다 큽니다")
+        fields["body"] += "A" * (target_size - current_size)
+
+    file_info = None
+    if "file" in payload:
+        spec = payload["file"]
+        file_info = {
+            "path": safe_relative(fixture_root, spec["local_fixture_path"]),
+            "filename": spec["filename"],
+            "content_type": spec["content_type"],
+        }
+    return fields, headers, file_info
+
+
 def check_http_expected(detail: dict, expected: dict) -> bool:
+    """응답 코드·리다이렉트·길이·해시·헤더의 명시적 기대값을 비교."""
     ok = detail["status"] == expected["http_status"]
     if "redirect_path" in expected:
         # If a local redirect contains a next query, compare only the path.
@@ -407,6 +480,7 @@ def check_http_expected(detail: dict, expected: dict) -> bool:
 
 
 def base_record(run_id: str, case: dict) -> dict:
+    """요청 1건에 대한 결과 기본 필드를 만든다. 최초 판정은 UNKNOWN."""
     return dict(
         run_id=run_id, request_id=str(uuid.uuid4()), case_id=case["case_id"],
         timestamp_utc=utc_now(), elapsed_ms=None, auth_role=case["auth_role"],
@@ -422,6 +496,7 @@ def base_record(run_id: str, case: dict) -> dict:
 
 
 def save_results(outdir: Path, state: dict, records: list, *, correlation=False) -> None:
+    """JSON 상세와 CSV 요약을 작성한다. 원본 run 결과는 correlate가 수정하지 않음."""
     jsonpath = outdir / ("correlated_results.json" if correlation else "results.json")
     csvpath = outdir / ("correlated_summary.csv" if correlation else "summary.csv")
     state["results"] = records
@@ -441,6 +516,7 @@ def save_results(outdir: Path, state: dict, records: list, *, correlation=False)
 
 
 def get_exit_code(records: list, *, incomplete: bool) -> int:
+    """종료 코드 우선순위: ERROR(2) > UNKNOWN(3) > FAIL(1) > PASS(0)."""
     if incomplete or any(r["transport_status"] == "ERROR" for r in records):
         return 2
     if any(r["verdict"] == "UNKNOWN" for r in records):
@@ -451,6 +527,8 @@ def get_exit_code(records: list, *, incomplete: bool) -> int:
 
 
 def run(args) -> int:
+    """승인한 대상의 고정 케이스를 순차 실행한다. HTTP 결과만으로 보안 PASS 금지."""
+    # 1) 실행 전 검증: 대상이 allowlist와 정확히 일치해야 전송 가능.
     validate_limits(args)
     target = canonical_origin(args.target)
     allow = load_json(args.allowlist)
@@ -468,6 +546,7 @@ def run(args) -> int:
     if args.output_dir.exists():
         raise ConfigError("출력 폴더가 이미 있습니다. 새 경로를 지정하세요")
     args.output_dir.mkdir(parents=True, exist_ok=False)
+    # 2) 실행 단위 ID와 전역 요청 예산을 생성한다.
     run_id = str(uuid.uuid4())
     budget = RequestBudget(args)
     sessions = {}
@@ -484,42 +563,22 @@ def run(args) -> int:
             record = base_record(run_id, case)
             role = case["auth_role"]
             try:
+                # 3) 사용자 역할별 Session 분리 (A 쿠키를 C가 재사용하지 않도록).
                 if role not in sessions:
                     sessions[role] = new_session()
                 sess = sessions[role]
                 if role != "anonymous" and not prepped.get(role):
                     prep_login(sess, target, budget, role, run_id, prep_events, args.max_response_bytes)
                     prepped[role] = True
-                payload = read_payload(root, case["input_reference"]) if case["input_reference"] else {}
-                fields = dict(payload.get("fields", {}))
-                headers = {RUN_ID_HEADER: run_id}
-                file_info = None
-                if case["method"] == "POST":
-                    csrf = csrf_for_post(sess, target, budget, prep_events, args.max_response_bytes,
-                                         payload.get("csrf_mode", "valid"), run_id)
-                    if csrf:
-                        fields["csrfmiddlewaretoken"] = csrf
-                        headers["X-CSRFToken"] = csrf
-                    if payload.get("origin_mode") == "same":
-                        headers["Origin"] = target
-                    elif payload.get("origin_mode") == "foreign":
-                        headers["Origin"] = "https://attacker.invalid"
-                    if "pad_form_body_to" in payload:
-                        size = payload["pad_form_body_to"]
-                        # requests uses application/x-www-form-urlencoded for fields-only POST.
-                        body = requests.Request("POST", target + case["path"], data=fields).prepare().body
-                        current = len(body.encode("utf-8") if isinstance(body, str) else body)
-                        if current > size:
-                            raise ExecutionError(f"요청 기본 body 크기 {current}가 목표 {size}바이트보다 큽니다")
-                        fields["body"] += "A" * (size - current)
-                    if "file" in payload:
-                        spec = payload["file"]
-                        file_info = {"path": safe_relative(root, spec["local_fixture_path"]),
-                                     "filename": spec["filename"], "content_type": spec["content_type"]}
-                detail, _ = bounded_send(sess, case["method"], target, case["path"], budget,
-                                         record["request_id"], fields=fields if case["method"] == "POST" else None,
-                                         file_info=file_info, headers=headers,
-                                         max_response_bytes=args.max_response_bytes)
+                # 인가/CSRF 준비와 HTTP 전송을 분리해 run()의 흐름을 단순하게 유지한다.
+                fields, headers, file_info = prepare_case_request(
+                    sess, case, root, target, budget, run_id, prep_events, args.max_response_bytes
+                )
+                detail, _ = bounded_send(
+                    sess, case["method"], target, case["path"], budget, record["request_id"],
+                    fields=fields, file_info=file_info, headers=headers,
+                    max_response_bytes=args.max_response_bytes
+                )
                 record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
                               redirect_target=detail["location"],
                               response_summary={"request_body_bytes": detail["request_body_bytes"], "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],
@@ -532,6 +591,7 @@ def run(args) -> int:
                               response_summary={"error": ("KeyboardInterrupt" if isinstance(exc, KeyboardInterrupt)
                                                           else str(exc))})
                 failed = True
+            # 4) 성공/실패마다 즉시 기록: 중단돼도 부분 증거를 보존한다.
             records.append(record)
             state["unexecuted_cases"] = len(suite["cases"]) - len(records)
             state["total_http_requests_including_preparation"] = budget.count
@@ -556,6 +616,7 @@ def run(args) -> int:
 
 
 def log_lines(path: Path) -> list[dict]:
+    """JSONL WAF/애플리케이션 로그를 읽는다. 한 줄에 JSON 객체 하나."""
     results = []
     try:
         with path.open("r", encoding="utf-8") as f:
@@ -572,6 +633,7 @@ def log_lines(path: Path) -> list[dict]:
 
 
 def log_request_id(event: dict) -> str | None:
+    """로그에서 X-Haven-Request-ID를 꺼낸다. AWS WAF 헤더 형식도 지원."""
     if isinstance(event.get("request_id"), str):
         return event["request_id"]
     req = event.get("httpRequest", {})
@@ -584,6 +646,7 @@ def log_request_id(event: dict) -> str | None:
 
 
 def log_timestamp(event: dict) -> datetime | None:
+    """ISO UTC 또는 AWS 밀리초 epoch를 UTC datetime으로 정규화."""
     val = event.get("timestamp_utc", event.get("timestamp"))
     if isinstance(val, (float, int)):
         if val > 10**11:  # AWS WAF epoch millis
@@ -598,6 +661,7 @@ def log_timestamp(event: dict) -> datetime | None:
 
 
 def plausible_event(event: dict, row: dict, origin: str) -> bool:
+    """실행 ID·대상·시간(±120초)이 같은 증거인지 점검."""
     if event.get("run_id") not in {None, row["run_id"]}:
         return False
     if event.get("target_origin") not in {None, origin}:
@@ -611,9 +675,11 @@ def plausible_event(event: dict, row: dict, origin: str) -> bool:
 
 
 def correlate(args) -> int:
+    """run 결과와 로그를 request_id 기준으로 조합하고 판정 증거를 평가."""
     state = load_json(args.run_json)
     if not isinstance(state, dict) or not isinstance(state.get("results"), list) or not state.get("run_id"):
         raise ConfigError("올바른 run results JSON이 아닙니다")
+    # 로그는 별도 로컬 파일을 읽으며 인터넷에서 직접 수집하지 않는다.
     waf = log_lines(args.waf_log)
     app = log_lines(args.app_log)
     if args.output_dir.exists():
@@ -626,6 +692,7 @@ def correlate(args) -> int:
         if row.get("transport_status") != "OK":
             records.append(row)
             continue
+        # request_id가 일치해도 시각·run_id가 충돌하면 신뢰할 수 없다.
         waf_events = [e for e in waf if log_request_id(e) == row["request_id"]]
         app_events = [e for e in app if log_request_id(e) == row["request_id"]]
         valid_waf = len(waf_events) == 1 and plausible_event(waf_events[0], row, origin)
@@ -664,6 +731,7 @@ def correlate(args) -> int:
             row["app_validity"] = "NOT_APPLICABLE"
         else:
             row["app_validity"] = "UNKNOWN"
+        # 정상 HTTP 코드보다 WAF/앱 증거의 일관성을 먼저 확인한다.
         evidence_ok = not conflict and ((valid_waf or not needs_waf) and (valid_app or row["waf_verdict"] == "BLOCK"))
         waf_match = True
         if needs_waf:
@@ -683,6 +751,7 @@ def correlate(args) -> int:
             if not waf_match or row["http_expectation_match"] is False or row["app_validity"] == "MISMATCH":
                 row["verdict"] = "FAIL"
             elif row["app_validity"] in {"MATCH", "NOT_APPLICABLE"}:
+                # DB·브라우저 확인이 남은 보안 시나리오는 자동 PASS 금지.
                 row["verdict"] = ("PASS" if row.get("verification_mode") == "http_only" else "UNKNOWN")
             else:
                 row["verdict"] = "UNKNOWN"
@@ -698,6 +767,7 @@ def correlate(args) -> int:
 
 
 def create_parser():
+    """명령행 인터페이스 run / correlate 옵션 정의."""
     parser = argparse.ArgumentParser(description="Haven 승인된 요청 재현 / WAF·앱 로그 대조 CLI")
     commands = parser.add_subparsers(dest="command", required=True)
     r = commands.add_parser("run", help="승인된 HTTP 케이스를 순차 실행")
@@ -720,6 +790,7 @@ def create_parser():
 
 
 def main(argv=None) -> int:
+    """파싱·예외 처리 후 종료 코드를 운영체제에 반환."""
     parser = create_parser()
     args = parser.parse_args(argv)
     try:

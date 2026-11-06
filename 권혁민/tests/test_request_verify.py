@@ -286,3 +286,10 @@ def test_response_header_case_insensitive():
     }
 
     assert cli.check_http_expected(detail, expected)
+
+def test_haven_template_schema_and_fixture_references():
+    """Haven 시험표의 스키마·ID 중복·입력 fixture 참조를 검증한다."""
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(fixture_root / "cases_haven_template.json")
+
+    cli.validate_suite(suite, fixture_root)

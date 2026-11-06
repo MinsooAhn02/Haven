@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>공통 오류 화면 시안 | Haven 기록</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      color: #172033;
+      background: #f4f7fb;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f7fb; }
+    a { color: inherit; }
+
+    .site-header { border-bottom: 1px solid #e2e8f0; background: #fff; }
+
+    .header-inner {
+      width: min(100% - 40px, 1080px);
+      min-height: 72px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      flex: 0 0 auto;
+      color: #2457c5;
+      font-size: 17px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .header-tools {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 18px;
+    }
+
+    .account { color: #596579; font-size: 13px; }
+
+    .nav-list {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .nav-link {
+      display: inline-block;
+      padding: 9px 12px;
+      border-radius: 8px;
+      color: #455166;
+      font-size: 14px;
+      text-decoration: none;
+    }
+
+    .logout-button {
+      padding: 9px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      color: #455166;
+      background: #fff;
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    main {
+      width: min(100% - 40px, 860px);
+      margin: 38px auto 64px;
+    }
+
+    .page-heading { margin-bottom: 24px; }
+
+    h1 { margin: 0; font-size: 30px; line-height: 1.35; }
+
+    .intro {
+      margin: 9px 0 0;
+      color: #596579;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .error-card {
+      margin-bottom: 16px;
+      padding: 25px 28px;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 10px 28px rgb(23 32 51 / 5%);
+    }
+
+    .error-code {
+      display: inline-block;
+      margin: 0 0 10px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      color: #7b3030;
+      background: #fff1f1;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    h2 { margin: 0; font-size: 21px; line-height: 1.45; }
+
+    .message {
+      margin: 8px 0 18px;
+      color: #596579;
+      font-size: 14px;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+    }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+    .button {
+      display: inline-flex;
+      min-height: 42px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 15px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .button-primary { color: #fff; background: #2457c5; }
+    .button-primary:hover { background: #1948ad; }
+
+    .button-secondary {
+      border-color: #cbd5e1;
+      color: #344258;
+      background: #fff;
+    }
+
+    .button-secondary:hover { background: #f4f7fb; }
+
+    .button:focus-visible,
+    .nav-link:focus-visible,
+    .logout-button:focus-visible {
+      outline: 3px solid #8db2ff;
+      outline-offset: 3px;
+    }
+
+    .preview-note {
+      margin: 4px 2px 0;
+      color: #68758a;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 680px) {
+      .header-inner {
+        width: min(100% - 32px, 1080px);
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+        padding: 17px 0;
+      }
+
+      .header-tools { width: 100%; justify-content: space-between; gap: 8px; }
+      .account { width: 100%; }
+      main { width: min(100% - 32px, 860px); margin-top: 28px; }
+      .error-card { padding: 22px; }
+    }
+
+    @media (max-width: 420px) {
+      .header-tools { align-items: flex-start; flex-direction: column; }
+      h1 { font-size: 26px; }
+      .error-card { padding: 20px; }
+      .actions { display: grid; grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="내_기록_목록_디자인_시안.html">Haven 기록</a>
+      <div class="header-tools">
+        <span class="account">로그인 계정: pureun-demo (예시)</span>
+        <nav aria-label="주요 메뉴">
+          <ul class="nav-list">
+            <li><a class="nav-link" href="내_기록_목록_디자인_시안.html">내 기록</a></li>
+            <li><button class="logout-button" type="button">로그아웃</button></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <header class="page-heading">
+      <h1>오류 안내</h1>
+      <p class="intro">아래는 오류 상황별 화면 디자인 예시입니다. 실제 서비스에서는 해당하는 오류 화면 하나만 표시됩니다.</p>
+    </header>
+
+    <section class="error-card" aria-labelledby="error-403-title">
+      <p class="error-code">오류 코드 403</p>
+      <h2 id="error-403-title">요청이 거부되었습니다</h2>
+      <p class="message">이 요청을 처리할 권한이 없습니다. 입력한 내용은 변경되지 않았습니다.</p>
+      <div class="actions">
+        <a class="button button-secondary" href="기록상세_디자인_시안.html">이전 화면 예시로 돌아가기</a>
+        <a class="button button-primary" href="내_기록_목록_디자인_시안.html">내 기록으로 돌아가기</a>
+      </div>
+    </section>
+
+    <section class="error-card" aria-labelledby="error-405-title">
+      <p class="error-code">오류 코드 405</p>
+      <h2 id="error-405-title">지원하지 않는 요청 방식입니다</h2>
+      <p class="message">이 화면에서 허용하지 않는 방법으로 요청했습니다. 이전 화면에서 다시 시도해 주세요.</p>
+      <div class="actions">
+        <a class="button button-secondary" href="기록상세_디자인_시안.html">이전 화면 예시로 돌아가기</a>
+        <a class="button button-primary" href="내_기록_목록_디자인_시안.html">내 기록으로 돌아가기</a>
+      </div>
+    </section>
+
+    <section class="error-card" aria-labelledby="error-500-title">
+      <p class="error-code">오류 코드 500</p>
+      <h2 id="error-500-title">일시적인 오류가 발생했습니다</h2>
+      <p class="message">요청을 처리하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.</p>
+      <div class="actions">
+        <a class="button button-secondary" href="기록상세_디자인_시안.html">이전 화면 예시로 돌아가기</a>
+        <a class="button button-primary" href="내_기록_목록_디자인_시안.html">내 기록으로 돌아가기</a>
+      </div>
+    </section>
+
+    <p class="preview-note">이 페이지는 디자인 확인용입니다. 오류 처리나 서버 연결은 구현하지 않았으며, 돌아가기 링크는 HTML 미리보기 사이에서만 이동합니다.</p>
+  </main>
+</body>
+</html>

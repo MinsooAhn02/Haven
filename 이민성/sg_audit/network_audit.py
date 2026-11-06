@@ -45,6 +45,34 @@ def load_json(path):
         raise ValueError(f"파일이 없습니다: {path}")
     except json.JSONDecodeError as e:
         raise ValueError(f"JSON 문법 오류: {path} ({e})")
+    except OSError as e:
+        raise ValueError(f"파일 읽기 실패: {path} ({e})")
+
+
+def validate_inputs(baseline, fixture):
+    """Reject malformed input shapes before indexing nested fields."""
+    def require_list(obj, key, label):
+        if not isinstance(obj, dict) or not isinstance(obj.get(key), list):
+            raise ValueError(f"{label}.{key}는 목록이어야 합니다")
+        return obj[key]
+
+    assets = require_list(baseline, "assets", "baseline")
+    rules = require_list(baseline, "allowed_rules", "baseline")
+    groups = require_list(fixture, "security_groups", "fixture")
+    attachments = require_list(fixture, "attachments", "fixture")
+    errors = require_list(fixture, "errors", "fixture")
+    for item in assets:
+        if not isinstance(item, dict) or not isinstance(item.get("asset_id"), str) or not isinstance(item.get("asset_role"), str) or not isinstance(item.get("expected_sg_ids", []), list):
+            raise ValueError("baseline.assets 항목 형식이 잘못되었습니다")
+    required_rule = ("asset_role", "direction", "protocol", "from_port", "to_port", "source_type", "source_value")
+    if any(not isinstance(item, dict) or any(key not in item for key in required_rule) for item in rules):
+        raise ValueError("baseline.allowed_rules 항목 형식이 잘못되었습니다")
+    if any(not isinstance(item, dict) or not isinstance(item.get("GroupId"), str) for item in groups):
+        raise ValueError("fixture.security_groups 항목 형식이 잘못되었습니다")
+    if any(not isinstance(item, dict) or not isinstance(item.get("asset_id"), str) or not isinstance(item.get("sg_ids", []), list) for item in attachments):
+        raise ValueError("fixture.attachments 항목 형식이 잘못되었습니다")
+    if any(not isinstance(item, dict) for item in errors):
+        raise ValueError("fixture.errors 항목 형식이 잘못되었습니다")
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +255,15 @@ def audit(baseline, fixture):
                     reason="baseline 허용 규칙이 실제로 없음(서비스 연결 실패 가능)",
                     evidence=f"asset: {asset_id}"))
 
+    attached_assets = {att["asset_id"] for att in fixture.get("attachments", [])}
+    for asset_id, role in asset_role.items():
+        if asset_id not in attached_assets:
+            findings.append(make_finding(
+                ctx, check_id="SG-06", asset_id=asset_id, asset_role=role,
+                expected="자산 attachment 수집", actual="attachment 결과 없음",
+                verdict="UNKNOWN", reason="baseline 자산의 attachment 수집 결과가 없어 상태를 알 수 없음",
+                evidence=f"baseline asset: {asset_id}"))
+
     # (6) 어느 자산에도 연결되지 않은 SG → UNKNOWN (SG-06)
     for sg_id in sgs:
         if sg_id not in attached_sg_ids:
@@ -281,13 +318,14 @@ def run_fixture(args):
     try:
         baseline = load_json(args.baseline)
         fixture = load_json(args.fixture)
+        validate_inputs(baseline, fixture)
         out = prepare_output_dir(args.output_dir)
-    except ValueError as e:
+    except (ValueError, OSError) as e:
         print(f"[ERROR] {e}", file=sys.stderr)
         return EXIT_CODE["ERROR"]
 
     errors = fixture.get("errors", [])
-    findings = [] if errors else audit(baseline, fixture)
+    findings = audit(baseline, fixture)
     verdict = overall_verdict(findings, errors)
 
     counts = {v: 0 for v in ("PASS", "FAIL", "UNKNOWN", "ERROR")}

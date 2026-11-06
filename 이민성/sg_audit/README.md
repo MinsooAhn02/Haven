@@ -9,12 +9,15 @@
 |---|---|
 | `baseline.json` | 정답지. 서버 역할별로 허용하는 규칙 목록(허용 목록에 없으면 위반) |
 | `fixtures/*.json` | 가짜 AWS 응답(답안지). AWS 없이 판정 로직을 시험할 때 사용 |
-| `network_audit.py` | 판정 프로그램 (6단계에서 작성) |
+| `network_audit.py` | 판정 프로그램 (fixture 모드 구현, live 모드는 3회차) |
 
-- SG의 기본규칙: 허용만 존재. 허용목록에 없으면 나머지는 전부 거부
-- 파일구조 쉽게 설명: 정답지 하나와 설명서는 sg_audit에, 답안지(fixture) 4개는 전부 fixtures 안에
-- .json 파일 안 문법 검사시 \uc~~~ 라는 문구가 보일경우 한글 변환 글자이니 문제없는 내용이다. 한글로 보고 싶을경우 --no-ensure-ascii 옵션을 추가하면 된다.  
-- fixture가 판단하는건 다음과 같다. 
+코드가 어떻게 판정하는지는 [코드설명.md](코드설명.md)를 본다.
+
+### 참고
+
+- SG의 기본 규칙: 허용만 존재한다. 허용 목록에 없으면 전부 거부한다.
+- 파일 구조: 정답지(`baseline.json`)와 설명서(README, 코드설명)는 `sg_audit`에, 답안지(fixture) 4개는 전부 `fixtures` 안에 둔다.
+- `python -m json.tool`로 JSON 문법 검사 시 `\uc124` 같은 글자가 보이면 한글을 코드로 바꿔 출력한 것이라 문제없다. 한글로 보려면 `--no-ensure-ascii` 옵션을 붙인다.
 
 ## fixture 목록
 
@@ -27,10 +30,10 @@
 | `unknown_role.json` | baseline에 없는 서버·SG가 있음 | 모르는 건 "모른다"고 하는가 | 근거 없이 PASS/FAIL로 단정 | UNKNOWN (3) | AUD-09 |
 | `error_access_denied.json` | 권한 오류로 SG 목록을 못 읽음 | 못 읽었을 때 실패라고 하는가 | 아무것도 못 읽고 "문제없음"으로 끝냄 | ERROR (2) | AUD-08 |
 
-- `fail_public_db.json`은 정상 규칙(Web → DB 5432)을 그대로 두고 위험 규칙 하나만 추가했다. 실제 사고에서 흔한 모양(급하게 열고 안 닫음)이며 SG-01(공개 DB 포트)과 SG-05(baseline에 없는 규칙)를 함께 시험한다.
+- `fail_public_db.json`은 정상 규칙(Web → DB 5432)을 그대로 두고 위험 규칙 하나만 추가했다. 실제 사고에서 흔한 모양(급하게 열고 안 닫음)이며 SG-01(공개 DB 포트) 판정을 시험한다.
 - 결과 없음은 PASS가 아니라 UNKNOWN이다. 수집 실패는 ERROR이며 PASS로 처리하지 않는다.
-- DB 5432 공개이유(fail_public_db): 명세에 정해진 시험(docs\구현명세\기본프젝트_구현명세.md)
-- 참조: docs\구현명세\기본프젝트_구현명세.md 의 "8.4 자체 점검과 WAF"  SG CLI 시험(AUD-01~11)
+- DB 5432 공개 이유(fail_public_db): 명세에 정해진 시험(AUD-02, `docs/구현명세/기본프로젝트_구현명세.md`)
+- 참조: `docs/구현명세/기본프로젝트_구현명세.md`의 "8.4 자체 점검과 WAF" SG CLI 시험(AUD-01~11)
 
 ## fixture별 차이점 (pass.json 기준)
 
@@ -47,7 +50,7 @@
 ```
 
 - 기존 줄 끝에 쉼표(`,`)가 붙었다.
-- 출발지가 `UserIdGroupPairs`(SG)가 아니라 `IpRanges: 0.0.0.0/0`(전 세계)이라 SG-01·SG-05 위반이 된다.
+- 출발지가 `UserIdGroupPairs`(SG)가 아니라 `IpRanges: 0.0.0.0/0`(전 세계)이라 SG-01 위반(baseline에 없는 규칙 중 가장 심각한 경우)이 된다.
 
 ### 2. unknown_role.json: SG 1개 + 서버 1개 추가
 
@@ -130,7 +133,7 @@
 
 ## 판정 원칙
 
-- 허용 목록 방식: baseline에 없는 규칙이 실제로 열려 있으면 FAIL (예: 22번이 열려 있으면 SG-01·SG-05 위반).
+- 허용 목록 방식: baseline에 없는 규칙이 실제로 열려 있으면 FAIL (예: 22번이 인터넷 전체에 열려 있으면 SG-01).
 - 결과 종류: PASS / FAIL / UNKNOWN(근거 부족) / ERROR(수집·실행 실패).
 - 종료 코드: 0=PASS, 1=FAIL, 2=ERROR, 3=UNKNOWN. 섞이면 ERROR > UNKNOWN > FAIL > PASS 순.
 
@@ -191,4 +194,3 @@ echo $LASTEXITCODE
 
 미구현(다음 회차): `live` 모드(실제 AWS 읽기 전용 수집, 3회차), AUD-03~07·10·11 추가 fixture.
 
-코드가 어떻게 판정하는지는 [코드설명.md](코드설명.md)를 본다.

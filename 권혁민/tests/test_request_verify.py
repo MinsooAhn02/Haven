@@ -68,15 +68,27 @@ def test_path_blocks_origin_changes():
 
 
 def test_fixture_traversal_and_symlink_forbidden(tmp_path):
-    base = tmp_path/"fixtures"
+    base = tmp_path / "fixtures"
     base.mkdir()
-    (base/"good.json").write_text("{}", encoding="utf-8")
+
+    (base / "good.json").write_text("{}", encoding="utf-8")
     assert cli.safe_relative(base, "good.json").name == "good.json"
-    (tmp_path/"private.json").write_text("{}", encoding="utf-8")
-    (base/"alias.json").symlink_to(tmp_path/"private.json")
-    for ref in ["../private.json", "alias.json", "/etc/passwd", "..\\private.json"]:
+
+    (tmp_path / "private.json").write_text("{}", encoding="utf-8")
+
+    # 경로 이동 및 절대 경로 차단 검사
+    for ref in ["../private.json", "/etc/passwd", "..\\private.json"]:
         with pytest.raises(cli.ConfigError):
             cli.safe_relative(base, ref)
+
+    # 심볼릭 링크를 이용한 외부 파일 접근 차단 검사
+    try:
+        (base / "alias.json").symlink_to(tmp_path / "private.json")
+    except (OSError, NotImplementedError):
+        pass  # Windows에서 권한이 없으면 이 검사만 생략
+    else:
+        with pytest.raises(cli.ConfigError):
+            cli.safe_relative(base, "alias.json")
 
 
 def test_suite_rejects_undefined_fields_and_duplicate_case():

@@ -13,6 +13,23 @@
 | 5 | 신요찬 | `Yochan` | [신요찬/TODO.md](신요찬/TODO.md) | Django 인증·모델·CRUD·공유·첨부·서버 인가 |
 | 6 | 이민성 | `Minsung` | [이민성/TODO.md](이민성/TODO.md) | AWS 네트워크·EC2·SSM·ALB/HTTPS·SG CLI |
 
+## 바로 다음 공동 작업 · 2026-11-06
+
+현재 역할과 4회차 계획을 유지하면서 다음 인계부터 맞춘다. 아래는 작업 제안과 확인 요청이며, 수신·합의·일정 확정이나 AWS 변경 승인을 뜻하지 않는다. 각자 개인 브랜치 TODO의 `민수's comment`에 실제 진행 상태와 가능한 인계 시점을 덧붙인다.
+
+| 담당·개인 브랜치 TODO | 지금 할 일 | 먼저 받을 입력·확인할 사람 | 넘길 결과·다음 담당자 |
+|---|---|---|---|
+| [안민수 · Minsoo](https://github.com/MinsooAhn02/Haven/blob/Minsoo/안민수/TODO.md) | 확인된 공통 실행 기준을 공유하고, 앱/DB CI 연결에 필요한 입력을 취합 | 요찬: 앱/설정/실행/시험 계약; 보람: 운영 접근; 민성: OS·서버 연결 | 공통 실행 안내와 검증 commit → 전원; 앱 인계 후 새 개발 DB·앱 CI 결과 → 푸른·혁민 |
+| [신요찬 · Yochan](https://github.com/MinsooAhn02/Haven/blob/Yochan/신요찬/TODO.md) | 전체 기능 완성 전에 실행·화면 계약을 먼저 전달하고 인증·소유자 CRUD를 최소 단위로 인계 | 민수: 실행 환경 조율; 푸른: 기존 화면의 필드·오류 표시 요구 | 앱 루트·의존성·settings/WSGI·migration/실행/시험 명령과 URL/폼/context 계약 → 민수·푸른·혁민 |
+| [노푸른 · Pureun](https://github.com/MinsooAhn02/Haven/blob/Pureun/노푸른/TODO.md) | 기존 시안 7개와 실제 URL·폼·context의 대응표 준비, 계약 수신 후 Django 연결 | 요찬: 서버 계약; 민수: 실행·시험 환경 | 화면 원본 위치·필요 필드/오류 목록 → 요찬·민수; 실제 사용자 흐름 결과 → 민수·혁민 |
+| [김보람 · Boram](https://github.com/MinsooAhn02/Haven/blob/Boram/김보람/TODO.md) | 현재 수행 기록을 PR로 공유하고 리전·예산·접근/Role·출구 결정의 담당/상태 정리 | 민수·민성: 운영 자원·기간·출구 요구; 비용·권한 승인 확인 | 승인된 접근·자원 범위·미결정 항목 → 민성·민수; 설계·기록 PR은 구축 완료를 기다리지 않고 검토 |
+| [이민성 · Minsung](https://github.com/MinsooAhn02/Haven/blob/Minsung/이민성/TODO.md) | 설계/fixture 완료와 구축 대기를 구분; OS/AMI 제안과 출구 승인 항목을 민수·보람과 조율 | 보람·민수: 리전·예산·출구 승인; 민수: 메일 방식 회신 | 승인 후 EC2/SSM·디스크·Web→DB·필요 출구·직접 접근 거부 결과 → 민수; 승인 전 추가 fixture·설계 진행 |
+| [권혁민 · Hyeokmin](https://github.com/MinsooAhn02/Haven/blob/Hyeokmin/권혁민/TODO.md) | 준비된 요청 CLI·mock·fixture·시험 기록을 PR로 제출 | 요찬: URL·폼·인증/CSRF·로그 계약; 민수: 시험 origin·배포 commit | 로컬 시험 명령·기대/실제 결과·앱 연동 요구 → 민수·요찬; 실제 앱 시험은 대상 준비 후 진행 |
+
+**병렬 순서:** 요찬의 계약 인계와 보람·민수·민성의 AWS 결정 정리를 동시에 진행한다. 푸른은 화면 대응표, 혁민은 기존 작업 PR을 준비한다. 민수는 전달받은 앱을 실행·DB·CI에 연결한다. AWS 배포는 접근/자원 승인·서버 연결·앱 인계가 모두 준비된 뒤 진행한다.
+
+**다음 작업 완료 기준:** 요청/제안만 작성한 상태와 인계 수신을 구분한다. 인계에는 `담당·현재 상태·수신자·파일/commit·실행 명령 또는 결정 근거·가능한 인계 시점`을 남긴다. 독립 PR은 검토 후 먼저 병합할 수 있으며, 상대 개인 브랜치를 서로 직접 합치거나 미완성 작업을 일괄 main에 넣지 않는다.
+
 ## 공통 규칙
 
 - 각자 본인 이름 폴더의 산출물과 TODO만 수정한다. 공용 TODO·공통 실행/의존성·CI·최종 경로 통합은 1번 안민수가 담당한다. 앱 Python 코드는 5번, 화면 원본은 2번만 수정한다.

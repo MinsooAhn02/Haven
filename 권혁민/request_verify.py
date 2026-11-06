@@ -73,8 +73,12 @@ def safe_relative(base: Path, rel: str) -> Path:
     # Reject traversal even if the file has not yet been created.
     if any(part in {"..", ""} for part in Path(rel).parts):
         raise ConfigError("fixture 경로에 상위 폴더 이동이 있습니다")
-    root = base.resolve(strict=True)
-    candidate = (root / rel).resolve(strict=True)
+    try:
+        root = base.resolve(strict=True)
+        candidate = (root / rel).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ConfigError("fixture 경로가 존재하지 않거나 확인할 수 없습니다") from exc
+
     if not candidate.is_file() or not candidate.is_relative_to(root):
         raise ConfigError("허용된 fixture 경로 밖이거나 파일이 없습니다")
     return candidate
@@ -92,7 +96,7 @@ def canonical_origin(value: str) -> str:
             raise ValueError("origin에 경로/쿼리가 있습니다")
         if p.hostname.endswith(".") or "%" in p.hostname:
             raise ValueError("host 형식")
-        port = p.port or (443 if p.scheme == "https" else 80)
+        port = p.port if p.port is not None else (443 if p.scheme == "https" else 80)
         if not 1 <= port <= 65535:
             raise ValueError("port")
         host = p.hostname.lower()
@@ -119,6 +123,8 @@ def validate_path(path: str) -> str:
     p = urlsplit(path)
     if p.scheme or p.netloc or not p.path.startswith("/"):
         raise ConfigError("origin을 바꾸는 path는 허용하지 않습니다")
+    if any(ch.isspace() for ch in p.path):
+        raise ConfigError("URL 경로에 공백을 사용할 수 없습니다")
     return path
 
 
@@ -328,7 +334,8 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
             if content_length and content_length.isdecimal() and int(content_length) > max_response_bytes:
                 raise TooLargeResponse("응답 Content-Length가 허용 크기를 초과합니다")
             for chunk in resp.iter_content(chunk_size=64 * 1024):
-                if time.monotonic() - budget.started > budget.duration:
+                elapsed_total = time.monotonic() - budget.started
+                if elapsed_total >= budget.duration:
                     raise ExecutionError("응답을 읽는 중 전체 실행 시간 한도를 초과했습니다")
                 if not chunk:
                     continue
@@ -342,11 +349,21 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
             safe_headers = {key: resp.headers[key] for key in (
                 "Content-Type", "Content-Disposition", "X-Content-Type-Options", "Cache-Control"
             ) if key in resp.headers}
+
+            request_body = prepared.body
+
+            if isinstance(request_body, bytes):
+                request_body_bytes = len(request_body)
+            elif isinstance(request_body, str):
+                request_body_bytes = len(request_body.encode("utf-8"))
+            else:
+                request_body_bytes = None
+
             detail = {
                 "status": resp.status_code, "elapsed_ms": round((time.monotonic() - start) * 1000, 2),
                 "location": safe_location(resp.headers.get("Location")), "body_bytes": total,
                 "sha256": digest.hexdigest(), "headers": safe_headers,
-                "request_body_bytes": len(prepared.body or b"") if isinstance(prepared.body, (str, bytes)) else None,
+                "request_body_bytes": request_body_bytes,
             }
             return detail, b"".join(chunks) if chunks else None
     except (requests.RequestException, OSError) as exc:
@@ -474,8 +491,16 @@ def check_http_expected(detail: dict, expected: dict) -> bool:
         ok = ok and detail["body_bytes"] == expected["body_bytes"]
     if "sha256" in expected:
         ok = ok and detail["sha256"] == expected["sha256"]
+
+    headers_ci = {
+        name.lower(): value
+        for name, value in detail["headers"].items()
+    }
+
+    # 기대한 헤더 값이 실제 응답에 포함되어 있는지 확인
     for header, needle in expected.get("headers_contain", {}).items():
-        ok = ok and needle.lower() in detail["headers"].get(header, "").lower()
+        actual = headers_ci.get(header.lower(), "")
+        ok = ok and needle.lower() in actual.lower()
     return bool(ok)
 
 

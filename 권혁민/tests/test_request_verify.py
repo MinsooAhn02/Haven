@@ -241,3 +241,48 @@ def test_waf_expectation_mismatch_is_fail_with_confirmed_logs(tmp_path):
         assert cli.correlate(corr) == 1
         row = cli.load_json(corr.output_dir/"correlated_results.json")["results"][0]
         assert row["verdict"] == "FAIL"
+
+# ---------------------------------------------------------
+# 최근 수정사항에 대한 회귀 테스트
+# ---------------------------------------------------------
+
+def test_origin_rejects_zero_port():
+    """명시적으로 입력한 포트 0은 기본 포트로 변환하지 않고 거부한다."""
+    with pytest.raises(cli.ConfigError):
+        cli.canonical_origin("https://example.com:0")
+
+
+def test_missing_fixture_raises_config_error(tmp_path):
+    """존재하지 않는 Fixture는 ConfigError로 처리한다."""
+    base = tmp_path / "fixtures"
+    base.mkdir()
+
+    with pytest.raises(cli.ConfigError):
+        cli.safe_relative(base, "nonexistent.json")
+
+
+def test_path_rejects_whitespace():
+    """URL 경로의 공백은 거부하지만 쿼리 문자열의 공백은 허용한다."""
+    with pytest.raises(cli.ConfigError):
+        cli.validate_path("/posts/1 /")
+
+    assert cli.validate_path("/posts/?q=hello world") == "/posts/?q=hello world"
+
+
+def test_response_header_case_insensitive():
+    """HTTP 응답 헤더 이름과 값의 대소문자 차이를 허용한다."""
+    detail = {
+        "status": 200,
+        "headers": {
+            "Content-Type": "application/json"
+        }
+    }
+
+    expected = {
+        "http_status": 200,
+        "headers_contain": {
+            "content-type": "APPLICATION/JSON"
+        }
+    }
+
+    assert cli.check_http_expected(detail, expected)

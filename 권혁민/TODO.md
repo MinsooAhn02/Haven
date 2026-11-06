@@ -44,7 +44,7 @@
 
 | 회차 | 상태 | 환경·실행 명령·기대/실제 결과 | PR·가림 증거 | 다음 담당자에게 전달할 것 |
 |---|---|---|---|---|
-| 1 | 검증 대기 | Windows 11, Python 3.13 / pytest 14개 통과 / 로컬 Fixture 4개 응답 일치 / correlate 종료 코드 0 | Hyeokmin 브랜치 커밋 | Django 연동 및 실제 시험 케이스 확장 |
+| 1 | 검증 대기 | Windows 11, Python 3.13.1 / `python -m pytest -q tests` 실행 결과: 18 passed in 7.75s / 로컬 mock 기반 CLI 검증 완료, 실제 Django·AWS WAF 검증은 미실행 | 테스트 실행 출력 확인 | Django URL·폼·로그 계약 확인 및 실제 시험 케이스 확장 |
 | 2 | 미착수 | 미확인 | — | — |
 | 3 | 미착수 | 미확인 | — | — |
 | 4 | 미착수 | 미확인 | — | — |

@@ -4,32 +4,489 @@
   "suite_kind": "regression",
   "cases": [
     {
-      "case_id": "SEC-23", "category": "idor", "method": "GET", "path": "/posts/1/",
-      "auth_role": "member_c", "input_reference": null,
-      "expected_app": {"http_status": 404}, "expected_waf": "NOT_APPLICABLE",
-      "max_requests": 1, "verification_mode": "manual_required",
+      "case_id": "APP-01-SIGNUP-GET",
+      "category": "authentication",
+      "method": "GET",
+      "path": "/accounts/signup/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "1회차 계약: 회원가입 폼 GET. 실제 Django URL/폼 구현 후 검증"
+    },
+    {
+      "case_id": "APP-01-LOGIN-GET",
+      "category": "authentication",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "1회차 계약: 로그인 폼 GET. 비밀번호·토큰이 결과에 기록되지 않는지 별도 확인"
+    },
+    {
+      "case_id": "APP-01-SIGNUP-INVALID",
+      "category": "authentication",
+      "method": "POST",
+      "path": "/accounts/signup/",
+      "auth_role": "anonymous",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "1회차 계약: 필수값 없는 가입 POST는 400, 계정 미생성. 필드 계약 확정 후 기대값 확인"
+    },
+    {
+      "case_id": "APP-01-LOGIN-INVALID",
+      "category": "authentication",
+      "method": "POST",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": "sec_login_sql_username.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "고정 SQL 유사 username과 가짜 비밀번호로 정상 로그인 실패/DB 오류 미노출 확인. 실제 가입 계정 사용 금지"
+    },
+    {
+      "case_id": "APP-04-ANON-GET",
+      "category": "authentication",
+      "method": "GET",
+      "path": "/posts/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비로그인 게시글 목록 접근은 로그인으로 이동. 본문 미노출 확인"
+    },
+    {
+      "case_id": "APP-04-ANON-DETAIL",
+      "category": "authentication",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비로그인 P1 상세 GET은 로그인 이동, 본문 미노출. P1은 A 소유 테스트 전용 글"
+    },
+    {
+      "case_id": "APP-04-ANON-NEW-GET",
+      "category": "authentication",
+      "method": "GET",
+      "path": "/posts/new/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비로그인 글 작성 폼 접근은 로그인 이동"
+    },
+    {
+      "case_id": "APP-04-ANON-POST-NO-CSRF",
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "anonymous",
+      "input_reference": "post_without_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비로그인·CSRF 누락 POST는 403, 신규 기록 없음"
+    },
+    {
+      "case_id": "APP-04-ANON-POST-VALID-CSRF",
+      "category": "authentication",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "anonymous",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비로그인이지만 유효한 CSRF를 동봉한 보호 POST는 로그인 이동, 신규 기록 없음"
+    },
+    {
+      "case_id": "APP-01-LOGOUT-GET",
+      "category": "authentication",
+      "method": "GET",
+      "path": "/accounts/logout/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 405
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A로 로그인한 뒤 로그아웃 GET은 405, 세션 유지"
+    },
+    {
+      "case_id": "APP-02-OWNER-LIST",
+      "category": "crud",
+      "method": "GET",
+      "path": "/posts/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A가 로그인해 본인 게시글 목록 GET; 미공유 타인 글이 보이지 않는지 별도 확인"
+    },
+    {
+      "case_id": "APP-02-OWNER-NEW-GET",
+      "category": "crud",
+      "method": "GET",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A가 새 글 작성 폼을 볼 수 있는지 확인"
+    },
+    {
+      "case_id": "APP-02-OWNER-DETAIL",
+      "category": "crud",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전조건 P1=id1·ACTIVE·owner A, 상세 본문 확인"
+    },
+    {
+      "case_id": "APP-02-OWNER-EDIT-GET",
+      "category": "crud",
+      "method": "GET",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A의 P1 수정 화면 접근"
+    },
+    {
+      "case_id": "APP-02-OWNER-DELETE-CONFIRM",
+      "category": "crud",
+      "method": "GET",
+      "path": "/posts/2/delete/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전조건 P2=id2·ACTIVE·owner A. GET은 삭제 확인만, P2 DB 상태 불변"
+    },
+    {
+      "case_id": "APP-03-UNSHARED-B-LIST",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전조건 P1은 B에 미공유. B 목록에 A의 P1 미노출 확인"
+    },
+    {
+      "case_id": "APP-03-UNSHARED-B-DETAIL",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전조건 P1은 B에 미공유. 타인 글 상세 404·본문 미노출"
+    },
+    {
+      "case_id": "APP-03-UNSHARED-C-DETAIL",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전조건 P1은 C에 미공유. ID 직접 접근 404·본문 미노출"
+    },
+    {
+      "case_id": "APP-03-UNSHARED-B-EDIT-GET",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B가 A의 P1 수정 화면 접근 시 404"
+    },
+    {
+      "case_id": "APP-03-UNSHARED-B-EDIT-POST",
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_b",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B가 A의 P1 수정 POST 시 404. P1 DB 값이 변하지 않았는지 수동 확인"
+    },
+    {
+      "case_id": "APP-05-OWNER-NO-CSRF",
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_without_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A의 로그인 세션이라도 CSRF 누락 POST는 403·기록 미생성"
+    },
+    {
+      "case_id": "APP-05-OWNER-INVALID-CSRF",
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_invalid_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A의 유효 세션과 잘못된 CSRF 토큰 조합은 403·기록 미생성"
+    },
+    {
+      "case_id": "APP-02-OWNER-CREATE-INVALID",
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "필수 제목/본문을 비운 POST는 400·기록 미생성"
+    },
+    {
+      "case_id": "APP-02-OWNER-CREATE",
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "정상 CSRF + A 소유 글 생성 302. 새 글의 ID/owner/DB를 수동 확인"
+    },
+    {
+      "case_id": "APP-02-OWNER-EDIT",
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전조건 P1은 A 소유. 수정 후 P1의 DB/본문 반영 수동 확인"
+    },
+    {
+      "case_id": "SEC-03",
+      "category": "sqli",
+      "method": "GET",
+      "path": "/posts/1%20OR%201%3D1/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "2회차 보안 시험 후보: 숫자 ID 자리에 인코딩된 SQL 유사 입력. 라우팅 거부·DB 오류 미노출 확인"
+    },
+    {
+      "case_id": "SEC-23",
+      "category": "idor",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
       "note": "ID 1이 A가 소유하고 C에게 공유하지 않은 가상 글인지 사전 확인"
     },
     {
-      "case_id": "SEC-09", "category": "stored_xss", "method": "POST", "path": "/posts/new/",
-      "auth_role": "member_a", "input_reference": "sec_stored_xss.json",
-      "expected_app": {"http_status": 302}, "expected_waf": "NOT_APPLICABLE",
-      "max_requests": 1, "verification_mode": "manual_required",
+      "case_id": "SEC-09",
+      "category": "stored_xss",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_stored_xss.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
       "note": "HTTP 성공만으로 XSS 방어 증명 불가: 조회 화면에서 실행 여부를 별도로 확인"
     },
     {
-      "case_id": "SEC-32", "category": "file_upload", "method": "POST", "path": "/posts/1/attachments/",
-      "auth_role": "member_a", "input_reference": "sec_dummy_php_upload.json",
-      "expected_app": {"http_status": 400}, "expected_waf": "NOT_APPLICABLE",
-      "max_requests": 1, "verification_mode": "manual_required",
+      "case_id": "SEC-32",
+      "category": "file_upload",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "sec_dummy_php_upload.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
       "note": "실제 .php 파일이 아님. dummy TXT 내용의 filename 확장자만 조작"
     },
     {
-      "case_id": "SEC-44", "category": "csrf", "method": "POST", "path": "/posts/new/",
-      "auth_role": "member_a", "input_reference": "sec_foreign_origin.json",
-      "expected_app": {"http_status": 403}, "expected_waf": "NOT_APPLICABLE",
-      "max_requests": 1, "verification_mode": "manual_required",
+      "case_id": "SEC-44",
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_foreign_origin.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
       "note": "실제 HTTPS에서 Origin 검증 확인; 로그인/CSRF 환경 정상 대조군 필수"
+    },
+    {
+      "case_id": "APP-02-OWNER-DELETE",
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/2/delete/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "최후반 파괴적 시험: P2는 A가 소유한 삭제 전용 테스트 글. POST 후 P2 접근 차단/DB 정리 확인"
+    },
+    {
+      "case_id": "APP-01-LOGOUT-POST",
+      "category": "authentication",
+      "method": "POST",
+      "path": "/accounts/logout/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "마지막 사례: A 세션 정상 로그아웃 POST, 이후 이전 세션 재사용 불가 확인"
     }
   ]
 }

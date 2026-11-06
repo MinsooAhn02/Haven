@@ -1,0 +1,1 @@
+{"csrf_mode":"valid", "fields":{}, "file":{"field_name":"attachment", "local_fixture_path":"sample.txt", "filename":"harmless.php", "content_type":"application/x-php"}}

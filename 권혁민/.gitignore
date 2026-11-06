@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.jsonl
+output_*/
+output/
+results/
+*.log
+.env
+.venv/

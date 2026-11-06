@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-security-manual-template",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "SEC-23", "category": "idor", "method": "GET", "path": "/posts/1/",
+      "auth_role": "member_c", "input_reference": null,
+      "expected_app": {"http_status": 404}, "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1, "verification_mode": "manual_required",
+      "note": "ID 1이 A가 소유하고 C에게 공유하지 않은 가상 글인지 사전 확인"
+    },
+    {
+      "case_id": "SEC-09", "category": "stored_xss", "method": "POST", "path": "/posts/new/",
+      "auth_role": "member_a", "input_reference": "sec_stored_xss.json",
+      "expected_app": {"http_status": 302}, "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1, "verification_mode": "manual_required",
+      "note": "HTTP 성공만으로 XSS 방어 증명 불가: 조회 화면에서 실행 여부를 별도로 확인"
+    },
+    {
+      "case_id": "SEC-32", "category": "file_upload", "method": "POST", "path": "/posts/1/attachments/",
+      "auth_role": "member_a", "input_reference": "sec_dummy_php_upload.json",
+      "expected_app": {"http_status": 400}, "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1, "verification_mode": "manual_required",
+      "note": "실제 .php 파일이 아님. dummy TXT 내용의 filename 확장자만 조작"
+    },
+    {
+      "case_id": "SEC-44", "category": "csrf", "method": "POST", "path": "/posts/new/",
+      "auth_role": "member_a", "input_reference": "sec_foreign_origin.json",
+      "expected_app": {"http_status": 403}, "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1, "verification_mode": "manual_required",
+      "note": "실제 HTTPS에서 Origin 검증 확인; 로그인/CSRF 환경 정상 대조군 필수"
+    }
+  ]
+}

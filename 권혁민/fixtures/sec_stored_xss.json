@@ -1,0 +1,1 @@
+{"csrf_mode":"valid", "fields":{"title":"<script>alert('haven-local-test')</script>", "body":"허가된 가상 기록에서만 사용하는 XSS 렌더링 확인 문자열"}}

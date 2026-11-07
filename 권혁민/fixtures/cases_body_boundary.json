@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-synthetic-body-boundary",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "APP-11-A",
+      "category": "body_boundary",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "anonymous",
+      "input_reference": "pad_8191.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "note": "synthetic: 8191-byte serialized body",
+      "verification_mode": "http_only"
+    },
+    {
+      "case_id": "APP-11-B",
+      "category": "body_boundary",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "anonymous",
+      "input_reference": "pad_8192.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "note": "synthetic: 8192-byte serialized body",
+      "verification_mode": "http_only"
+    },
+    {
+      "case_id": "APP-11-C",
+      "category": "body_boundary",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "anonymous",
+      "input_reference": "pad_8193.json",
+      "expected_app": {
+        "http_status": 413
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "note": "synthetic: 8193-byte serialized body rejected",
+      "verification_mode": "http_only"
+    }
+  ]
+}

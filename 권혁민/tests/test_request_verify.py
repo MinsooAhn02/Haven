@@ -202,6 +202,20 @@ def test_preparation_login_is_counted_and_redacted(tmp_path, monkeypatch):
         assert data["results"][0]["http_status"] == 200
 
 
+def test_correlate_rejects_empty_run_results(tmp_path):
+    run_json = tmp_path / "results.json"
+    run_json.write_text(json.dumps({"run_id": "test", "results": []}), encoding="utf-8")
+    empty_log = tmp_path / "empty.jsonl"
+    empty_log.touch()
+    output_dir = tmp_path / "correlated"
+
+    assert cli.main([
+        "correlate", "--run-json", str(run_json), "--waf-log", str(empty_log),
+        "--app-log", str(empty_log), "--output-dir", str(output_dir),
+    ]) == 2
+    assert not output_dir.exists()
+
+
 def test_aws_style_header_correlation():
     event = {"httpRequest":{"headers":[{"name":"x-haven-request-id","value":"case-abc"}]},
              "timestamp": 1790000000000, "action":"ALLOW"}
@@ -441,6 +455,9 @@ def test_run_phase_filters_requests_and_records_counts(tmp_path):
         ("//haven.example/accounts/login/", True),
         ("https://other.example/accounts/login/", False),
         ("//other.example/accounts/login/", False),
+        ("///accounts/login/", False),
+        (r"/\accounts/login/", False),
+        ("https:/accounts/login/", False),
         ("http://haven.example/accounts/login/", False),
         ("https://haven.example:444/accounts/login/", False),
         ("/posts/", False),
@@ -652,6 +669,25 @@ def test_probe_unapproved_origin_sends_nothing(tmp_path, monkeypatch):
             assert approved_received == []
             assert other_received == []
             assert not args.output_dir.exists()
+
+
+@pytest.mark.parametrize("location, matched", [
+    ("/accounts/login/?token=private-value", True),
+    ("///accounts/login/?token=private-value", False),
+])
+def test_probe_checks_raw_location_and_redacts_output(tmp_path, location, matched):
+    with probe_server(redirect_to=location) as (port, _):
+        args = probe_inputs(tmp_path, port, ["/redirect"])
+        suite = cli.load_json(args.cases)
+        suite["cases"][0]["expected_app"]["redirect_path"] = "/accounts/login/"
+        args.cases.write_text(json.dumps(suite), encoding="utf-8")
+
+        assert cli.run(args) == 3
+        result_text = (args.output_dir / "results.json").read_text(encoding="utf-8")
+        record = json.loads(result_text)["results"][0]
+        assert record["http_expectation_match"] is matched
+        assert record["redirect_target"] == "/accounts/login/?token=<redacted>"
+        assert "private-value" not in result_text
 
 
 def test_probe_external_redirect_is_not_followed(tmp_path, monkeypatch):

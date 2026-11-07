@@ -393,7 +393,7 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
 
             detail = {
                 "status": resp.status_code, "elapsed_ms": round((time.monotonic() - start) * 1000, 2),
-                "location": safe_location(resp.headers.get("Location")), "body_bytes": total,
+                "location": resp.headers.get("Location"), "body_bytes": total,
                 "sha256": digest.hexdigest(), "headers": safe_headers,
                 "request_body_bytes": request_body_bytes,
             }
@@ -438,7 +438,8 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
                             headers={"X-CSRFToken": csrf, RUN_ID_HEADER: run_id}, max_response_bytes=max_response_bytes)
     prep_events.append({"request_id": rid, "stage": "login_submit", "http_status": detail["status"]})
     # No redirect follow. Login POST success is expected to redirect away from login.
-    if detail["status"] != 302 or not s.cookies.get("sessionid") or (detail["location"] or "").startswith("/accounts/login/"):
+    login_redirect = same_origin_redirect_path(detail["location"], target)
+    if detail["status"] != 302 or not s.cookies.get("sessionid") or not login_redirect or login_redirect.startswith("/accounts/login/"):
         raise ExecutionError("로그인 인증 준비 실패 (상태/세션 확인)")
 
 
@@ -513,45 +514,29 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
     return fields, headers, file_info
 
 
+def same_origin_redirect_path(location: str | None, target_origin: str | None) -> str | None:
+    """원본 Location이 같은 origin을 가리키면 목적지 경로를 반환."""
+    if not location or location.startswith("///") or re.search(r"[\x00-\x20\x7f\\]", location):
+        return None
+    try:
+        destination = urlsplit(location)
+        if not destination.scheme and not destination.netloc:
+            return validate_path(destination.path)
+        if target_origin is None:
+            return None
+        origin = urlunsplit((destination.scheme or urlsplit(target_origin).scheme, destination.netloc, "", "", ""))
+        if canonical_origin(origin) == canonical_origin(target_origin):
+            return destination.path or "/"
+    except (ValueError, ConfigError):
+        return None
+    return None
+
+
 def check_http_expected(detail: dict, expected: dict, *, target_origin: str | None = None) -> bool:
     """응답 코드·리다이렉트·길이·해시·헤더의 명시적 기대값을 비교."""
     ok = detail["status"] == expected["http_status"]
     if "redirect_path" in expected:
-        location = detail.get("location")
-        redirect_ok = False
-
-        if location:
-            try:
-                destination = urlsplit(location)
-
-                if destination.scheme or destination.netloc:
-                    # 절대 URL은 대상 origin과 일치해야 한다.
-                    if target_origin is not None:
-                        destination_origin = canonical_origin(
-                            urlunsplit((
-                                destination.scheme or urlsplit(target_origin).scheme,
-                                destination.netloc,
-                                "",
-                                "",
-                                "",
-                            ))
-                        )
-                        redirect_ok = (
-                            destination_origin == canonical_origin(target_origin)
-                        )
-                else:
-                    # 루트 기준 상대 경로만 허용한다.
-                    validate_path(location)
-                    redirect_ok = True
-
-                redirect_ok = (
-                    redirect_ok
-                    and destination.path == expected["redirect_path"]
-                )
-            except (ValueError, ConfigError):
-                redirect_ok = False
-
-        ok = ok and redirect_ok
+        ok = ok and same_origin_redirect_path(detail.get("location"), target_origin) == expected["redirect_path"]
     if "body_bytes" in expected:
         ok = ok and detail["body_bytes"] == expected["body_bytes"]
     if "sha256" in expected:
@@ -685,7 +670,7 @@ def run(args) -> int:
                     max_response_bytes=args.max_response_bytes
                 )
                 record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
-                              redirect_target=detail["location"],
+                              redirect_target=safe_location(detail["location"]),
                               response_summary={"request_body_bytes": detail["request_body_bytes"], "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],
                                                 "headers": detail["headers"]}, transport_status="OK",
                               http_expectation_match=check_http_expected(detail, case["expected_app"], target_origin=target))
@@ -784,6 +769,8 @@ def correlate(args) -> int:
     state = load_json(args.run_json)
     if not isinstance(state, dict) or not isinstance(state.get("results"), list) or not state.get("run_id"):
         raise ConfigError("올바른 run results JSON이 아닙니다")
+    if not state["results"]:
+        raise ConfigError("대조할 run 결과가 비어 있습니다")
     # 로그는 별도 로컬 파일을 읽으며 인터넷에서 직접 수집하지 않는다.
     waf = log_lines(args.waf_log)
     app = log_lines(args.app_log)

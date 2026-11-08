@@ -1,0 +1,39 @@
+
+{
+  "schema_version": 1,
+  "suite_id": "haven-auth-smoke-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "APP-04-ANON-GET",
+      "category": "authentication",
+      "method": "GET",
+      "path": "/posts/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비로그인 사용자가 게시글 목록 접근 시 로그인 페이지로 이동하는지 확인"
+    },
+    {
+      "case_id": "APP-04-ANON-POST-NO-CSRF",
+      "category": "authentication",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "anonymous",
+      "input_reference": "post_without_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비로그인 사용자의 CSRF 토큰 없는 글 작성 요청은 거부되어야 하며 DB에 글이 생성되지 않아야 한다"
+    }
+  ]
+}

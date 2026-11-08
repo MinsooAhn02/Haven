@@ -152,18 +152,18 @@ flowchart LR
 
 각 회차의 여섯 담당자 작업표와 완료 조건은 해당 회차 표/체크 항목에 둔다. PR은 기본적으로 그 회차에 적힌 순서로 main에 합치되며, 검토·시험이 끝난 독립 문서/mockup/fixture PR은 먼저 합칠 수 있다. 의존 코드 PR은 최신 main 기준으로 재검증하고 merge commit을 유지한다. main merge는 AWS 작업 승인이 아니다.
 
-## 현재 진행 스냅샷 (2026-11-06 확인)
+## 현재 진행 스냅샷 (2026-11-08 확인)
 
-아래는 해당 확인 시점의 기록이며 이후 바뀌었을 수 있다. PR 상태는 다시 확인한 뒤 갱신한다. 미확인은 완료로 간주하지 않는다.
+아래는 해당 확인 시점의 기록이며 이후 바뀌었을 수 있다. PR 상태는 다시 확인한 뒤 갱신한다. 미확인은 완료로 간주하지 않는다. (변경됨 2026-11-08: 11/06 스냅샷을 #7·#8·#11·#13 병합 반영으로 교체. 이전 값은 git 이력에 있음)
 
 | 담당 | 상태 | 대기/다음 인계 | 근거 |
 |---|---|---|---|
-| 안민수 | 문서·PR 통합 완료, [PR #5](https://github.com/MinsooAhn02/Haven/pull/5)에서 앱 독립 SG fixture CI 추가; Django 앱·requirements는 아직 없음 | 요찬 앱 계약 인계 후 앱 실행·DB·앱 CI 연결 | 문서 링크·diff 검사, PR #2·#3 통합; SG 시험 5개 로컬 및 [GitHub CI](https://github.com/MinsooAhn02/Haven/actions/runs/42210689183) 통과, 의도적 실패 exit 1 확인 |
-| 신요찬 | `Yochan` `f2130f9`; 원격에 앱 코드 없음, 로컬 작업 미확인 | 앱 루트·settings/WSGI·의존성·migration/시험 명령 전달 | 브랜치/PR 확인 기록 |
-| 노푸른 | [PR #3](https://github.com/MinsooAhn02/Haven/pull/3) main 병합 완료: 정적 화면 시안 | 요찬 URL·폼/context 인계 후 Django 연결·브라우저 시험 | 설명·검증 범위 정리, HTML 7개 링크/조각 44건 확인, merge `36db226` |
-| 권혁민 | `Hyeokmin` `aa7c0f3`; 요청 CLI/fixture/mock pytest, PR 없음 | fixture 인계 후 CI 연결; 전체 pytest는 미실행 | 로컬 Python 3.13 mock HTTP 200/302/403/403→UNKNOWN, exit 3; synthetic log correlation PASS, exit 0; 원 JSON 미변경 |
-| 김보람 | `Boram` `f8410e6`; 문서, PR 없음 | 개인 접근·IAM·리전·예산 확정 결과를 민성/민수에게 전달 | 브랜치 확인 기록 |
-| 이민성 | [PR #2](https://github.com/MinsooAhn02/Haven/pull/2) main 병합 완료: 네트워크 설계·SG fixture CLI | 리전·예산·출구·권한 승인 후 구축, live 수집·추가 fixture는 후속 작업 | 기본 fixture 4종 및 회귀 시험 5개 통과: 기대 DB/SG 동시 누락 UNKNOWN·입출력 ERROR·부분 결과 보존, merge `6d61d6c` |
+| 안민수 | 공통 문서·SG CI·주간 운영 문서 병합. main 직접 푸시 금지 규칙 [#13](https://github.com/MinsooAhn02/Haven/pull/13) 추가; Django 앱·requirements는 아직 없음 | 요찬 앱 계약 인계 후 앱 실행·DB·앱 CI 연결; 월 오후 AWS 결정 | main `8893e56` CI 성공 |
+| 신요찬 | 원격 `Yochan`에 앱 코드·PR 없음, 로컬 작업 미확인 | 월 오전 앱 루트·settings/WSGI·의존성·migration/시험 명령·URL/폼/context 전달 | 브랜치/PR 확인 |
+| 노푸른 | [PR #3](https://github.com/MinsooAhn02/Haven/pull/3) 정적 시안 병합 이후 변경 없음 | 시안 7개 → URL·폼·context 대응표, 계약 수신 후 Django 연결 | merge `36db226` |
+| 권혁민 | [PR #7](https://github.com/MinsooAhn02/Haven/pull/7) 요청 CLI·fixture 병합 | 앱 계약 수신 후 실제 앱용 path·입력 정리 | merge `3855664`, 전체 pytest 51 passed, main CI 성공 |
+| 김보람 | [PR #8](https://github.com/MinsooAhn02/Haven/pull/8)·[#11](https://github.com/MinsooAhn02/Haven/pull/11) 점검 문서 병합, 루트 MFA·연락 수단 기록 | 리전·예산·출구·IAM 승인 결과를 민성/민수에게 전달 | merge `9f17c50`, `7a3c0c2`; 대체 연락처·복구 시험 미검증 |
+| 이민성 | [PR #2](https://github.com/MinsooAhn02/Haven/pull/2) 설계·SG fixture 병합, 문서 보완 `864a847`은 PR 전 | `864a847` PR; 승인 후 구축 | merge `6d61d6c`, SG 시험 5개 통과 |
 
 PR #3은 화면 시안, PR #2는 설계·fixture 단계로 merge commit 병합했다. 두 PR의 GitGuardian 검사도 통과했다. Django 연결·live AWS 수집·실제 AWS 구축/연결은 후속 작업이며, 위 병합으로 회차 전체를 완료 처리하지 않는다.
 

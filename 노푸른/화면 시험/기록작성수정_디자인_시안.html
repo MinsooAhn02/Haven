@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>기록 작성·수정 시안 | Haven 기록</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      color: #172033;
+      background: #f4f7fb;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f7fb; }
+    a { color: inherit; }
+
+    .site-header {
+      border-bottom: 1px solid #e2e8f0;
+      background: #fff;
+    }
+
+    .header-inner {
+      width: min(100% - 40px, 1080px);
+      min-height: 72px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      flex: 0 0 auto;
+      color: #2457c5;
+      font-size: 17px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .header-tools {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 18px;
+    }
+
+    .account { color: #596579; font-size: 13px; }
+
+    .nav-list {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .nav-link {
+      display: inline-block;
+      padding: 9px 12px;
+      border-radius: 8px;
+      color: #455166;
+      font-size: 14px;
+      text-decoration: none;
+    }
+
+    .nav-link[aria-current="page"] {
+      color: #1948ad;
+      background: #edf3ff;
+      font-weight: 700;
+    }
+
+    .logout-button {
+      padding: 9px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      color: #455166;
+      background: #fff;
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    main {
+      width: min(100% - 40px, 860px);
+      margin: 38px auto 64px;
+    }
+
+    .page-intro { margin-bottom: 30px; }
+
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.35;
+    }
+
+    .intro-copy {
+      margin: 9px 0 0;
+      color: #596579;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .preview-label {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      color: #2457c5;
+      background: #edf3ff;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .form-card {
+      margin-bottom: 26px;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 10px 28px rgb(23 32 51 / 5%);
+    }
+
+    .form-card-header { padding: 25px 30px 0; }
+
+    .current-location {
+      margin: 0 0 12px;
+      color: #68758a;
+      font-size: 13px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.4;
+    }
+
+    .form-help {
+      margin: 8px 0 0;
+      color: #596579;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .error-slot {
+      min-height: 42px;
+      margin: 20px 30px 0;
+      padding: 11px 13px;
+      border: 1px dashed #c8d2e1;
+      border-radius: 8px;
+      color: #68758a;
+      background: #f8fafc;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .error-slot details { text-align: left; }
+    .error-slot summary { cursor: pointer; font-weight: 700; }
+    .error-list { margin: 8px 0 0; padding-left: 20px; }
+    .error-list a { color: #8c3030; }
+    .error-list li + li { margin-top: 5px; }
+
+    .record-form { padding: 22px 30px 26px; }
+
+    .field { margin-bottom: 20px; }
+
+    label {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .field-hint {
+      margin: 0 0 9px;
+      color: #68758a;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    input,
+    textarea {
+      display: block;
+      width: 100%;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      color: #172033;
+      background: #fff;
+      font: inherit;
+      font-size: 15px;
+    }
+
+    input {
+      min-height: 48px;
+      padding: 12px 14px;
+    }
+
+    textarea {
+      min-height: 230px;
+      padding: 14px;
+      line-height: 1.8;
+      resize: vertical;
+    }
+
+    input::placeholder,
+    textarea::placeholder { color: #8792a4; }
+
+    input:focus-visible,
+    textarea:focus-visible {
+      border-color: #2457c5;
+      outline: 3px solid rgb(36 87 197 / 20%);
+      outline-offset: 1px;
+    }
+
+    .form-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding-top: 4px;
+    }
+
+    .button {
+      display: inline-flex;
+      min-height: 46px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 18px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .button-primary { color: #fff; background: #2457c5; }
+    .button-primary:hover { background: #1948ad; }
+
+    .button-secondary {
+      border-color: #cbd5e1;
+      color: #344258;
+      background: #fff;
+    }
+
+    .button-secondary:hover { background: #f4f7fb; }
+
+    .button:focus-visible,
+    .nav-link:focus-visible,
+    .logout-button:focus-visible,
+    .error-list a:focus-visible {
+      outline: 3px solid #8db2ff;
+      outline-offset: 3px;
+    }
+
+    .preview-note {
+      margin: 0 2px;
+      color: #68758a;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 680px) {
+      .header-inner {
+        width: min(100% - 32px, 1080px);
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+        padding: 17px 0;
+      }
+
+      .header-tools {
+        width: 100%;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .account { width: 100%; }
+      main { width: min(100% - 32px, 860px); margin-top: 28px; }
+      .form-card-header { padding: 22px 22px 0; }
+      .error-slot { margin-right: 22px; margin-left: 22px; }
+      .record-form { padding: 20px 22px 22px; }
+    }
+
+    @media (max-width: 420px) {
+      .header-tools { align-items: flex-start; flex-direction: column; }
+      h1 { font-size: 27px; }
+      .form-card-header { padding: 20px 18px 0; }
+      .error-slot { margin-right: 18px; margin-left: 18px; }
+      .record-form { padding: 18px 18px 20px; }
+      textarea { min-height: 200px; }
+      .form-actions { display: grid; grid-template-columns: 1fr 1fr; }
+      .form-actions .button { width: 100%; padding: 0 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="내_기록_목록_디자인_시안.html" aria-label="Haven 기록 처음 화면">Haven 기록</a>
+      <div class="header-tools">
+        <span class="account">로그인 계정: pureun-demo (예시)</span>
+        <nav aria-label="주요 메뉴">
+          <ul class="nav-list">
+            <li><a class="nav-link" href="내_기록_목록_디자인_시안.html" aria-current="page">내 기록</a></li>
+            <li><button class="logout-button" type="button">로그아웃</button></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <header class="page-intro">
+      <span class="preview-label">디자인 확인용 화면 예시</span>
+      <h1>기록 작성·수정</h1>
+      <p class="intro-copy">아래 두 가지 상태는 같은 화면 유형의 작성 예시와 수정 예시입니다.</p>
+    </header>
+
+    <section class="form-card" aria-labelledby="create-title">
+      <div class="form-card-header">
+        <p class="current-location">현재 위치: 내 기록 &gt; 새 기록 작성</p>
+        <h2 id="create-title">새 기록 작성</h2>
+        <p class="form-help">제목과 내용을 입력해 주세요. 작성 중인 예시는 화면 디자인 확인용입니다.</p>
+      </div>
+      <div class="error-slot">
+        <details>
+          <summary>입력 오류 안내 예시 보기</summary>
+          <ul class="error-list">
+            <li><a href="#new-title">제목 항목: 제목을 입력해 주세요.</a></li>
+            <li><a href="#new-body">내용 항목: 기록할 내용을 입력해 주세요.</a></li>
+          </ul>
+        </details>
+      </div>
+      <form class="record-form">
+        <div class="field">
+          <label for="new-title">제목</label>
+          <p class="field-hint" id="new-title-hint">기록을 쉽게 알아볼 수 있는 제목을 입력해 주세요.</p>
+          <input id="new-title" type="text" aria-describedby="new-title-hint new-title-error" placeholder="예: 오늘 회의 메모">
+          <span id="new-title-error" hidden>제목을 입력해 주세요.</span>
+        </div>
+        <div class="field">
+          <label for="new-body">내용</label>
+          <p class="field-hint" id="new-body-hint">기억하고 싶은 내용을 자유롭게 적어 주세요.</p>
+          <textarea id="new-body" aria-describedby="new-body-hint new-body-error" placeholder="기록할 내용을 입력하세요."></textarea>
+          <span id="new-body-error" hidden>기록할 내용을 입력해 주세요.</span>
+        </div>
+        <div class="form-actions">
+          <a class="button button-secondary" href="내_기록_목록_디자인_시안.html">취소</a>
+          <button class="button button-primary" type="button">저장</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="form-card" aria-labelledby="edit-title">
+      <div class="form-card-header">
+        <p class="current-location">현재 위치: 내 기록 &gt; 기록 상세 &gt; 기록 수정</p>
+        <h2 id="edit-title">기록 수정</h2>
+        <p class="form-help">기존 내용을 고친 뒤 변경사항을 저장하는 예시입니다.</p>
+      </div>
+      <div class="error-slot">
+        <details>
+          <summary>입력 오류 안내 예시 보기</summary>
+          <ul class="error-list">
+            <li><a href="#edit-title-input">제목 항목: 제목을 확인해 주세요.</a></li>
+            <li><a href="#edit-body">내용 항목: 기록 내용을 확인해 주세요.</a></li>
+          </ul>
+        </details>
+      </div>
+      <form class="record-form">
+        <div class="field">
+          <label for="edit-title-input">제목</label>
+          <p class="field-hint" id="edit-title-hint">필요한 경우 제목을 수정해 주세요.</p>
+          <input id="edit-title-input" type="text" aria-describedby="edit-title-hint edit-title-error" value="첫 번째 회의 메모">
+          <span id="edit-title-error" hidden>제목을 확인해 주세요.</span>
+        </div>
+        <div class="field">
+          <label for="edit-body">내용</label>
+          <p class="field-hint" id="edit-body-hint">기록 내용을 확인하고 수정해 주세요.</p>
+          <textarea id="edit-body" aria-describedby="edit-body-hint edit-body-error">이번 회의에서는 프로젝트의 진행 상황을 확인하고 앞으로의 작업 일정을 정리했다.</textarea>
+          <span id="edit-body-error" hidden>기록 내용을 확인해 주세요.</span>
+        </div>
+        <div class="form-actions">
+          <a class="button button-secondary" href="기록상세_디자인_시안.html">취소</a>
+          <button class="button button-primary" type="button">변경사항 저장</button>
+        </div>
+      </form>
+    </section>
+
+    <p class="preview-note">이 페이지의 입력 내용과 버튼은 디자인 확인용입니다. 저장하거나 기존 기록을 변경하지 않습니다. 서버 주소와 실제 입력 항목 이름은 정하지 않았습니다.</p>
+  </main>
+</body>
+</html>

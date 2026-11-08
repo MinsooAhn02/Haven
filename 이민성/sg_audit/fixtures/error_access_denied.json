@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "fixture_id": "error_access_denied",
+  "description": "점검 권한이 없어 SG 목록 수집이 거부된 상황. 기대: ERROR, 종료 코드 2",
+  "account_id": "FIXTURE-000000000000",
+  "region": "fixture-region-1",
+  "vpc_id": "vpc-fixture",
+  "security_groups": [],
+  "attachments": [],
+  "errors": [
+    {
+      "stage": "DescribeSecurityGroups",
+      "code": "UnauthorizedOperation",
+      "message": "fixture: 권한 없음 주입"
+    }
+  ]
+}

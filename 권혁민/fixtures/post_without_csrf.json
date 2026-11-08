@@ -1,0 +1,4 @@
+{
+  "csrf_mode": "missing",
+  "fields": {"title": "fixture title", "body": "fixture body"}
+}

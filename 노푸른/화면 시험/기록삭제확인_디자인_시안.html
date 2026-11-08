@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>기록 삭제 확인 시안 | Haven 기록</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      color: #172033;
+      background: #f4f7fb;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f7fb; }
+    a { color: inherit; }
+
+    .site-header {
+      border-bottom: 1px solid #e2e8f0;
+      background: #fff;
+    }
+
+    .header-inner {
+      width: min(100% - 40px, 1080px);
+      min-height: 72px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      flex: 0 0 auto;
+      color: #2457c5;
+      font-size: 17px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .header-tools {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 18px;
+    }
+
+    .account { color: #596579; font-size: 13px; }
+
+    .nav-list {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .nav-link {
+      display: inline-block;
+      padding: 9px 12px;
+      border-radius: 8px;
+      color: #455166;
+      font-size: 14px;
+      text-decoration: none;
+    }
+
+    .nav-link[aria-current="page"] {
+      color: #1948ad;
+      background: #edf3ff;
+      font-weight: 700;
+    }
+
+    .logout-button {
+      padding: 9px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      color: #455166;
+      background: #fff;
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    main {
+      width: min(100% - 40px, 760px);
+      margin: 40px auto 64px;
+    }
+
+    .current-location {
+      margin: 0 0 14px;
+      color: #68758a;
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+
+    .confirm-card {
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 10px 28px rgb(23 32 51 / 5%);
+    }
+
+    .card-content { padding: 36px 40px 30px; }
+
+    .example-label {
+      display: inline-block;
+      margin: 0 0 17px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      color: #2457c5;
+      background: #edf3ff;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.4;
+    }
+
+    .confirm-copy {
+      margin: 10px 0 24px;
+      color: #344258;
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.6;
+    }
+
+    .record-summary {
+      margin: 0;
+      padding: 18px 20px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #f8fafc;
+    }
+
+    .summary-label {
+      margin: 0 0 7px;
+      color: #68758a;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .record-title {
+      margin: 0;
+      color: #172033;
+      font-size: 17px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .record-date {
+      margin: 8px 0 0;
+      color: #596579;
+      font-size: 13px;
+    }
+
+    .warning {
+      margin: 18px 0 0;
+      padding: 13px 15px;
+      border-left: 4px solid #c24141;
+      border-radius: 6px;
+      color: #762d2d;
+      background: #fff5f5;
+      font-size: 14px;
+      line-height: 1.65;
+      overflow-wrap: anywhere;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 20px 40px;
+      border-top: 1px solid #e8edf4;
+      background: #fbfcfe;
+    }
+
+    .button {
+      display: inline-flex;
+      min-height: 46px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 18px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .button-cancel {
+      border-color: #cbd5e1;
+      color: #344258;
+      background: #fff;
+    }
+
+    .button-cancel:hover { background: #f4f7fb; }
+
+    .button-delete {
+      color: #fff;
+      background: #b83232;
+    }
+
+    .button-delete:hover { background: #982929; }
+
+    .button:focus-visible,
+    .nav-link:focus-visible,
+    .logout-button:focus-visible {
+      outline: 3px solid #8db2ff;
+      outline-offset: 3px;
+    }
+
+    .preview-note {
+      margin: 14px 2px 0;
+      color: #68758a;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 680px) {
+      .header-inner {
+        width: min(100% - 32px, 1080px);
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+        padding: 17px 0;
+      }
+
+      .header-tools {
+        width: 100%;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .account { width: 100%; }
+      main { width: min(100% - 32px, 760px); margin-top: 28px; }
+      .card-content { padding: 30px 26px 24px; }
+      .actions { padding: 18px 26px; }
+    }
+
+    @media (max-width: 420px) {
+      .header-tools { align-items: flex-start; flex-direction: column; }
+      .card-content { padding: 25px 20px 22px; }
+      h1 { font-size: 25px; }
+      .confirm-copy { font-size: 16px; }
+      .record-summary { padding: 16px; }
+      .actions { display: grid; grid-template-columns: 1fr 1fr; padding: 16px 20px; }
+      .button { min-width: 0; padding: 0 10px; font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="내_기록_목록_디자인_시안.html" aria-label="Haven 기록 처음 화면">Haven 기록</a>
+      <div class="header-tools">
+        <span class="account">로그인 계정: pureun-demo (예시)</span>
+        <nav aria-label="주요 메뉴">
+          <ul class="nav-list">
+            <li><a class="nav-link" href="내_기록_목록_디자인_시안.html" aria-current="page">내 기록</a></li>
+            <li><button class="logout-button" type="button">로그아웃</button></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <p class="current-location">현재 위치: 내 기록 &gt; 기록 상세 &gt; 기록 삭제</p>
+    <section class="confirm-card" aria-labelledby="page-title">
+      <div class="card-content">
+        <p class="example-label">디자인 확인용 예시</p>
+        <h1 id="page-title">기록 삭제</h1>
+        <p class="confirm-copy">이 기록을 삭제할까요?</p>
+
+        <div class="record-summary" aria-label="삭제할 기록 예시">
+          <p class="summary-label">삭제할 기록</p>
+          <h2 class="record-title">첫 번째 회의 메모</h2>
+          <p class="record-date">작성 날짜: 2026년 11월 5일</p>
+        </div>
+
+        <p class="warning">삭제하면 이 기록을 다시 되돌릴 수 없습니다. 삭제하기 전에 기록 제목과 날짜를 확인해 주세요.</p>
+      </div>
+      <div class="actions" aria-label="삭제 확인 동작">
+        <a class="button button-cancel" href="기록상세_디자인_시안.html">취소</a>
+        <button class="button button-delete" type="button">삭제</button>
+      </div>
+    </section>
+    <p class="preview-note">기록 제목과 날짜는 디자인 확인용 예시입니다. 삭제 버튼은 미리보기용이며 실제 기록을 삭제하지 않습니다.</p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>기록 상세 시안 | Haven 기록</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      color: #172033;
+      background: #f4f7fb;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f7fb; }
+    a { color: inherit; }
+
+    .site-header {
+      border-bottom: 1px solid #e2e8f0;
+      background: #fff;
+    }
+
+    .header-inner {
+      width: min(100% - 40px, 1080px);
+      min-height: 72px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      flex: 0 0 auto;
+      color: #2457c5;
+      font-size: 17px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .header-tools {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 18px;
+    }
+
+    .account { color: #596579; font-size: 13px; }
+
+    .nav-list {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .nav-link {
+      display: inline-block;
+      padding: 9px 12px;
+      border-radius: 8px;
+      color: #455166;
+      font-size: 14px;
+      text-decoration: none;
+    }
+
+    .nav-link[aria-current="page"] {
+      color: #1948ad;
+      background: #edf3ff;
+      font-weight: 700;
+    }
+
+    .logout-button {
+      padding: 9px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      color: #455166;
+      background: #fff;
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    main {
+      width: min(100% - 40px, 860px);
+      margin: 40px auto 64px;
+    }
+
+    .current-location {
+      margin: 0 0 14px;
+      color: #68758a;
+      font-size: 13px;
+    }
+
+    .detail-card {
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 10px 28px rgb(23 32 51 / 5%);
+    }
+
+    .detail-content { padding: 38px 42px 42px; }
+
+    .example-label {
+      display: inline-block;
+      margin: 0 0 18px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      color: #2457c5;
+      background: #edf3ff;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+
+    .record-date {
+      margin: 12px 0 0;
+      color: #68758a;
+      font-size: 14px;
+    }
+
+    .content-divider {
+      height: 1px;
+      margin: 28px 0;
+      border: 0;
+      background: #e8edf4;
+    }
+
+    .body-label {
+      margin: 0 0 12px;
+      color: #455166;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .record-body {
+      margin: 0;
+      color: #263247;
+      font-size: 16px;
+      line-height: 1.95;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 26px;
+      border-top: 1px solid #e8edf4;
+      background: #fbfcfe;
+    }
+
+    .action-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .button {
+      display: inline-flex;
+      min-height: 44px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 16px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .button-primary { color: #fff; background: #2457c5; }
+    .button-primary:hover { background: #1948ad; }
+
+    .button-secondary {
+      border-color: #cbd5e1;
+      color: #344258;
+      background: #fff;
+    }
+
+    .button-secondary:hover { background: #f4f7fb; }
+
+    .button-danger {
+      border-color: #e7b4b4;
+      color: #8c3030;
+      background: #fff;
+    }
+
+    .button-danger:hover { background: #fff6f6; }
+
+    .button:focus-visible,
+    .nav-link:focus-visible,
+    .logout-button:focus-visible {
+      outline: 3px solid #8db2ff;
+      outline-offset: 3px;
+    }
+
+    .preview-note {
+      margin: 16px 2px 0;
+      color: #68758a;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 680px) {
+      .header-inner {
+        width: min(100% - 32px, 1080px);
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+        padding: 17px 0;
+      }
+
+      .header-tools {
+        width: 100%;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .account { width: 100%; }
+      main { width: min(100% - 32px, 860px); margin-top: 28px; }
+      .detail-content { padding: 30px 26px 32px; }
+      .actions { align-items: stretch; flex-direction: column; padding: 18px; }
+      .action-group { display: grid; grid-template-columns: 1fr 1fr; }
+      .action-group .button { width: 100%; }
+      .actions > .button { width: 100%; }
+    }
+
+    @media (max-width: 420px) {
+      .header-tools { align-items: flex-start; flex-direction: column; }
+      .detail-content { padding: 25px 20px 28px; }
+      h1 { font-size: 25px; }
+      .record-body { font-size: 15px; line-height: 1.85; }
+      .action-group { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="내_기록_목록_디자인_시안.html" aria-label="Haven 기록 처음 화면">Haven 기록</a>
+      <div class="header-tools">
+        <span class="account">로그인 계정: pureun-demo (예시)</span>
+        <nav aria-label="주요 메뉴">
+          <ul class="nav-list">
+            <li><a class="nav-link" href="내_기록_목록_디자인_시안.html" aria-current="page">내 기록</a></li>
+            <li><button class="logout-button" type="button">로그아웃</button></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <p class="current-location">현재 위치: 내 기록 &gt; 기록 상세</p>
+    <article class="detail-card" aria-labelledby="record-title">
+      <div class="detail-content">
+        <p class="example-label">디자인 확인용 예시 기록</p>
+        <h1 id="record-title">첫 번째 회의 메모</h1>
+        <p class="record-date"><time datetime="2026-11-05">작성 날짜: 2026년 11월 5일</time></p>
+        <hr class="content-divider">
+        <h2 class="body-label">기록 내용</h2>
+        <p class="record-body">이번 회의에서는 프로젝트의 진행 상황을 확인하고 앞으로의 작업 일정을 정리했다.</p>
+      </div>
+
+      <div class="actions" aria-label="기록 동작">
+        <a class="button button-secondary" href="내_기록_목록_디자인_시안.html">목록으로 돌아가기</a>
+        <div class="action-group">
+          <a class="button button-primary" href="기록작성수정_디자인_시안.html">기록 수정</a>
+          <a class="button button-danger" href="기록삭제확인_디자인_시안.html">기록 삭제</a>
+        </div>
+      </div>
+    </article>
+    <p class="preview-note">이 화면과 기록 내용은 디자인 확인용 예시입니다. 버튼은 미리보기용이며 기록을 수정하거나 삭제하지 않습니다.</p>
+  </main>
+</body>
+</html>

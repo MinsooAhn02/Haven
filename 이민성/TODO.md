@@ -44,9 +44,34 @@
 
 | 회차 | 상태 | 환경·실행 명령·기대/실제 결과 | PR·가림 증거 | 다음 담당자에게 전달할 것 |
 |---|---|---|---|---|
-| 1 | 검증 대기 | 설계: `network/설계.md`(VPC·서브넷·라우팅·SG·출구/비용, 리전·D6는 김보람 권장, 팀장 승인 대기). SG CLI: Windows·Python 3.13.2, `sg_audit`에서 `python network_audit.py fixture --fixture fixtures\<이름>.json --baseline baseline.json --output-dir out\<이름>` 실행. 기대/실제 종료 코드 일치: pass 0(AUD-01), fail_public_db 1(AUD-02, SG-01), unknown_role 3(AUD-09, SG-06), error_access_denied 2(AUD-08). 덮어쓰기·없는 파일 시 ERROR(2) 확인 | PR 링크(https://github.com/MinsooAhn02/Haven/pull/2). 결과 요약 `sg_audit/README.md` 시험 결과. fixture는 가상 데이터라 가림 대상 없음 | 김보람: 리전·D6 승인, 생성 자원·NAT 운영 기간(설계.md 5·6장). 권혁민: 기대 접근표(설계.md 4.3). 안민수: OS(패키지 80 여부)·메일 방식 회신 요청. 미완료: live 모드·AUD-03~07·10·11(3회차 이후) |
+| 1 | 완료 | 설계: `network/설계.md`(VPC·서브넷·라우팅·SG·출구/비용, 리전·D6는 김보람 권장, 팀장 승인 대기). SG CLI: Windows·Python 3.13.2, `sg_audit`에서 `python network_audit.py fixture --fixture fixtures\<이름>.json --baseline baseline.json --output-dir out\<이름>` 실행. 기대/실제 종료 코드 일치: pass 0(AUD-01), fail_public_db 1(AUD-02, SG-01), unknown_role 3(AUD-09, SG-06), error_access_denied 2(AUD-08). 덮어쓰기·없는 파일 시 ERROR(2) 확인 | PR 링크(https://github.com/MinsooAhn02/Haven/pull/2). 결과 요약 `sg_audit/README.md` 시험 결과. fixture는 가상 데이터라 가림 대상 없음. 리뷰 보완(팀장): 기대 자산 누락 UNKNOWN, 입력·출력 오류 ERROR(2), 부분 수집 결과 보존, unittest 5개 통과 | 김보람: 리전·D6 승인, 생성 자원·NAT 운영 기간(설계.md 5·6장). 권혁민: 기대 접근표(설계.md 4.3). 안민수: 메일 방식 회신 요청, EC2 OS(AMI) 후보 합의(이민성 제안). 미완료: live 모드·AUD-03~07·10·11(3회차 이후) |
 | 2 | 미착수 | 미확인 | — | — |
 | 3 | 미착수 | 미확인 | — | — |
 | 4 | 미착수 | 미확인 | — | — |
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
+
+## 민수's comment · 2026-11-06
+
+- PR #2의 SG CLI 설계 fixture 작업은 기록된 완료 범위로 두고, live 수집·추가 AUD 항목은 별도 미완료로 유지해 주세요. 기존 완료 상태를 다시 쓰거나 PR #2를 반복 요청할 필요는 없습니다.
+- 김보람·안민수에게 리전·예산·출구 경로 승인을 확인해 주세요. OS/AMI는 제안 상태이며, 메일 방식도 SES API와 SMTP 중 아직 정해지지 않았으니 안민수의 회신을 받아 주세요.
+- 승인된 구축 후에는 OS·AMI, EC2/SSM, 디스크, Web DB, 출구 경로와 직접 접속 거부의 실제 근거를 안민수에게 인계해 주세요.
+- 기다리는 동안 fixture와 live-read 설계는 확장할 수 있지만 AWS 쓰기 작업은 보류해 주세요. 864 커밋의 문서 보완은 일반 PR로 제출할 수 있습니다.
+- TODO에 현재 상태와 확인한 근거, 다음 담당자에게 넘길 내용 및 가능한 인계 시각을 답글로 기록해 주세요.
+
+## 민수's comment · 2026-11-09~13 실행 가이드
+
+- **월 오전** 보람과 리전·예산·출구의 미결 항목을 확인합니다. **화** 보람과 서버 Role, SSM·Web→DB·필요 출구·직접 접근 거부 확인표를 작성합니다.
+- **수** 민수·보람과 승인 범위를 대조합니다. **목** 승인과 대상 서버가 확인된 범위에서만 SSM·Web→DB·출구를 확인하고, 직접 접근 거부의 기대값과 실제값을 민수에게 넘깁니다. **금** 네트워크·SG 근거와 미검증 항목을 공용 리뷰에 인계합니다.
+- **실행 기준** 저장소 루트에서 `python -B -m unittest discover -s 이민성/sg_audit -p test_network_audit.py -v`로 SG 회귀 시험을 실행합니다. AWS 확인 결과에는 실행 환경·대상·기대/실제 결과를 가려서 기록합니다. 기존 SG 문서 보완 커밋은 필요할 때 별도 PR로 보냅니다.
+- **막히면** 승인이 없을 때 설계와 fixture·연결 확인표까지만 준비하고, 어떤 결정이 필요한지 민수·보람에게 넘깁니다.
+
+[공용 일정·리뷰의 내 담당 항목](https://github.com/MinsooAhn02/Haven/blob/main/docs/팀_진행_및_리뷰.md#minsung)
+
+
+## 민수's comment · 2026-11-08 이번 주 배정 (11/09~13)
+
+운영 방식이 바뀌었습니다. 날짜별 시간표 대신 **주력과 대기열**을 드립니다. **다 못 해도 괜찮아요.** 주력이 막히거나 끝나면 대기열로 넘어가고, 남은 건 매일 저녁 다시 나눕니다. 매일 끝나면 Discord에 오늘 상황 보고 부탁드립니다. 전체 현황은 main의 `TASK_TODO.html`(git pull 후 브라우저로 열기).
+- **주력:** `864a847` SG 문서 보완 PR + SSM·Web→DB·필요 출구·직접 접근 거부 확인표(기대값까지)
+- **대기열:** VPC/SG/EC2 구축 절차·변경안(승인 즉시 실행용) → live 읽기 수집 설계·AUD fixture 확장
+- **⏳ 기다릴 것:** 실제 구축은 민수 결정 + 보람 IAM·Role 필요. AWS 쓰기 작업은 승인 전 보류.

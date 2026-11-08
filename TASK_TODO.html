@@ -80,7 +80,7 @@ window.addEventListener("error", e => {
 <h2>4회차 로드맵</h2>
 <div class="roadmap" id="roadmap"></div>
 
-<h2>담당별 배정 <span class="sub">주력 ≈1.5일 · 대기열 ≈1.5일 · 다 못 해도 됨</span></h2>
+<h2>담당별 배정 <span class="sub">주력 + 대기열 · 다 못 해도 됨</span></h2>
 <div class="legend" id="legend"></div>
 <div class="cards" id="cards" style="margin-top:12px"></div>
 
@@ -158,13 +158,13 @@ const DATA = {
     {from: "민성 연결 확인 + 요찬 앱", to: ["민수 AWS 배포 (2회차)"]}
   ],
   routine: [
-    ["매일 17:30", "각자 Discord에 3줄 — 완료 / 막힘(누구 때문) / 내일"],
+    ["매일 끝나면", "각자 Discord에 오늘 상황 보고"],
     ["매일 저녁", "민수가 브랜치·PR·CI와 대조해 이 현황판 DATA 갱신 → main PR. 끝낸 사람은 다음 일, 막힌 사람은 대체 일"],
     ["금 17:30", "1회차 판정(완료/진행 중)과 다음 주 배정"],
     ["항상", "main 직접 푸시 금지 — 본인 브랜치 → PR. 작업 전 git pull"]
   ],
   log: [
-    ["11/08", "운영 방식 전환: 날짜별 시간표 → 1.5일 배정 + 저녁 재배정. #13(main 직접 푸시 금지) · #14(현황 갱신) 병합, 6개 브랜치 최신 main으로 통일"]
+    ["11/08", "운영 방식 전환: 날짜별 시간표 → 주력·대기열 배정 + 저녁 재배정. #13(main 직접 푸시 금지) · #14(현황 갱신) 병합, 6개 브랜치 최신 main으로 통일"]
   ]
 };
 // ===== 수정 끝 =====
@@ -190,8 +190,8 @@ $("cards").innerHTML = DATA.people.map(p => `<div class="box card">
   <h3><span>${p.no}. ${esc(p.name)}</span>${badge(p.status)}</h3>
   <div class="role">${esc(p.role)}</div>
   ${p.note ? `<div class="dep" style="background:var(--block-bg);color:var(--block)">⚠ ${esc(p.note)}</div>` : ""}
-  <div class="lbl">주력 ≈1.5일</div><ul>${items(p.main)}</ul>
-  <div class="lbl">대기열 ≈1.5일 (주력이 막히거나 끝나면)</div><ul>${items(p.queue)}</ul>
+  <div class="lbl">주력</div><ul>${items(p.main)}</ul>
+  <div class="lbl">대기열 (주력이 막히거나 끝나면)</div><ul>${items(p.queue)}</ul>
   <div class="dep ${p.dep ? "" : "none"}">${p.dep ? "⏳ " + esc(p.dep) : "✓ 기다릴 사람 없음 — 이 일이 팀 전체의 출발점"}</div>
   <div class="links"><a href="${GH}/blob/${p.id}/${encodeURI(p.folder)}/TODO.md">개인 TODO (${p.id} 브랜치)</a></div>
 </div>`).join("");

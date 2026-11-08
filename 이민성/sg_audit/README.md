@@ -10,6 +10,7 @@
 | `baseline.json` | 정답지. 서버 역할별로 허용하는 규칙 목록(허용 목록에 없으면 위반) |
 | `fixtures/*.json` | 가짜 AWS 응답(답안지). AWS 없이 판정 로직을 시험할 때 사용 |
 | `network_audit.py` | 판정 프로그램 (fixture 모드 구현, live 모드는 3회차) |
+| `test_network_audit.py` | 회귀 시험 5개(unittest). 1회차 PR 리뷰에서 팀장 보완 시 추가 |
 
 코드가 어떻게 판정하는지는 [코드설명.md](코드설명.md)를 본다.
 
@@ -148,7 +149,7 @@
 | SG-03 | Web TCP 80의 출발지가 ALB SG가 아님 | FAIL |
 | SG-04 | DB TCP 5432의 출발지가 Web SG가 아님 | FAIL |
 | SG-05 | 그 외 baseline에 없는 규칙 / baseline 규칙이 실제로 없음 / 기대 SG 미연결 | FAIL |
-| SG-06 | baseline에 없는 자산, 연결되지 않은 SG, 역할을 모르는 SG 참조, SG 규칙 수집 결과 없음 | UNKNOWN |
+| SG-06 | baseline에 없는 자산, baseline 자산의 수집 결과 없음, 연결되지 않은 SG, 역할을 모르는 SG 참조, SG 규칙 수집 결과 없음 | UNKNOWN |
 
 - baseline 규칙과 정확히 일치하는 규칙은 PASS로 기록한다.
 - fixture에 `errors`가 있으면 수집된 개별 finding은 보존하고 전체 판정은 ERROR로 끝낸다. baseline의 기대 자산이 수집 결과에서 누락되면 UNKNOWN으로 남긴다.
@@ -186,9 +187,10 @@ echo $LASTEXITCODE
 | AUD-01 | `pass.json` | PASS 8 | PASS | PASS | 0 |
 | AUD-02 | `fail_public_db.json` | PASS 8, FAIL 1 | FAIL | FAIL (SG-01: 인터넷 전체에 PostgreSQL 5432 개방) | 1 |
 | AUD-09 | `unknown_role.json` | PASS 8, UNKNOWN 1 | UNKNOWN | UNKNOWN (SG-06: tmp-1은 baseline에 없는 자산) | 3 |
-| AUD-08 | `error_access_denied.json` | ERROR 1 | ERROR | ERROR (DescribeSecurityGroups: UnauthorizedOperation) | 2 |
+| AUD-08 | `error_access_denied.json` | UNKNOWN 3, ERROR 1 | ERROR | ERROR (DescribeSecurityGroups: UnauthorizedOperation). 수집 결과가 없어 alb·web-1·db-1은 UNKNOWN으로 보존 | 2 |
 
 회귀 시험은 `python -m unittest -v test_network_audit`로 실행한다.
+- 2026-11-06 실행 결과: 5개 통과(OK). 기본 fixture 4종·출력 형식, baseline 자산 누락 → UNKNOWN, 잘못된 JSON/구조 → ERROR(2), 출력 경로 오류 → ERROR(2), 수집 오류가 있어도 개별 결과 보존.
 
 추가 확인:
 - 같은 `--output-dir`로 다시 실행하면 덮어쓰지 않고 ERROR(2)로 멈춘다.

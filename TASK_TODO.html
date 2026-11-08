@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haven 팀 현황판</title>
+<!--
+  왜 HTML인가: 공용 TODO.md는 기준 문서로 길어져서 "지금 누가 뭘 하고 누가 막혔는지"가 한눈에 안 보였다(2026-11-08 결정).
+  갱신 방법: 매일 저녁 아래 DATA 객체만 고쳐 main PR로 올린다. 화면 코드는 건드리지 않는다.
+  외부 라이브러리·폰트 없음 → git pull 후 파일을 브라우저로 바로 열면 된다.
+-->
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--fg:#1d1d1b;--muted:#6b6b66;--line:#e3e2dd;
+--ok:#2f7d4f;--ok-bg:#e3f2e8;--run:#2457a6;--run-bg:#e2ebf8;--wait:#8a6a12;--wait-bg:#f8efd6;--block:#b3261e;--block-bg:#fbe3e1;--todo:#6b6b66;--todo-bg:#ecebe7}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--card:#1f1f1d;--fg:#ecebe6;--muted:#a3a29b;--line:#34332f;
+--ok:#7fcf9c;--ok-bg:#1d3326;--run:#8fb4ee;--run-bg:#1c2a40;--wait:#e3c46e;--wait-bg:#372e15;--block:#f2918a;--block-bg:#3d1d1a;--todo:#a3a29b;--todo-bg:#2a2a27}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+main{max-width:1180px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:17px;margin:32px 0 12px}
+.sub{color:var(--muted);font-size:13px}
+a{color:var(--run)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+.dir{display:grid;gap:8px;margin-top:16px}
+.dir div{display:flex;gap:10px}.dir b{min-width:52px}
+.bar{height:10px;background:var(--todo-bg);border-radius:6px;overflow:hidden;margin:6px 0 2px}
+.bar span{display:block;height:100%;background:var(--ok)}
+.roadmap{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.round{padding:10px;border-radius:8px;background:var(--todo-bg);font-size:13px}
+.round.now{background:var(--run-bg);outline:2px solid var(--run)}
+.round b{display:block;font-size:14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+.card h3{margin:0;font-size:16px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.role{color:var(--muted);font-size:12px;margin:2px 0 10px}
+.badge{font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.s-ok{color:var(--ok);background:var(--ok-bg)}.s-run{color:var(--run);background:var(--run-bg)}
+.s-wait{color:var(--wait);background:var(--wait-bg)}.s-block{color:var(--block);background:var(--block-bg)}.s-todo{color:var(--todo);background:var(--todo-bg)}
+.lbl{font-size:12px;font-weight:600;color:var(--muted);margin:10px 0 4px}
+ul{margin:0;padding-left:0;list-style:none}
+li{display:flex;gap:8px;padding:3px 0;font-size:14px}
+li .m{flex:none;width:18px;text-align:center}
+li.done{color:var(--muted);text-decoration:line-through}
+.dep{margin-top:10px;font-size:13px;padding:8px 10px;border-radius:8px;background:var(--wait-bg);color:var(--wait)}
+.dep.none{background:var(--ok-bg);color:var(--ok)}
+.links{margin-top:10px;font-size:13px}
+.flow{display:grid;gap:8px}
+.edge{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+.node{padding:3px 10px;border-radius:6px;border:1px solid var(--line);background:var(--card)}
+.node.hot{border-color:var(--block);color:var(--block);font-weight:600}
+.arrow{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12px}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+@media (max-width:600px){.roadmap{grid-template-columns:1fr 1fr}.cards{grid-template-columns:1fr}}
+.err{background:var(--block-bg);color:var(--block);border:1px solid var(--block);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-weight:600}
+</style>
+<script>
+// 별도 script로 먼저 등록: 아래 DATA에 쉼표 누락 같은 문법 오류가 있으면 그 script는 통째로 실행되지 않아
+// 화면이 빈 채로 남는다. 원인을 바로 알 수 있게 오류와 줄 번호를 페이지 맨 위에 띄운다.
+window.addEventListener("error", e => {
+  const box = document.getElementById("err");
+  if (!box) return;
+  box.hidden = false;
+  box.textContent = `현황판 오류: ${e.message} (${e.lineno}줄) — 대부분 DATA의 쉼표·따옴표·괄호 문제입니다.`;
+});
+</script>
+</head>
+<body>
+<main>
+<div class="err" id="err" hidden></div>
+<h1>Haven 팀 현황판</h1>
+<div class="sub" id="meta"></div>
+
+<div class="box dir" id="direction"></div>
+
+<h2>주간 목표</h2>
+<div class="box" id="goals"></div>
+
+<h2>4회차 로드맵</h2>
+<div class="roadmap" id="roadmap"></div>
+
+<h2>담당별 배정 <span class="sub">주력 ≈1.5일 · 대기열 ≈1.5일 · 다 못 해도 됨</span></h2>
+<div class="legend" id="legend"></div>
+<div class="cards" id="cards" style="margin-top:12px"></div>
+
+<h2>누가 누구를 기다리나</h2>
+<div class="box flow" id="flow"></div>
+
+<h2>매일 루틴</h2>
+<div class="box" id="routine"></div>
+
+<h2>저녁 재배정 기록</h2>
+<div class="box"><table><thead><tr><th>날짜</th><th>변경·결과</th></tr></thead><tbody id="log"></tbody></table></div>
+
+<h2>문서</h2>
+<div class="box" id="docs"></div>
+</main>
+
+<script>
+// ===== 매일 저녁 여기만 수정 =====
+// status: ok(완료) / run(진행) / wait(대기·의존) / block(막힘) / todo(예정)
+// 항목 done:true = 실제로 실행·확인한 것만
+const GH = "https://github.com/MinsooAhn02/Haven";
+const DATA = {
+  updated: "2026-11-08 (일)",
+  week: "2026-11-09(월) ~ 11-13(금)",
+  mainSha: "0876109",
+  direction: [
+    ["1순위", "1회차 완료 — 로컬에서 로그인 → 글 CRUD → 타인 글 404 · CSRF 누락 403이 실제 앱·화면·시험·CI로 동작"],
+    ["2순위", "2회차 선행 — AWS 결정 확정, 공유·계정 기능과 화면·시험·서버 확인표를 로컬·초안까지"],
+    ["원칙", "다 못 해도 됩니다. 막히면 대기열로 넘어가고, 남은 건 저녁에 다시 나눕니다. 실제로 돌려 본 것만 완료. 담당 범위·AWS 승인 규칙은 그대로."]
+  ],
+  goals: [
+    {name: "앱 계약(경로·버전·명령·URL/폼/context) 공유", done: false},
+    {name: "인증·소유자 CRUD + 404/403 시험", done: false},
+    {name: "템플릿 연결·브라우저 흐름 확인", done: false},
+    {name: "개발 DB migration + 앱 CI 통과", done: false},
+    {name: "1회차 시험 fixture 실제 앱 실행", done: false},
+    {name: "AWS 결정(리전·예산·NAT/S3·메일·AMI) 기록", done: false}
+  ],
+  rounds: [
+    {n: 1, t: "계정·공통 기반·로컬", now: true},
+    {n: 2, t: "공유·계정 관리·AWS 첫 배포"},
+    {n: 3, t: "첨부·HTTPS·메일·보안 점검"},
+    {n: 4, t: "수정·Block 검증·복원"}
+  ],
+  people: [
+    {id: "Minsoo", name: "안민수", no: 1, role: "팀장 · 공통 환경 · CI · DB · 배포", folder: "안민수", status: "run",
+     main: [{t: "requirements·환경변수·PostgreSQL 개발 DB 절차·앱 CI job 초안"}, {t: "월 오후 AWS 결정 회의 주재 → 결정 기록"}],
+     queue: [{t: "DB 역할 분리·migration·되돌리기 절차 (2회차)"}, {t: "Nginx/Gunicorn/systemd 설정 초안 (2회차)"}],
+     dep: "앱 연결·시험은 요찬 계약·코드 필요"},
+    {id: "Yochan", name: "신요찬", no: 5, role: "Django 인증·모델·CRUD·공유·첨부", folder: "신요찬", status: "block",
+     main: [{t: "앱 계약 먼저 공유 (완성 코드 아니어도 됨)"}, {t: "인증·소유자 CRUD + 타인 404 · CSRF 403 시험 → 앱 PR"}],
+     queue: [{t: "읽기 공유·해제 모델·뷰·시험 (2회차)"}, {t: "계정 활성/비활성 설계 (2회차)"}],
+     dep: "", note: "원격에 앱 코드 아직 없음 — 팀 전체가 이 계약을 기다림"},
+    {id: "Pureun", name: "노푸른", no: 2, role: "화면 · Django Templates · CSS", folder: "노푸른", status: "run",
+     main: [{t: "시안 7개 → 필요한 필드·오류 표시 선제안"}, {t: "계약 수신 후 템플릿 연결·브라우저 흐름 확인"}],
+     queue: [{t: "키보드·반응형·빈 목록·오류 점검"}, {t: "공유 목록·공유 관리·계정 관리 화면 시안 (2회차)"}],
+     dep: "템플릿 연결은 요찬 계약 필요"},
+    {id: "Hyeokmin", name: "권혁민", no: 3, role: "레드팀 · 요청 CLI · WAF · 로그", folder: "권혁민", status: "run",
+     main: [{t: "#7 요청 CLI 병합 (51 passed)", done: true}, {t: "1회차 시험 시나리오 fixture (정상/비로그인/404/403)"}, {t: "느린 302 시간·크기 제한 확인"}],
+     queue: [{t: "공유·해제·비활성 시험 fixture (2회차)"}, {t: "첨부 형식·크기·타인 다운로드 fixture (3회차)"}],
+     dep: "실제 실행은 요찬 앱 SHA · 민수 실행 환경 필요"},
+    {id: "Boram", name: "김보람", no: 4, role: "계정 · IAM · 접근 · 비용", folder: "김보람", status: "run",
+     main: [{t: "#8 · #11 점검 기록 병합 (루트 MFA·연락 수단)", done: true}, {t: "기간별 예상 비용표 + 결정 항목표 → 회의 후 결정 반영"}],
+     queue: [{t: "사람별 IAM 정책·서버 Role JSON 초안 (적용 금지) + 허용/거부 시험 목록"}, {t: "다른 리전 자원 점검"}],
+     dep: "승인 반영은 민수 결정 필요"},
+    {id: "Minsung", name: "이민성", no: 6, role: "VPC · EC2 · SSM · ALB/HTTPS · SG CLI", folder: "이민성", status: "run",
+     main: [{t: "864a847 SG 문서 보완 PR"}, {t: "SSM·Web→DB·출구·직접 접근 거부 확인표 (기대값까지)"}],
+     queue: [{t: "VPC/SG/EC2 구축 절차 — 승인 즉시 실행용"}, {t: "live 읽기 수집 설계 · AUD fixture 확장"}],
+     dep: "실제 구축은 민수 결정 · 보람 IAM 필요"}
+  ],
+  flow: [
+    {from: "요찬 앱 계약", to: ["푸른 템플릿 연결", "혁민 실제 시험", "민수 DB·CI 연결"], hot: true},
+    {from: "민수 AWS 결정", to: ["보람 IAM·비용 반영", "민성 구축 절차"], hot: true},
+    {from: "보람 IAM·Role", to: ["민성 VPC/EC2/SSM 구축"]},
+    {from: "민성 연결 확인 + 요찬 앱", to: ["민수 AWS 배포 (2회차)"]}
+  ],
+  routine: [
+    ["매일 17:30", "각자 Discord에 3줄 — 완료 / 막힘(누구 때문) / 내일"],
+    ["매일 저녁", "민수가 브랜치·PR·CI와 대조해 이 현황판 DATA 갱신 → main PR. 끝낸 사람은 다음 일, 막힌 사람은 대체 일"],
+    ["금 17:30", "1회차 판정(완료/진행 중)과 다음 주 배정"],
+    ["항상", "main 직접 푸시 금지 — 본인 브랜치 → PR. 작업 전 git pull"]
+  ],
+  log: [
+    ["11/08", "운영 방식 전환: 날짜별 시간표 → 1.5일 배정 + 저녁 재배정. #13(main 직접 푸시 금지) · #14(현황 갱신) 병합, 6개 브랜치 최신 main으로 통일"]
+  ]
+};
+// ===== 수정 끝 =====
+
+const S = {ok: ["완료", "s-ok"], run: ["진행", "s-run"], wait: ["대기", "s-wait"], block: ["막힘", "s-block"], todo: ["예정", "s-todo"]};
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+// 정해진 5개 외 상태값(오타 등)이어도 페이지가 멈추지 않게 회색 "확인 필요"로 표시
+const badge = s => { const [t, c] = S[s] || [`확인 필요: ${esc(s)}`, "s-todo"]; return `<span class="badge ${c}">${t}</span>`; };
+const items = list => list.map(i => `<li class="${i.done ? "done" : ""}"><span class="m">${i.done ? "✔" : "○"}</span><span>${esc(i.t)}</span></li>`).join("");
+
+$("meta").textContent = `갱신 ${DATA.updated} · 이번 주 ${DATA.week} · main ${DATA.mainSha}`;
+$("direction").innerHTML = DATA.direction.map(([k, v]) => `<div><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("");
+
+const done = DATA.goals.filter(g => g.done).length;
+$("goals").innerHTML = `<div class="sub">${done} / ${DATA.goals.length} 달성</div><div class="bar"><span style="width:${done / DATA.goals.length * 100}%"></span></div>
+<ul style="margin-top:8px">${items(DATA.goals.map(g => ({t: g.name, done: g.done})))}</ul>`;
+
+$("roadmap").innerHTML = DATA.rounds.map(r => `<div class="round ${r.now ? "now" : ""}"><b>${r.n}회차${r.now ? " · 지금" : ""}</b>${esc(r.t)}</div>`).join("");
+$("legend").innerHTML = Object.keys(S).map(badge).join("");
+
+$("cards").innerHTML = DATA.people.map(p => `<div class="box card">
+  <h3><span>${p.no}. ${esc(p.name)}</span>${badge(p.status)}</h3>
+  <div class="role">${esc(p.role)}</div>
+  ${p.note ? `<div class="dep" style="background:var(--block-bg);color:var(--block)">⚠ ${esc(p.note)}</div>` : ""}
+  <div class="lbl">주력 ≈1.5일</div><ul>${items(p.main)}</ul>
+  <div class="lbl">대기열 ≈1.5일 (주력이 막히거나 끝나면)</div><ul>${items(p.queue)}</ul>
+  <div class="dep ${p.dep ? "" : "none"}">${p.dep ? "⏳ " + esc(p.dep) : "✓ 기다릴 사람 없음 — 이 일이 팀 전체의 출발점"}</div>
+  <div class="links"><a href="${GH}/blob/${p.id}/${encodeURI(p.folder)}/TODO.md">개인 TODO (${p.id} 브랜치)</a></div>
+</div>`).join("");
+
+$("flow").innerHTML = DATA.flow.map(f => `<div class="edge"><span class="node ${f.hot ? "hot" : ""}">${esc(f.from)}</span><span class="arrow">→</span>${f.to.map(t => `<span class="node">${esc(t)}</span>`).join("")}</div>`).join("")
+  + `<div class="sub">빨간 칸 = 지금 여러 사람이 기다리는 지점</div>`;
+
+$("routine").innerHTML = `<table><tbody>${DATA.routine.map(([k, v]) => `<tr><th style="width:110px">${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</tbody></table>`;
+$("log").innerHTML = DATA.log.map(([d, v]) => `<tr><td style="width:70px">${esc(d)}</td><td>${esc(v)}</td></tr>`).join("");
+
+$("docs").innerHTML = [
+  ["공용 TODO (기준 문서)", "TASK_TODO.md"],
+  ["팀 진행 및 일일 리뷰", "docs/팀_진행_및_리뷰.md"],
+  ["기본 구현 명세", "docs/구현명세/기본프로젝트_구현명세.md"],
+  ["PR 목록", GH + "/pulls?q=is%3Apr"],
+  ["CI 실행 기록", GH + "/actions"]
+].map(([t, h]) => `<a href="${h.startsWith("http") ? h : encodeURI(h)}">${esc(t)}</a>`).join(" · ");
+</script>
+</body>
+</html>

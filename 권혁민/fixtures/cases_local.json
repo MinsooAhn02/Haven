@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-local-fixture-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "FIX-01",
+      "category": "local_baseline",
+      "method": "GET",
+      "path": "/healthz",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "note": "로컬 가상 서버 정상 GET",
+      "verification_mode": "http_only"
+    },
+    {
+      "case_id": "FIX-02",
+      "category": "authentication",
+      "method": "GET",
+      "path": "/posts/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "note": "비로그인 GET에 대한 가상 로그인 리다이렉트",
+      "verification_mode": "http_only"
+    },
+    {
+      "case_id": "FIX-03",
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "anonymous",
+      "input_reference": "post_without_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "note": "CSRF 누락 요청이 가상 앱에서 403인지 검사",
+      "verification_mode": "http_only"
+    },
+    {
+      "case_id": "FIX-04",
+      "category": "waf_simulation",
+      "method": "GET",
+      "path": "/mock-waf-block",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "BLOCK",
+      "max_requests": 1,
+      "note": "가상 WAF BLOCK 로그 판정 경로 테스트. AWS WAF 동작 증거 아님",
+      "verification_mode": "http_only"
+    }
+  ]
+}

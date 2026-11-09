@@ -33,7 +33,7 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "비로그인 사용자의 CSRF 토큰 없는 글 작성 요청은 거부되어야 하며 DB에 글이 생성되지 않아야 한다"
+      "note": "Origin 없음, 비로그인 사용자의 CSRF 토큰 없는 글 작성 요청은 거부되어야 하며 DB에 글이 생성되지 않아야 한다"
     }
   ]
 }

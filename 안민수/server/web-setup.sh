@@ -20,6 +20,8 @@ command -v aws >/dev/null || snap install aws-cli --classic
 id haven >/dev/null 2>&1 || useradd --system --home-dir "$H" --shell /usr/sbin/nologin haven
 install -d -o haven -g haven -m 755 "$H" "$H/releases"   # 755: nginx(www-data)가 static을 읽어야 함
 install -d -o haven -g haven -m 700 "$H/.ssh"
+# 첨부 원본(3회차, 앱계약 HAVEN_UPLOAD_DIR). Nginx는 직접 제공하지 않는다: 다운로드는 앱이 권한 확인 후.
+install -d -o haven -g haven -m 750 "$H/uploads"
 install -d -o root -g haven -m 750 /etc/haven
 [[ -x $H/venv/bin/python ]] || runuser -u haven -- python3 -m venv "$H/venv"
 
@@ -37,6 +39,7 @@ ALLOWED_HOSTS=$ALLOWED_HOSTS
 REPO_URL=$REPO_URL
 APP_SUBDIR=$APP_SUBDIR
 PARAM_PREFIX=$PARAM_PREFIX
+CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-}
 AWS_REGION=$AWS_REGION
 EOF
 chmod 640 /etc/haven/site.conf; chgrp haven /etc/haven/site.conf
@@ -58,6 +61,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
+ReadWritePaths=$H/uploads
 
 [Install]
 WantedBy=multi-user.target

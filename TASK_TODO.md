@@ -171,7 +171,7 @@ flowchart LR
 | 노푸른 | 결정 답변·템플릿 시작 전 | 1~3회차 전 화면 템플릿 + 연결·브라우저 확인 + 점검표 | `Pureun` 브랜치 |
 | 권혁민 | #7 병합(51 passed), 앱 계약 기준 fixture 맞추기 시작 전 | 1~3회차 fixture 전부 + 요찬 PR 보안 점검 + 로컬·AWS 실제 시험 + request_id 대조·WAF Count 계획 | merge `3855664` |
 | 김보람 | 결정 이의 없음. 비용표 초안 `Boram` `2171d06`(NAT·ALB·WAF 24시간 최악 기준 $100으로 23~27일). IAM JSON 작성 전 | 비용표 재계산(NAT 낮만, ALB·WAF 다음 주) → IAM 전체 작성·적용·허용/거부 시험(수) → 경보 실제 설정 → 비용 조회 스크립트 → 새 계정 절차 | #8·#11 |
-| 이민성 | #18 병합(`a3c962f`). 결정 5번 답변 없음(구축 때 확인) | 구축·`nat-up`/`nat-down`·삭제 스크립트 → 수 구축 → 연결·거부 증거 → 매일 밤 NAT 삭제 → ALB/ACM 설계 | merge `a3c962f` |
+| 이민성 | #18 병합(`a3c962f`). 연결확인표(기대값까지)·결정 5번 확인·SG outbound 80 반영(`Minsung` `816ceb1`, PR 전). 가동 09~21시·임시 EC2·재부팅 시험 확정 | 구축·`nat-up`/`nat-down`·삭제 스크립트 → 수 구축 → 연결·거부 증거 → 매일 밤 NAT 삭제 → ALB/ACM 설계 | merge `a3c962f` |
 
 PR #3은 화면 시안, PR #2는 설계·fixture 단계로 merge commit 병합했다. 두 PR의 GitGuardian 검사도 통과했다. Django 연결·live AWS 수집·실제 AWS 구축/연결은 후속 작업이며, 위 병합으로 회차 전체를 완료 처리하지 않는다.
 

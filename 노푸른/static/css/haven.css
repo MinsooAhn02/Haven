@@ -18,6 +18,7 @@ body { margin: 0; min-height: 100vh; }
 .record-list { display: grid; gap: 0; }
 .record-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid #e5ece6; }
 .record-title { overflow-wrap: anywhere; }
+.record-meta { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin: -.25rem 0 1.25rem; color: #5d6d63; font-size: .95rem; }
 .pagination { justify-content: center; margin-top: 1.5rem; }
 .page-link { padding: .5rem .75rem; border-radius: .4rem; background: #eef4ef; color: #286349; }
 .page-link[aria-disabled="true"] { color: #7d8980; }

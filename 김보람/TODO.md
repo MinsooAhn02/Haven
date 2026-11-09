@@ -68,7 +68,8 @@
 
 ### 미완료·다음에 진행
 - [ ] 이민성 구축 스크립트에 필요한 실제 EC2/VPC 권한·태그 조건 추가 확인 후 `minsung`에게 인프라 정책 연결
-- [ ] 민성님 사용자 최초 로그인·MFA 및 IAM 허용/거부 시험 기록
+- [x] `minsung` 사용자에 본인 MFA 등록용 인라인 정책 `Haven-Minsung-Self-MFA-Policy` 연결 확인(11/09 사용자 제공 IAM 화면)
+- [ ] 민성님 실제 MFA 등록·최초 로그인·IAM 허용/거부 시험 기록
 - [x] IAM 사용자 `minsoo` 생성 및 `Haven-Minsoo-SSM-Policy` 인라인 정책 연결(서울 `/haven/*` 읽기·쓰기, 사용자 작업 완료 보고)
 - [x] [08_Minsoo_SSM_Parameters_Policy.json](IAM/08_Minsoo_SSM_Parameters_Policy.json) GitHub 정책 템플릿 기록
 - [x] 민수님 최초 IAM 콘솔 로그인 성공 보고 (MFA 등록 및 CloudShell 권한 부족 확인)

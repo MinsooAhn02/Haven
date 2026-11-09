@@ -488,6 +488,71 @@
       "note": "사전조건 P1은 A 소유. 수정 후 P1의 DB/본문 반영 수동 확인"
     },
     {
+      "case_id": "SH-01-B-SHARED-BEFORE",
+      "phase": 2,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "SH-01 공유 전 대조군: B의 공유 목록은 200이지만 P1은 미노출. 초기 DB에서 B가 공유받은 글이 없는지 확인"
+    },
+    {
+      "case_id": "SH-01-C-SHARED-BEFORE",
+      "phase": 2,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "SH-01 미공유 사용자 C의 목록 조회는 200. P1은 미노출이며 실제 화면 확인 필요"
+    },
+    {
+      "case_id": "SH-01-B-DETAIL-BEFORE",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "SH-01 공유 전 B가 A 소유 P1에 직접 접근하면 404. P1은 ACTIVE, B에게 미공유 상태여야 함"
+    },
+    {
+      "case_id": "SH-07-ANON-SHARED-GET",
+      "phase": 2,
+      "category": "authentication",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "SH-07 비로그인 사용자의 공유 목록 접근은 로그인으로 이동. Location의 next 쿼리값은 경로 비교에서 제외"
+    },
+    {
       "case_id": "SEC-03",
       "phase": 2,
       "category": "sqli",

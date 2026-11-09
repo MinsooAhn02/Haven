@@ -150,8 +150,8 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
   selected_cases, excluded_cases를 기록한다.
 - 제외된 다른 회차 케이스는 미실행 오류로 계산하지 않는다.
 
-현재 cases_haven_template.json은 총 43개이며,
-1회차 34개·2회차 8개·3회차 1개로 구성되어 있다.
+현재 cases_haven_template.json은 총 47개이며,
+1회차 34개·2회차 12개·3회차 1개로 구성되어 있다.
 
 공유 허용·해제·비활성화처럼 사전 DB 상태가 서로 다른
 시나리오는 별도 fixture 파일로 구분하여 관리한다.

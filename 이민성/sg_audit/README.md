@@ -189,8 +189,13 @@ echo $LASTEXITCODE
 | AUD-09 | `unknown_role.json` | PASS 8, UNKNOWN 1 | UNKNOWN | UNKNOWN (SG-06: tmp-1은 baseline에 없는 자산) | 3 |
 | AUD-08 | `error_access_denied.json` | UNKNOWN 3, ERROR 1 | ERROR | ERROR (DescribeSecurityGroups: UnauthorizedOperation). 수집 결과가 없어 alb·web-1·db-1은 UNKNOWN으로 보존 | 2 |
 
-회귀 시험은 `python -m unittest -v test_network_audit`로 실행한다.
-- 2026-11-06 실행 결과: 5개 통과(OK). 기본 fixture 4종·출력 형식, baseline 자산 누락 → UNKNOWN, 잘못된 JSON/구조 → ERROR(2), 출력 경로 오류 → ERROR(2), 수집 오류가 있어도 개별 결과 보존.
+회귀 시험은 저장소 루트(`C:\Git4\Haven`)에서 실행한다.
+
+```powershell
+python -B -m unittest discover -s 이민성/sg_audit -p test_network_audit.py -v
+```
+
+2026-11-09 실행 결과: 5개 통과(OK)
 
 추가 확인:
 - 같은 `--output-dir`로 다시 실행하면 덮어쓰지 않고 ERROR(2)로 멈춘다.

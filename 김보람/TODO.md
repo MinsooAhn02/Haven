@@ -48,7 +48,7 @@
 | 회차 | 상태 | 실제 진행·검증 결과 | 관련 문서·PR | 다음 작업·인계 |
 |---|---|---|---|---|
 | 1 | 부분 완료 | 루트·시험용 IAM 사용자 MFA 확인, 서울 리전 자원 조회, 크레딧·비용 알림 확인, 일부 허용·거부 시험 | [1회차](1회차.md), [결정현황](민수_인계_결정현황.md), PR #8(병합) | 남은 계정 복구/타 리전 확인 및 운영 결정 반영 |
-| 2 | 진행 중 | 11/09: $100 예산·$50/$80/$95 경보 설정, 공통 EC2 SSM Role·프로파일 생성, minsung 계정·제한된 PassRole 연결, 인프라 정책 생성(사용자 미연결), EC2 Role SSM 읽기 인라인 정책 및 S3 백업·복원 인라인 정책 연결. 실제 인프라 권한 허용·거부 시험은 미실시 | [2회차 작업 기록](2회차.md), [IAM 파일](IAM/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 인프라 정책 검증·연결, minsoo 최초 로그인·MFA·SSM 검증, S3 버킷 생성·백업/복원 시험, 팀원별 허용·거부 시험 |
+| 2 | 진행 중 | 11/09: $100 예산·$50/$80/$95 경보 설정, 공통 EC2 SSM Role·프로파일 생성, minsung 계정·제한된 PassRole 연결, 인프라 정책 생성·사용자 연결 확인, EC2 Role SSM 읽기 인라인 정책 및 S3 백업·복원 인라인 정책 연결. 실제 인프라 권한 허용·거부 시험은 미실시 | [2회차 작업 기록](2회차.md), [IAM 파일](IAM/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 인프라 권한 허용·거부 검증, minsoo MFA·SSM 검증, S3 버킷 생성·백업/복원 시험, 팀원별 허용·거부 시험 |
 | 3 | 미착수 | 미확인 | — | 3회차 권한·WAF·로그 보완 |
 | 4 | 미착수 | 미확인 | — | 최종 권한/비용·자원 종료 검토 |
 
@@ -61,13 +61,14 @@
 - [x] AWS Budgets 비용 예산 $100 및 실제 사용 비용 경보 $50·$80·$95 설정
 - [x] EC2 공통 역할 `haven-ec2-ssm-role` 및 프로파일 `haven-ec2-ssm-profile` 생성·연결 확인
 - [x] `minsung` IAM 사용자 생성, 제한된 `iam:PassRole` 정책 연결(EC2 서비스에 `haven-ec2-ssm-role`만 전달)
-- [x] `Haven-Minsung-Infra-Policy` 생성 (**아직 `minsung`에게 연결하지 않음**)
+- [x] `Haven-Minsung-Infra-Policy` 생성 및 `minsung`에게 연결 확인 (11/09 IAM 화면)
 - [x] EC2 Role에 `ssm:GetParameter`(서울 리전 `/haven/*`) 인라인 읽기 권한 생성·연결
 - [x] IAM 설계·정책 JSON 초안 제출([PR #29](https://github.com/MinsooAhn02/Haven/pull/29))
 - [x] [2회차 상세 작업 기록](2회차.md) 작성 및 오늘 상태 반영
 
 ### 미완료·다음에 진행
-- [ ] 이민성 구축 스크립트에 필요한 실제 EC2/VPC 권한·태그 조건 추가 확인 후 `minsung`에게 인프라 정책 연결
+- [x] AWS `minsung` 사용자에 `Haven-Minsung-Infra-Policy` 연결 확인 (4개 정책 화면)
+- [ ] 이민성 구축 스크립트의 EC2/VPC 권한·태그 조건 확인 및 실제 허용·거부 시험
 - [x] `minsung` 사용자에 본인 MFA 등록용 인라인 정책 `Haven-Minsung-Self-MFA-Policy` 연결 확인(11/09 사용자 제공 IAM 화면)
 - [ ] 민성님 실제 MFA 등록·최초 로그인·IAM 허용/거부 시험 기록
 - [x] IAM 사용자 `minsoo` 생성 및 `Haven-Minsoo-SSM-Policy` 인라인 정책 연결(서울 `/haven/*` 읽기·쓰기, 사용자 작업 완료 보고)

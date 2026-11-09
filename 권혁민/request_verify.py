@@ -19,6 +19,8 @@ import sys
 import time
 from urllib.parse import urlsplit, urlunsplit
 import uuid
+import socket
+import threading
 
 import requests
 
@@ -119,6 +121,24 @@ def canonical_origin(value: str) -> str:
         return f"{p.scheme}://{display_host}:{port}"
     except ValueError as exc:
         raise ConfigError(f"유효하지 않은 origin: {exc}") from exc
+
+
+def serialize_origin_header(origin: str) -> str:
+    """HTTP Origin 헤더용 직렬화. 기본 포트는 생략한다."""
+    normalized = canonical_origin(origin)
+    parsed = urlsplit(normalized)
+
+    host = parsed.hostname
+    display_host = f"[{host}]" if ":" in host else host
+
+    default_port = 443 if parsed.scheme == "https" else 80
+
+    port_suffix = (
+        "" if parsed.port == default_port
+        else f":{parsed.port}"
+    )
+
+    return f"{parsed.scheme}://{display_host}{port_suffix}"
 
 
 def validate_path(path: str) -> str:
@@ -385,7 +405,7 @@ def new_session() -> requests.Session:
 
 def bounded_send(s: requests.Session, method: str, target: str, path: str, budget: RequestBudget,
                  request_id: str, *, fields=None, file_info=None, headers=None,
-                 max_response_bytes=MAX_RESPONSE, read_redirect_body=False, trace_id=None) -> tuple[dict, bytes | None]:
+                 max_response_bytes=MAX_RESPONSE, read_redirect_body=False, trace_id=None, on_send=None) -> tuple[dict, bytes | None]:
     """HTTP를 최대 1회 전송한다. 리다이렉트 미추적·TLS 확인·응답 상한 적용."""
     url = target + validate_path(path)
     h = {REQ_ID_HEADER: request_id}
@@ -406,6 +426,11 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
             raise ConfigError("요청 준비 과정에서 origin이 바뀌었습니다")
         timeout = budget.begin()
         start = time.monotonic()
+
+        # 속도 제한 대기가 끝난 후 실제 HTTP 전송 직전 시각 기록
+        if on_send is not None:
+            on_send(utc_now())
+
         with s.send(prepared, allow_redirects=False, timeout=timeout, stream=True, verify=True) as resp:
             total = 0
             digest = hashlib.sha256()
@@ -449,19 +474,67 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
                     "request_body_bytes": request_body_bytes,
                 }, None
             
-            for chunk in resp.iter_content(chunk_size=64 * 1024):
-                elapsed_total = time.monotonic() - budget.started
-                if elapsed_total >= budget.duration:
-                    raise ExecutionError("응답을 읽는 중 전체 실행 시간 한도를 초과했습니다")
-                if not chunk:
-                    continue
-                total += len(chunk)
-                if total > max_response_bytes:
-                    raise TooLargeResponse("실제 응답이 허용 크기를 초과합니다")
-                digest.update(chunk)
-                # Capture only preparation HTML (never persist); all other content is discarded.
-                if path == "/accounts/login/" and total <= 65536:
-                    chunks.append(chunk)
+            # 전체 실행 제한 시간을 절대 deadline으로 계산한다.
+            deadline = budget.started + budget.duration
+            remaining = deadline - time.monotonic()
+
+            if remaining <= 0:
+                raise ExecutionError(
+                    "응답을 읽는 중 전체 실행 시간 한도를 초과했습니다"
+                )
+
+            deadline_expired = threading.Event()
+
+            def interrupt_stream():
+                # 제한 시간에 도달하면 진행 중인 소켓 수신을 중단한다.
+                deadline_expired.set()
+                try:
+                    resp.raw._fp.fp.raw._sock.shutdown(socket.SHUT_RDWR)
+                except (AttributeError, OSError):
+                    pass
+
+            watchdog = threading.Timer(remaining, interrupt_stream)
+            watchdog.daemon = True
+            watchdog.start()
+
+            try:
+                for chunk in resp.iter_content(chunk_size=64 * 1024):
+                    if time.monotonic() >= deadline:
+                        raise ExecutionError(
+                            "응답을 읽는 중 전체 실행 시간 한도를 초과했습니다"
+                        )
+
+                    if not chunk:
+                        continue
+
+                    total += len(chunk)
+
+                    if total > max_response_bytes:
+                        raise TooLargeResponse(
+                            "실제 응답이 허용 크기를 초과합니다"
+                        )
+
+                    digest.update(chunk)
+
+                    # 로그인 준비 HTML만 메모리에 보관한다.
+                    if path == "/accounts/login/" and total <= 65536:
+                        chunks.append(chunk)
+
+                if deadline_expired.is_set() or time.monotonic() >= deadline:
+                    raise ExecutionError(
+                        "응답을 읽는 중 전체 실행 시간 한도를 초과했습니다"
+                    )
+
+            except (requests.RequestException, OSError) as exc:
+                if deadline_expired.is_set() or time.monotonic() >= deadline:
+                    raise ExecutionError(
+                        "응답을 읽는 중 전체 실행 시간 한도를 초과했습니다"
+                    ) from exc
+                raise
+
+            finally:
+                watchdog.cancel()
+                watchdog.join()
             safe_headers = {key: resp.headers[key] for key in (
                 "Content-Type", "Content-Disposition", "X-Content-Type-Options", "Cache-Control", "X-Request-ID"
             ) if key in resp.headers}
@@ -498,10 +571,16 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
                run_id: str, prep_events: list, max_response_bytes: int) -> None:
     """역할별 시험 계정으로 로그인한다. 비밀번호는 대화형 입력하고 기록 금지."""
     print(f"[인증 준비] {role}: 가상 시험 계정 정보를 대화형으로 입력하세요", file=sys.stderr)
-    username = input(f"  {role} 사용자 이름: ").strip()
+    try:
+        username = input(f"  {role} 사용자 이름: ").strip()
+    except EOFError as exc:
+        raise ExecutionError("사용자 이름 입력을 받을 수 없습니다") from exc
     if not username:
         raise ExecutionError("사용자 이름이 비어 있습니다")
-    password = getpass.getpass(f"  {role} 비밀번호(화면 미표시): ")
+    try:
+        password = getpass.getpass(f"  {role} 비밀번호(화면 미표시): ")
+    except EOFError as exc:
+        raise ExecutionError("비밀번호 입력을 받을 수 없습니다") from exc
     if not password:
         raise ExecutionError("비밀번호가 비어 있습니다")
     rid = str(uuid.uuid4())
@@ -525,7 +604,7 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
             "csrfmiddlewaretoken": csrf,
         },
         headers={
-            "Origin": target,
+            "Origin": serialize_origin_header(target),
             "X-CSRFToken": csrf,
             RUN_ID_HEADER: run_id,
         },
@@ -585,7 +664,7 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
     # Origin 공격은 '목적지' 변경이 아니라 헤더만 변경한다.
     origin_mode = payload.get("origin_mode", "same")
     if origin_mode == "same":
-        headers["Origin"] = target
+        headers["Origin"] = serialize_origin_header(target)
     elif origin_mode == "foreign":
         headers["Origin"] = "https://attacker.invalid"
 
@@ -806,6 +885,9 @@ def run(args) -> int:
                     read_redirect_body=any(
                         key in case["expected_app"]
                         for key in ("body_bytes", "sha256")
+                    ),
+                    on_send=lambda timestamp: record.update(
+                        timestamp_utc=timestamp
                     ),
                 )
                 record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
@@ -1062,7 +1144,7 @@ def correlate(args) -> int:
             if e.get("synthetic_fixture") is True:
                 row["evidence_kind"] = "SYNTHETIC_FIXTURE_NOT_REAL_WAF"
             action = str(e.get("action", e.get("waf_action", "UNKNOWN"))).upper()
-            counts = [x.get("ruleId") for x in e.get("nonTerminatingMatchingRules", []) if isinstance(x, dict) and x.get("action") == "COUNT"]
+            counts = extract_count_rule_ids(e)
             row["rule_id"] = e.get("terminatingRuleId", e.get("rule_id"))
             row["waf_action"] = action
             row["count_rule_ids"] = counts
@@ -1074,21 +1156,52 @@ def correlate(args) -> int:
             ev = app_events[0]
             if ev.get("synthetic_fixture") is True:
                 row["evidence_kind"] = "SYNTHETIC_FIXTURE_NOT_REAL_WAF"
+
             app_status = ev.get("http_status", ev.get("status"))
             row["app_observed"] = True
-            row["app_validity"] = "MATCH" if (app_status == row["expected_app"]["http_status"] and row["http_expectation_match"]) else "MISMATCH"
-        elif row["waf_verdict"] == "BLOCK":
-            row["app_observed"] = False
-            row["app_validity"] = "NOT_APPLICABLE"
+
+            row["app_validity"] = (
+                "MATCH"
+                if (
+                    app_status == row["expected_app"]["http_status"]
+                    and row["http_expectation_match"]
+                )
+                else "MISMATCH"
+            )
+
         else:
-            row["app_validity"] = "UNKNOWN"
+            # 앱 로그가 확인되지 않은 경우
+            row["app_observed"] = False
+
+            if (
+                row["waf_verdict"] == "BLOCK"
+                and row["expected_waf"] == "BLOCK"
+            ):
+                # 명시적인 WAF 차단 시험에서는 앱 미도달이 정상
+                row["app_validity"] = "NOT_APPLICABLE"
+            else:
+                # 앱 검증이 필요한 시험에서 로그가 없으면 미확정
+                row["app_validity"] = "UNKNOWN"
         # 정상 HTTP 코드보다 WAF/앱 증거의 일관성을 먼저 확인한다.
-        evidence_ok = not conflict and ((valid_waf or not needs_waf) and (valid_app or row["waf_verdict"] == "BLOCK"))
+        # 앱 로그 생략은 명시적인 WAF BLOCK 시험에서만 허용한다.
+        expected_block = row["expected_waf"] == "BLOCK"
+        actual_block = row["waf_verdict"] == "BLOCK"
+
+        app_evidence_ok = valid_app or (expected_block and actual_block)
+
+        evidence_ok = (
+            not conflict
+            and (valid_waf or not needs_waf)
+            and app_evidence_ok
+        )
         waf_match = True
         if needs_waf:
             expected = row["expected_waf"]
             if expected == "COUNT":
-                waf_match = bool(counts) or action == "COUNT"
+                waf_match = (
+                    row["waf_verdict"] == "ALLOW"
+                    and (bool(counts) or action == "COUNT")
+                )
             else:
                 waf_match = row["waf_verdict"] == expected
         if not evidence_ok:
@@ -1115,6 +1228,64 @@ def correlate(args) -> int:
     code = get_exit_code(records, incomplete=bool(state.get("stopped_reason")) or bool(state.get("unexecuted_cases")))
     print(f"correlate 결과: {args.output_dir / 'correlated_results.json'} (종료 코드 {code})", file=sys.stderr)
     return code
+
+
+def extract_count_rule_ids(event: dict) -> list[str]:
+    """AWS WAF 최상위·규칙 그룹 내부의 Count 매칭을 수집한다."""
+    counts = []
+
+    def collect(rules, group_id=None):
+        if not isinstance(rules, list):
+            return
+
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+
+            if rule.get("action") != "COUNT":
+                continue
+
+            rule_id = rule.get("ruleId")
+            if not isinstance(rule_id, str) or not rule_id:
+                continue
+
+            if group_id:
+                counts.append(f"{group_id}::{rule_id}")
+            else:
+                counts.append(rule_id)
+
+    # 1. Web ACL 최상위 Count
+    collect(event.get("nonTerminatingMatchingRules"))
+
+    # 2. 규칙 그룹 내부 Count
+    groups = event.get("ruleGroupList")
+    if isinstance(groups, list):
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+
+            group_id = group.get("ruleGroupId")
+            if not isinstance(group_id, str) or not group_id:
+                continue
+
+            collect(
+                group.get("nonTerminatingMatchingRules"),
+                group_id
+            )
+
+            # 3. 기존 excludedRules Count 로그 호환
+            excluded = group.get("excludedRules")
+            if isinstance(excluded, list):
+                for rule in excluded:
+                    if not isinstance(rule, dict):
+                        continue
+
+                    rule_id = rule.get("ruleId")
+                    if isinstance(rule_id, str) and rule_id:
+                        counts.append(f"{group_id}::{rule_id}")
+
+    # 중복 제거, 발견 순서 유지
+    return list(dict.fromkeys(counts))
 
 
 def create_parser():

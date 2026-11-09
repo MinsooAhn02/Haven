@@ -1204,21 +1204,55 @@ def correlate(args) -> int:
                 )
             else:
                 waf_match = row["waf_verdict"] == expected
-        if not evidence_ok:
+        
+        # 유효한 WAF 로그에서 기대 동작과의 불일치가
+        # 확정되었다면 앱 로그가 없어도 FAIL로 판정한다.
+        confirmed_waf_mismatch = (
+            valid_waf
+            and needs_waf
+            and row["waf_verdict"] in {"ALLOW", "BLOCK"}
+            and not waf_match
+            and not conflict
+        )
+
+        if confirmed_waf_mismatch:
+            # WAF 불일치는 확정되었지만,
+            # 앱 로그가 없으면 전체 상관분석은 미해결 상태다.
+            row["correlation_status"] = (
+                "MATCHED" if valid_app else "UNRESOLVED"
+            )
+            row["verdict"] = "FAIL"
+
+        elif not evidence_ok:
             row["correlation_status"] = "UNRESOLVED"
             row["verdict"] = "UNKNOWN"
+
             if conflict:
                 row["waf_verdict"] = "UNKNOWN"
                 row["app_validity"] = "UNKNOWN"
+
         else:
             row["correlation_status"] = "MATCHED"
-            if not waf_match or row["http_expectation_match"] is False or row["app_validity"] == "MISMATCH":
+
+            if (
+                not waf_match
+                or row["http_expectation_match"] is False
+                or row["app_validity"] == "MISMATCH"
+            ):
                 row["verdict"] = "FAIL"
-            elif row["app_validity"] in {"MATCH", "NOT_APPLICABLE"}:
-                # DB·브라우저 확인이 남은 보안 시나리오는 자동 PASS 금지.
-                row["verdict"] = ("PASS" if row.get("verification_mode") == "http_only" else "UNKNOWN")
+
+            elif row["app_validity"] in {
+                "MATCH", "NOT_APPLICABLE"
+            }:
+                row["verdict"] = (
+                    "PASS"
+                    if row.get("verification_mode") == "http_only"
+                    else "UNKNOWN"
+                )
+
             else:
                 row["verdict"] = "UNKNOWN"
+
         records.append(row)
     out = {k: v for k, v in state.items() if k not in {"results", "preparation_events"}}
     out["source"] = "correlated_from_local_logs"

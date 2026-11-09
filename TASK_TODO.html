@@ -103,21 +103,21 @@ window.addEventListener("error", e => {
 // 항목 done:true = 실제로 실행·확인한 것만
 const GH = "https://github.com/MinsooAhn02/Haven";
 const DATA = {
-  updated: "2026-11-08 (일)",
+  updated: "2026-11-09 (월)",
   week: "2026-11-09(월) ~ 11-13(금)",
-  mainSha: "0876109",
+  mainSha: "c9b4a83 기준",
   direction: [
     ["1순위", "1회차 완료 — 로컬에서 로그인 → 글 CRUD → 타인 글 404 · CSRF 누락 403이 실제 앱·화면·시험·CI로 동작"],
-    ["2순위", "2회차 선행 — AWS 결정 확정, 공유·계정 기능과 화면·시험·서버 확인표를 로컬·초안까지"],
+    ["2순위", "2회차 선행 — AWS 결정 확정(예산 계정당 $100, 다른 계정으로 옮길 수 있게), 공유·계정 기능과 화면·시험·서버 확인표를 로컬·초안까지"],
     ["원칙", "다 못 해도 됩니다. 막히면 대기열로 넘어가고, 남은 건 저녁에 다시 나눕니다. 실제로 돌려 본 것만 완료. 담당 범위·AWS 승인 규칙은 그대로."]
   ],
   goals: [
-    {name: "앱 계약(경로·버전·명령·URL/폼/context) 공유", done: false},
+    {name: "앱 계약(경로·버전·명령·URL/폼/context) 공유", done: true},
     {name: "인증·소유자 CRUD + 404/403 시험", done: false},
     {name: "템플릿 연결·브라우저 흐름 확인", done: false},
     {name: "개발 DB migration + 앱 CI 통과", done: false},
     {name: "1회차 시험 fixture 실제 앱 실행", done: false},
-    {name: "AWS 결정(리전·예산·NAT/S3·메일·AMI) 기록", done: false}
+    {name: "AWS 운영 결정 확정 (docs/AWS_운영결정.md)", done: false}
   ],
   rounds: [
     {n: 1, t: "계정·공통 기반·로컬", now: true},
@@ -127,35 +127,36 @@ const DATA = {
   ],
   people: [
     {id: "Minsoo", name: "안민수", no: 1, role: "팀장 · 공통 환경 · CI · DB · 배포", folder: "안민수", status: "run",
-     main: [{t: "requirements·환경변수·PostgreSQL 개발 DB 절차·앱 CI job 초안"}, {t: "월 오후 AWS 결정 회의 주재 → 결정 기록"}],
-     queue: [{t: "DB 역할 분리·migration·되돌리기 절차 (2회차)"}, {t: "Nginx/Gunicorn/systemd 설정 초안 (2회차)"}],
-     dep: "앱 연결·시험은 요찬 계약·코드 필요"},
-    {id: "Yochan", name: "신요찬", no: 5, role: "Django 인증·모델·CRUD·공유·첨부", folder: "신요찬", status: "block",
-     main: [{t: "앱 계약 먼저 공유 (완성 코드 아니어도 됨)"}, {t: "인증·소유자 CRUD + 타인 404 · CSRF 403 시험 → 앱 PR"}],
+     main: [{t: "앱 통합 초안: requirements·.env.example·앱 CI job·시험 0건 차단 (Minsoo 브랜치)", done: true}, {t: "요찬 계약 결정 8개 답변", done: true}, {t: "AWS 운영 결정 추천안 공유 → 보람·민성 확인 후 확정"}],
+     queue: [{t: "서버 설치·앱 배포 스크립트화 (계정 이전 대비)"}, {t: "DB 역할 분리·migration·되돌리기 절차 (2회차)"}, {t: "첫 배포 직후 백업·복원 연습 계획"}],
+     dep: "앱 연결·CI 실제 실행은 요찬 코드 필요"},
+    {id: "Yochan", name: "신요찬", no: 5, role: "Django 인증·모델·CRUD·공유·첨부", folder: "신요찬", status: "run",
+     main: [{t: "앱 계약 v1 공유 (신요찬/앱계약.md)", done: true}, {t: "인증·소유자 CRUD + 타인 404 · CSRF 403 시험 → Yochan 커밋 (화 17:30 목표)"}],
      queue: [{t: "읽기 공유·해제 모델·뷰·시험 (2회차)"}, {t: "계정 활성/비활성 설계 (2회차)"}],
-     dep: "", note: "원격에 앱 코드 아직 없음 — 팀 전체가 이 계약을 기다림"},
+     dep: "", note: "Python 3.12·3.13 둘 다 동작 유지 (서버는 3.12 예정)"},
     {id: "Pureun", name: "노푸른", no: 2, role: "화면 · Django Templates · CSS", folder: "노푸른", status: "run",
-     main: [{t: "시안 7개 → 필요한 필드·오류 표시 선제안"}, {t: "계약 수신 후 템플릿 연결·브라우저 흐름 확인"}],
+     main: [{t: "앱계약 5장 기준 결정 답변 (#6 템플릿 경로 · #7 가입 후 이동 · #8 405 화면)"}, {t: "노푸른/templates/에 계약 기준 템플릿 작성 → 코드 오면 연결·브라우저 확인"}],
      queue: [{t: "키보드·반응형·빈 목록·오류 점검"}, {t: "공유 목록·공유 관리·계정 관리 화면 시안 (2회차)"}],
-     dep: "템플릿 연결은 요찬 계약 필요"},
+     dep: "실제 연결 확인은 요찬 코드 필요 (템플릿 작성은 지금 가능)"},
     {id: "Hyeokmin", name: "권혁민", no: 3, role: "레드팀 · 요청 CLI · WAF · 로그", folder: "권혁민", status: "run",
-     main: [{t: "#7 요청 CLI 병합 (51 passed)", done: true}, {t: "1회차 시험 시나리오 fixture (정상/비로그인/404/403)"}, {t: "느린 302 시간·크기 제한 확인"}],
+     main: [{t: "#7 요청 CLI 병합 (51 passed)", done: true}, {t: "앱계약 3·4장 기준 1회차 fixture path·필드·CSRF 맞추기 + 결정 #9·#10·#11 답변"}, {t: "느린 302 시간·크기 제한 확인"}],
      queue: [{t: "공유·해제·비활성 시험 fixture (2회차)"}, {t: "첨부 형식·크기·타인 다운로드 fixture (3회차)"}],
-     dep: "실제 실행은 요찬 앱 SHA · 민수 실행 환경 필요"},
+     dep: "실제 실행은 요찬 코드 · 민수 실행 환경 필요"},
     {id: "Boram", name: "김보람", no: 4, role: "계정 · IAM · 접근 · 비용", folder: "김보람", status: "run",
-     main: [{t: "#8 · #11 점검 기록 병합 (루트 MFA·연락 수단)", done: true}, {t: "기간별 예상 비용표 + 결정 항목표 → 회의 후 결정 반영"}],
-     queue: [{t: "사람별 IAM 정책·서버 Role JSON 초안 (적용 금지) + 허용/거부 시험 목록"}, {t: "다른 리전 자원 점검"}],
-     dep: "승인 반영은 민수 결정 필요"},
+     main: [{t: "#8 · #11 점검 기록 병합 (루트 MFA·연락 수단)", done: true}, {t: "비용표: $100으로 며칠 운영 가능한지 + 경보 $50/$80/$95 계획"}, {t: "AWS 운영 결정 확인 → 결정현황 문서에 반영"}],
+     queue: [{t: "IAM 정책·Role JSON 초안 (계정 ID 변수화, 적용 금지)"}, {t: "새 계정 접근·MFA·예산 경보 설정 절차 (이전 대비)"}, {t: "다른 리전 자원 점검"}],
+     dep: "서버 사양·가동 시간은 민성에게서"},
     {id: "Minsung", name: "이민성", no: 6, role: "VPC · EC2 · SSM · ALB/HTTPS · SG CLI", folder: "이민성", status: "run",
-     main: [{t: "864a847 SG 문서 보완 PR"}, {t: "SSM·Web→DB·출구·직접 접근 거부 확인표 (기대값까지)"}],
-     queue: [{t: "VPC/SG/EC2 구축 절차 — 승인 즉시 실행용"}, {t: "live 읽기 수집 설계 · AUD fixture 확장"}],
-     dep: "실제 구축은 민수 결정 · 보람 IAM 필요"}
+     main: [{t: "864a847 SG 문서 보완 PR (#18 병합)", done: true}, {t: "AWS 운영 결정 5번 확인 (Ubuntu 기본 Python 3.12 · apt 80) + 서버 사양·가동 시간을 보람에게"}, {t: "SSM·Web→DB·출구·직접 접근 거부 확인표 (기대값까지)"}],
+     queue: [{t: "구축 절차서 — 다른 계정에서 그대로 재현 가능하게 (계정 ID·ARN 변수화)"}, {t: "live 읽기 수집 설계 · AUD fixture 확장"}],
+     dep: "실제 구축은 결정 확정 · 보람 IAM 필요"}
   ],
   flow: [
-    {from: "요찬 앱 계약", to: ["푸른 템플릿 연결", "혁민 실제 시험", "민수 DB·CI 연결"], hot: true},
-    {from: "민수 AWS 결정", to: ["보람 IAM·비용 반영", "민성 구축 절차"], hot: true},
+    {from: "요찬 앱 코드 (화 17:30)", to: ["푸른 템플릿 연결", "혁민 실제 시험", "민수 DB·CI 연결"], hot: true},
+    {from: "AWS 운영 결정 확정", to: ["보람 IAM·비용 반영", "민성 구축 절차"], hot: true},
+    {from: "민성 서버 사양", to: ["보람 $100 비용표"]},
     {from: "보람 IAM·Role", to: ["민성 VPC/EC2/SSM 구축"]},
-    {from: "민성 연결 확인 + 요찬 앱", to: ["민수 AWS 배포 (2회차)"]}
+    {from: "민성 연결 확인 + 요찬 앱", to: ["민수 AWS 배포 (2회차)", "백업·복원 연습"]}
   ],
   routine: [
     ["매일 끝나면", "각자 Discord에 오늘 상황 보고"],
@@ -164,7 +165,8 @@ const DATA = {
     ["항상", "main 직접 푸시 금지 — 본인 브랜치 → PR. 작업 전 git pull"]
   ],
   log: [
-    ["11/08", "운영 방식 전환: 날짜별 시간표 → 주력·대기열 배정 + 저녁 재배정. #13(main 직접 푸시 금지) · #14(현황 갱신) 병합, 6개 브랜치 최신 main으로 통일"]
+    ["11/08", "운영 방식 전환: 날짜별 시간표 → 주력·대기열 배정 + 저녁 재배정. #13(main 직접 푸시 금지) · #14(현황 갱신) 병합, 6개 브랜치 최신 main으로 통일"],
+    ["11/09", "요찬 앱 계약 v1 수신 → 민수 결정 8개 답변. 민성 #18 병합. AWS 운영 결정 추천안 공유(예산 계정당 $100, 계정 이전 대비) — 보람·민성 확인 대기"]
   ]
 };
 // ===== 수정 끝 =====
@@ -204,6 +206,7 @@ $("log").innerHTML = DATA.log.map(([d, v]) => `<tr><td style="width:70px">${esc(
 
 $("docs").innerHTML = [
   ["공용 TODO (기준 문서)", "TASK_TODO.md"],
+  ["AWS 운영 결정", "docs/AWS_운영결정.md"],
   ["팀 진행 및 일일 리뷰", "docs/팀_진행_및_리뷰.md"],
   ["기본 구현 명세", "docs/구현명세/기본프로젝트_구현명세.md"],
   ["PR 목록", GH + "/pulls?q=is%3Apr"],

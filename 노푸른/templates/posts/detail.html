@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}기록 상세 | Haven 기록{% endblock %}
+{% block body %}
+<main class="page-shell">
+  <article class="panel">
+    <h1>{{ post.title }}</h1>
+    <div class="record-body">{{ post.body|linebreaksbr }}</div>
+    <div class="actions">
+      <a class="button button-secondary" href="{% url 'posts:list' %}">내 기록 목록</a>
+      {% if is_owner %}
+        <a class="button button-primary" href="{% url 'posts:edit' pk=post.pk %}">수정</a>
+        <a class="button button-danger" href="{% url 'posts:delete' pk=post.pk %}">삭제</a>
+      {% endif %}
+    </div>
+  </article>
+</main>
+{% endblock %}

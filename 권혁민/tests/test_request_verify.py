@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 import threading
 import time
+from datetime import datetime, timezone, timedelta
 
 import pytest
 
@@ -548,6 +549,28 @@ def probe_server(*, redirect_to=None):
                 "path": self.path,
                 "cookie": self.headers.get("Cookie", ""),
             })
+
+            if self.path in {"/slow-stream-200", "/slow-stream-302"}:
+                status = 302 if self.path.endswith("302") else 200
+
+                try:
+                    self.send_response(status)
+
+                    if status == 302:
+                        self.send_header("Location", "/accounts/login/")
+
+                    self.send_header("Content-Length", "12")
+                    self.end_headers()
+
+                    for _ in range(12):
+                        self.wfile.write(b"x")
+                        self.wfile.flush()
+                        time.sleep(0.08)
+
+                except OSError:
+                    pass
+
+                return
             
             if self.path == "/slow-302-body":
                 self.send_response(302)
@@ -829,10 +852,65 @@ def test_probe_slow_redirect_body_is_not_read(tmp_path):
 
 
 @pytest.mark.parametrize(
+    "path",
+    ["/slow-stream-200", "/slow-stream-302"]
+)
+def test_streaming_body_respects_global_deadline(tmp_path, path):
+    """느린 응답에서도 전체 실행 제한을 지키고 부분 결과를 보존한다."""
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            [path, "/healthz"]
+        )
+
+        args.timeout = 0.2
+        args.max_duration = 0.25
+
+        suite = cli.load_json(args.cases)
+
+        suite["cases"][0]["expected_app"] = {
+            "http_status": 302 if path.endswith("302") else 200,
+            "body_bytes": 12,
+        }
+
+        args.cases.write_text(
+            json.dumps(suite),
+            encoding="utf-8"
+        )
+
+        started = time.monotonic()
+        assert cli.run(args) == 2
+        elapsed = time.monotonic() - started
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        # 실행 제한 0.25초 + 테스트 환경 허용 오차
+        assert elapsed < 0.60
+
+        # 첫 요청만 전송되어야 한다.
+        assert [row["path"] for row in received] == [path]
+
+        # 부분 결과 보존
+        assert result["total_http_requests_including_preparation"] == 1
+        assert result["unexecuted_cases"] == 1
+        assert len(result["results"]) == 1
+
+        row = result["results"][0]
+
+        assert row["transport_status"] == "ERROR"
+        assert row["verdict"] == "ERROR"
+        assert result["stopped_reason"]
+
+
+@pytest.mark.parametrize(
     "origin_mode, expected_origin",
     [
-        (None, "https://haven.example:443"),
-        ("same", "https://haven.example:443"),
+        (None, "https://haven.example"),
+        ("same", "https://haven.example"),
         ("absent", None),
         ("foreign", "https://attacker.invalid"),
     ],
@@ -960,7 +1038,7 @@ def test_login_prep_sends_same_origin(monkeypatch):
     assert login_post["method"] == "POST"
     assert login_post["path"] == "/accounts/login/"
     assert login_post["headers"]["Origin"] == (
-        "https://haven.example:443"
+        "https://haven.example"
     )
     assert login_post["headers"]["X-CSRFToken"] == (
         "unit-csrf-token"
@@ -2151,3 +2229,495 @@ def test_output_write_failure_returns_exit_code_2(
         assert not (
             args.output_dir / "results.json"
         ).exists()
+
+
+@pytest.mark.parametrize(
+    "origin, expected",
+    [
+        ("https://haven.example", "https://haven.example"),
+        ("https://haven.example:443", "https://haven.example"),
+        ("https://haven.example:8443", "https://haven.example:8443"),
+        ("http://127.0.0.1:80", "http://127.0.0.1"),
+        ("http://127.0.0.1:8000", "http://127.0.0.1:8000"),
+        ("http://[::1]:8000", "http://[::1]:8000"),
+    ],
+)
+def test_serialize_origin_header(origin, expected):
+    """기본 포트는 생략하고 비기본 포트는 유지한다."""
+    assert cli.serialize_origin_header(origin) == expected
+
+
+@pytest.mark.parametrize(
+    "expected_waf, mode, expected_code, expected_verdict",
+    [
+        ("NOT_APPLICABLE", "http_only", 3, "UNKNOWN"),
+        ("COUNT", "http_only", 3, "UNKNOWN"),
+        ("BLOCK", "http_only", 0, "PASS"),
+        ("BLOCK", "manual_required", 3, "UNKNOWN"),
+    ],
+)
+def test_waf_block_requires_explicit_block_expectation(
+    tmp_path, expected_waf, mode, expected_code, expected_verdict
+):
+    """예상하지 않은 WAF 차단이 앱 검증 PASS로 이어지지 않는다."""
+
+    case = {
+        "case_id": "WAF-BLOCK-TEST",
+        "category": "SEC",
+        "method": "POST",
+        "path": "/posts/new/",
+        "auth_role": "member_a",
+        "expected_app": {"http_status": 403},
+        "expected_waf": expected_waf,
+        "verification_mode": mode,
+    }
+
+    row = cli.base_record("unit-run", case)
+    row.update(
+        transport_status="OK",
+        http_status=403,
+        http_expectation_match=True,
+    )
+
+    origin = "https://haven.example:443"
+
+    run_file = tmp_path / "results.json"
+    run_file.write_text(
+        json.dumps({
+            "run_id": "unit-run",
+            "target_origin": origin,
+            "results": [row],
+            "unexecuted_cases": 0,
+            "stopped_reason": None,
+        }),
+        encoding="utf-8",
+    )
+
+    waf_event = {
+        "run_id": "unit-run",
+        "target_origin": origin,
+        "timestamp_utc": row["timestamp_utc"],
+        "trace_id": row["trace_id"],
+        "action": "BLOCK",
+        "terminatingRuleId": "block-rule",
+        "nonTerminatingMatchingRules": [
+            {"ruleId": "count-rule", "action": "COUNT"}
+        ],
+    }
+
+    waf_file = tmp_path / "waf.jsonl"
+    waf_file.write_text(
+        json.dumps(waf_event) + "\n",
+        encoding="utf-8",
+    )
+
+    app_file = tmp_path / "app.jsonl"
+    app_file.write_text("", encoding="utf-8")
+
+    args = Namespace(
+        run_json=run_file,
+        waf_log=waf_file,
+        app_log=app_file,
+        output_dir=tmp_path / "correlated",
+    )
+
+    assert cli.correlate(args) == expected_code
+
+    result = cli.load_json(
+        args.output_dir / "correlated_results.json"
+    )["results"][0]
+
+    assert result["verdict"] == expected_verdict
+    assert result["app_observed"] is False
+
+    if expected_waf == "BLOCK":
+        assert result["app_validity"] == "NOT_APPLICABLE"
+    else:
+        assert result["app_validity"] == "UNKNOWN"
+        assert result["correlation_status"] == "UNRESOLVED"
+
+
+@pytest.mark.parametrize(
+    "event, expected",
+    [
+        # 최상위 Count
+        (
+            {
+                "nonTerminatingMatchingRules": [
+                    {"ruleId": "TOP_COUNT", "action": "COUNT"}
+                ]
+            },
+            ["TOP_COUNT"]
+        ),
+
+        # 규칙 그룹 내부 Count
+        (
+            {
+                "ruleGroupList": [
+                    {
+                        "ruleGroupId": "GROUP_A",
+                        "nonTerminatingMatchingRules": [
+                            {"ruleId": "SQLi_BODY", "action": "COUNT"}
+                        ]
+                    }
+                ]
+            },
+            ["GROUP_A::SQLi_BODY"]
+        ),
+
+        # 여러 그룹에 같은 이름의 규칙
+        (
+            {
+                "ruleGroupList": [
+                    {
+                        "ruleGroupId": "GROUP_A",
+                        "nonTerminatingMatchingRules": [
+                            {"ruleId": "RULE_1", "action": "COUNT"}
+                        ]
+                    },
+                    {
+                        "ruleGroupId": "GROUP_B",
+                        "nonTerminatingMatchingRules": [
+                            {"ruleId": "RULE_1", "action": "COUNT"}
+                        ]
+                    }
+                ]
+            },
+            ["GROUP_A::RULE_1", "GROUP_B::RULE_1"]
+        ),
+
+        # excludedRules 형식
+        (
+            {
+                "ruleGroupList": [
+                    {
+                        "ruleGroupId": "GROUP_A",
+                        "excludedRules": [
+                            {
+                                "ruleId": "LEGACY_RULE",
+                                "exclusionType": "EXCLUDED_AS_COUNT"
+                            }
+                        ]
+                    }
+                ]
+            },
+            ["GROUP_A::LEGACY_RULE"]
+        ),
+
+        # Count가 아닌 CAPTCHA는 제외
+        (
+            {
+                "nonTerminatingMatchingRules": [
+                    {"ruleId": "CAPTCHA_RULE", "action": "CAPTCHA"}
+                ]
+            },
+            []
+        ),
+
+        # AWS 로그의 null 필드 대응
+        (
+            {
+                "nonTerminatingMatchingRules": None,
+                "ruleGroupList": [
+                    {
+                        "ruleGroupId": "GROUP_A",
+                        "nonTerminatingMatchingRules": None,
+                        "excludedRules": None
+                    }
+                ]
+            },
+            []
+        ),
+    ],
+)
+def test_extract_count_rule_ids(event, expected):
+    """AWS WAF Count 규칙을 최상위·그룹 내부에서 추출한다."""
+    assert cli.extract_count_rule_ids(event) == expected
+
+
+def test_correlate_group_count_allows_valid_app(tmp_path):
+    """그룹 내부 Count + WAF ALLOW + 앱 정상 도달을 PASS로 판정한다."""
+
+    case = {
+        "case_id": "GROUP-COUNT-TEST",
+        "category": "SEC",
+        "method": "GET",
+        "path": "/posts/",
+        "auth_role": "member_a",
+        "expected_app": {"http_status": 200},
+        "expected_waf": "COUNT",
+        "verification_mode": "http_only",
+    }
+
+    row = cli.base_record("unit-run", case)
+    row.update(
+        transport_status="OK",
+        http_status=200,
+        http_expectation_match=True,
+    )
+
+    origin = "https://haven.example:443"
+
+    run_file = tmp_path / "results.json"
+    run_file.write_text(
+        json.dumps({
+            "run_id": "unit-run",
+            "target_origin": origin,
+            "results": [row],
+            "unexecuted_cases": 0,
+            "stopped_reason": None,
+        }),
+        encoding="utf-8",
+    )
+
+    waf_event = {
+        "run_id": "unit-run",
+        "target_origin": origin,
+        "timestamp_utc": row["timestamp_utc"],
+        "trace_id": row["trace_id"],
+        "action": "ALLOW",
+        "ruleGroupList": [
+            {
+                "ruleGroupId": "SQLi_GROUP",
+                "nonTerminatingMatchingRules": [
+                    {"ruleId": "SQLi_BODY", "action": "COUNT"}
+                ]
+            }
+        ],
+    }
+
+    app_event = {
+        "run_id": "unit-run",
+        "target_origin": origin,
+        "timestamp_utc": row["timestamp_utc"],
+        "trace_id": row["trace_id"],
+        "http_status": 200,
+    }
+
+    waf_file = tmp_path / "waf.jsonl"
+    waf_file.write_text(
+        json.dumps(waf_event) + "\n",
+        encoding="utf-8",
+    )
+
+    app_file = tmp_path / "app.jsonl"
+    app_file.write_text(
+        json.dumps(app_event) + "\n",
+        encoding="utf-8",
+    )
+
+    args = Namespace(
+        run_json=run_file,
+        waf_log=waf_file,
+        app_log=app_file,
+        output_dir=tmp_path / "correlated",
+    )
+
+    assert cli.correlate(args) == 0
+
+    result = cli.load_json(
+        args.output_dir / "correlated_results.json"
+    )["results"][0]
+
+    assert result["count_rule_ids"] == [
+        "SQLi_GROUP::SQLi_BODY"
+    ]
+    assert result["waf_verdict"] == "ALLOW"
+    assert result["app_validity"] == "MATCH"
+    assert result["verdict"] == "PASS"
+
+
+def test_request_timestamp_uses_send_time_after_login_delay(
+    tmp_path, monkeypatch
+):
+    """로그인 준비가 120초 넘게 걸려도 실제 전송 시각으로 로그를 대조한다."""
+
+    clock = {
+        "now": datetime(2026, 11, 9, 6, 0, tzinfo=timezone.utc)
+    }
+
+    # 테스트용 UTC 시계
+    monkeypatch.setattr(
+        cli,
+        "utc_now",
+        lambda: clock["now"].isoformat(timespec="milliseconds")
+    )
+
+    def fake_login(*args, **kwargs):
+        # 실제로 130초 기다리지 않고 시계만 이동
+        clock["now"] += timedelta(seconds=130)
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz"],
+            ["member_a"]
+        )
+
+        assert cli.run(args) == 3
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        row = result["results"][0]
+
+        # 실제 HTTP 요청은 정상 전송
+        assert row["transport_status"] == "OK"
+        assert len(received) == 1
+
+        # 로그인 준비 후 실제 전송 시각 기록
+        expected_time = clock["now"].isoformat(
+            timespec="milliseconds"
+        )
+        assert row["timestamp_utc"] == expected_time
+
+        origin = cli.canonical_origin(args.target)
+
+        # 실제 전송 시각에 기록된 로그는 정상 연결
+        event = {
+            "run_id": row["run_id"],
+            "target_origin": origin,
+            "timestamp_utc": expected_time,
+        }
+
+        assert cli.plausible_event(event, row, origin)
+
+        # 로그인 준비 이전의 오래된 로그는 거부
+        old_event = {
+            **event,
+            "timestamp_utc": (
+                clock["now"] - timedelta(seconds=130)
+            ).isoformat(timespec="milliseconds"),
+        }
+
+        assert not cli.plausible_event(
+            old_event, row, origin
+        )
+
+
+@pytest.mark.parametrize("stage", ["username", "password"])
+def test_login_input_eof_records_error(
+    tmp_path, monkeypatch, capsys, stage
+):
+    """로그인 입력 EOF를 ERROR로 기록하고 후속 요청을 중단한다."""
+
+    def raise_eof(_prompt):
+        raise EOFError
+
+    if stage == "username":
+        monkeypatch.setattr("builtins.input", raise_eof)
+
+    else:
+        monkeypatch.setattr(
+            "builtins.input",
+            lambda _prompt: "test-user"
+        )
+        monkeypatch.setattr(
+            cli.getpass, "getpass", raise_eof
+        )
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz", "/healthz"],
+            ["member_a", "anonymous"],
+        )
+
+        assert cli.run(args) == 2
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        # 로그인 실패 후 실제 HTTP 요청이 발생하지 않아야 한다.
+        assert received == []
+        assert result["total_http_requests_including_preparation"] == 0
+
+        # 실패한 첫 번째 케이스와 미실행 케이스를 구분한다.
+        assert len(result["results"]) == 1
+        assert result["unexecuted_cases"] == 1
+
+        row = result["results"][0]
+
+        assert row["transport_status"] == "ERROR"
+        assert row["verdict"] == "ERROR"
+        assert row["response_summary"]["error"]
+        assert result["stopped_reason"]
+
+        # 처리되지 않은 예외의 traceback이 출력되면 안 된다.
+        captured = capsys.readouterr()
+        assert "Traceback" not in captured.err        
+
+
+def test_login_eof_preserves_previous_results(
+    tmp_path, monkeypatch
+):
+    """앞선 요청 결과를 유지하고 다음 역할의 로그인 EOF에서 중단한다."""
+
+    original_login = cli.prep_login
+
+    def fake_login(
+        session, target, budget, role,
+        run_id, prep_events, max_response_bytes
+    ):
+        if role == "member_a":
+            # 첫 역할은 인증이 완료된 상황으로 가정한다.
+            session.cookies.set(
+                "sessionid",
+                "test-member-a",
+                domain="127.0.0.1",
+                path="/",
+            )
+            return
+
+        return original_login(
+            session, target, budget, role,
+            run_id, prep_events, max_response_bytes
+        )
+
+    def raise_eof(_prompt):
+        raise EOFError
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr("builtins.input", raise_eof)
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz", "/healthz", "/healthz"],
+            ["member_a", "member_b", "anonymous"],
+        )
+
+        assert cli.run(args) == 2
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        # 첫 번째 요청만 정상 전송한다.
+        assert len(received) == 1
+
+        # 두 번째 케이스에서 중단된다.
+        assert len(result["results"]) == 2
+        assert result["unexecuted_cases"] == 1
+
+        first = result["results"][0]
+        second = result["results"][1]
+
+        # 기존 성공 기록 유지
+        assert first["transport_status"] == "OK"
+        assert first["http_status"] == 200
+
+        # 두 번째 로그인 EOF 기록
+        assert second["transport_status"] == "ERROR"
+        assert second["verdict"] == "ERROR"
+
+        # 세 번째 요청은 실행하지 않는다.
+        assert result["total_http_requests_including_preparation"] == 1
+        assert result["stopped_reason"]

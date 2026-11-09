@@ -84,3 +84,10 @@ PR #5의 병합·main/Minsoo 동기화와 병합 후 CI는 실제 GitHub 결과�
 - [ ] PR (스크립트는 조장도 PR)
 
 결정(조장 11/09): 코드는 읽기 전용 deploy key, 비밀값은 SSM Parameter Store, 시험은 WSL Ubuntu-24.04.
+
+## 민수 2회차 · DB 백업·복원 (2026-11-09, 첫 배포 직후 연습용 + 계정 이전)
+
+- [x] `backup.sh` (db-1): pg_dump(-Fc) + 표별 행 수 + manifest(sha256) → `s3://haven-backup-<계정ID>/db-backups/<UTC시각>/`. 백업 중 데이터가 바뀌면 실패(다시 실행). manifest를 마지막에 올려 "manifest 있음 = 완전한 백업"
+- [x] `restore.sh <시각>` (db-1): 내려받기 → sha256 확인 → 기본은 격리 DB `haven_restore_check`에 복원 → 행 수 비교. 다른 대상(새 계정의 빈 `haven`)은 테이블이 하나라도 있으면 거부
+- [x] 시험(WSL, 19/19 통과): 정상 백업·복원·재실행, 일부러 실패(버킷 없음, S3 거부, 손상된 dump, 비어 있지 않은 대상)
+- 보류: 첨부 파일 백업(3회차, 업로드 생긴 뒤), 자동 실행 타이머(연습 후)

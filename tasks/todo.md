@@ -70,3 +70,17 @@ PR #5의 병합·main/Minsoo 동기화와 병합 후 CI는 실제 GitHub 결과�
 
 ## 2026-11-08 보람 추가 점검 인계
 - [x] #11 병합과 main CI 확인 후 #12로 공용 리뷰를 갱신했다.
+
+## 민수 2회차 · 서버 설치·배포 스크립트 (계획 2026-11-09, 수요일 구축·목/금 첫 배포 대비)
+
+위치 `안민수/server/` (bash, `set -euo pipefail`, LF). SSM으로 서버에서 실행. AWS 자원은 만들지 않는다(민성 담당).
+
+- [x] `db-setup.sh` (db-1): PostgreSQL 16 설치, `listen_addresses`=사설 IP, DB `haven` + `haven_owner`(소유·migrate)/`haven_app`(CRUD만), pg_hba는 web-1 IP/32에서 두 계정만 scram 허용·나머지 reject. 두 번 실행해도 같은 결과
+- [x] `web-setup.sh` (web-1): Python 3.12 venv, `haven` 비root 계정, Gunicorn(127.0.0.1:8000, systemd), Nginx(:80 → Gunicorn, static 직접 제공, `/healthz`는 Host 고정해 ALB 검사 통과)
+- [x] `deploy.sh` (web-1): 지정 commit 받기 → pip 설치 → migrate(haven_owner) → haven_app 읽기 확인 → 재시작 → `/healthz` 200 확인, 실패 시 이전 commit으로 복귀. 배포 commit 기록
+- [x] 비밀값 공급: SSM Parameter Store `/haven/*` (`put-secrets.sh`)
+- [x] 검증(33/33 통과, 2026-11-09): WSL Ubuntu에서 db/web 스크립트 실제 실행(2회 실행 포함), 일부러 실패(빈 값, haven_app으로 CREATE TABLE 거부, 잘못된 commit → 복귀, postgres 원격 접속 거부)
+- [x] static은 Nginx가 `노푸른/static` 직접 제공 → 요찬 요청 불필요. gunicorn은 `안민수/server/requirements.txt`
+- [ ] PR (스크립트는 조장도 PR)
+
+결정(조장 11/09): 코드는 읽기 전용 deploy key, 비밀값은 SSM Parameter Store, 시험은 WSL Ubuntu-24.04.

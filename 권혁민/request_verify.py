@@ -19,6 +19,8 @@ import sys
 import time
 from urllib.parse import urlsplit, urlunsplit
 import uuid
+import socket
+import threading
 
 import requests
 
@@ -29,7 +31,7 @@ REQ_ID_HEADER = "X-Haven-Request-ID"
 RUN_ID_HEADER = "X-Haven-Run-ID"
 MAX_RESPONSE = 2 * 1024 * 1024
 RESULT_FIELDS = [
-    "run_id", "request_id", "case_id", "timestamp_utc", "elapsed_ms",
+    "run_id", "request_id", "trace_id", "case_id", "timestamp_utc", "elapsed_ms",
     "auth_role", "category", "method", "path", "expected_app", "expected_waf",
     "http_status", "redirect_target", "response_summary", "app_observed",
     "waf_action", "rule_id", "waf_verdict", "app_validity", "transport_status",
@@ -55,6 +57,13 @@ class TooLargeResponse(ExecutionError):
 def utc_now() -> str:
     """UTC ISO 타임스탬프를 반환한다. 로컬 시각과 섞이지 않도록 모든 증거에 사용."""
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+def new_trace_id() -> str:
+    """AWS X-Amzn-Trace-Id 형식의 Root 값을 생성한다."""
+    epoch_hex = f"{int(time.time()):08x}"
+    random_hex = uuid.uuid4().hex[:24]
+    return f"Root=1-{epoch_hex}-{random_hex}"
 
 
 def load_json(path: Path):
@@ -112,6 +121,24 @@ def canonical_origin(value: str) -> str:
         return f"{p.scheme}://{display_host}:{port}"
     except ValueError as exc:
         raise ConfigError(f"유효하지 않은 origin: {exc}") from exc
+
+
+def serialize_origin_header(origin: str) -> str:
+    """HTTP Origin 헤더용 직렬화. 기본 포트는 생략한다."""
+    normalized = canonical_origin(origin)
+    parsed = urlsplit(normalized)
+
+    host = parsed.hostname
+    display_host = f"[{host}]" if ":" in host else host
+
+    default_port = 443 if parsed.scheme == "https" else 80
+
+    port_suffix = (
+        "" if parsed.port == default_port
+        else f":{parsed.port}"
+    )
+
+    return f"{parsed.scheme}://{display_host}{port_suffix}"
 
 
 def validate_path(path: str) -> str:
@@ -173,7 +200,7 @@ def validate_suite(suite: object, fixtures: Path):
     if not isinstance(cases, list) or not cases:
         raise ConfigError("cases는 비어 있지 않은 목록이어야 합니다")
     found = set()
-    for item in cases:
+    for index, item in enumerate(cases):
         required = {"case_id", "category", "method", "path", "auth_role", "input_reference",
                     "expected_app", "expected_waf", "max_requests", "note"}
         if not isinstance(item, dict) or not required.issubset(item):
@@ -187,6 +214,22 @@ def validate_suite(suite: object, fixtures: Path):
                 raise ConfigError(f"{cid}: phase는 1~4 정수여야 합니다")
         if item["method"] not in METHODS or item["auth_role"] not in ROLES:
             raise ConfigError(f"{cid}: method/auth_role 오류")
+        if "checkpoint_before" in item:
+            if (
+                item["checkpoint_before"] != "deactivate_member_b"
+                or item["auth_role"] != "member_b"
+            ):
+                raise ConfigError(
+                    f"{cid}: checkpoint_before 설정 오류"
+                )
+
+            if not any(
+                previous.get("auth_role") == "member_b"
+                for previous in cases[:index]
+            ):
+                raise ConfigError(
+                    f"{cid}: B 세션 기준 요청이 먼저 필요합니다"
+                )
         validate_path(item["path"])
         if not isinstance(item["category"], str) or not item["category"].strip() or not isinstance(item["note"], str):
             raise ConfigError(f"{cid}: category/note 오류")
@@ -228,25 +271,37 @@ def select_phase(suite: dict, phase: int | None) -> dict:
     if type(phase) is not int or phase not in {1, 2, 3, 4}:
         raise ConfigError("phase는 1~4 정수여야 합니다")
 
-    missing = [
-        case["case_id"]
-        for case in suite["cases"]
-        if "phase" not in case
-    ]
+    missing = [case["case_id"] for case in suite["cases"] if "phase" not in case]
     if missing:
-        raise ConfigError(
-            "--phase 사용 시 모든 케이스에 phase가 필요합니다: "
-            + ", ".join(missing)
-        )
+        raise ConfigError("--phase 사용 시 모든 케이스에 phase가 필요합니다: " + ", ".join(missing))
 
-    selected = [
-        case for case in suite["cases"]
-        if case["phase"] == phase
-    ]
+    selected = [case for case in suite["cases"] if case["phase"] == phase]
     if not selected:
         raise ConfigError(f"{phase}회차에 해당하는 케이스가 없습니다")
 
     return {**suite, "cases": selected}
+
+
+def validate_selected_checkpoint_sequence(suite: dict) -> None:
+    """실제로 선택된 케이스에 체크포인트 선행 조건이 있는지 확인한다."""
+
+    cases = suite["cases"]
+
+    for index, case in enumerate(cases):
+        if case.get("checkpoint_before") != "deactivate_member_b":
+            continue
+
+        baseline_found = any(
+            previous["auth_role"] == "member_b"
+            and previous["method"] == "GET"
+            and previous["path"] == case["path"]
+            and previous["expected_app"]["http_status"] == 200
+            and "checkpoint_before" not in previous
+            for previous in cases[:index]
+        )
+
+        if not baseline_found:
+            raise ConfigError(f"{case['case_id']}: 선택된 회차에 동일 기록을 조회하는 B의 활성 상태 기준 요청(HTTP 200)이 없습니다")
 
 
 def validate_payload(payload: object, root: Path):
@@ -269,7 +324,7 @@ def validate_payload(payload: object, root: Path):
             raise ConfigError("시험용 파일이 단일 파일 상한을 초과합니다")
         if len(item["filename"]) > 255 or len(item["content_type"]) > 128:
             raise ConfigError("파일명 또는 MIME이 너무 깁니다")
-    if payload.get("origin_mode", "absent") not in {"absent", "same", "foreign"}:
+    if payload.get("origin_mode", "same") not in {"absent", "same", "foreign"}:
         raise ConfigError("origin_mode 오류 (absent/same/foreign)")
     if "pad_form_body_to" in payload:
         n = payload["pad_form_body_to"]
@@ -330,21 +385,34 @@ class RequestBudget:
         return max(0.001, min(self.timeout, remaining))
 
 
+class NoRedirectBodySession(requests.Session):
+    """리다이렉트를 따르지 않을 때 requests의 불필요한 본문 소비를 방지한다."""
+
+    def resolve_redirects(self, resp, req, **kwargs):
+        if kwargs.get("yield_requests", False):
+            # allow_redirects=False인 경우 다음 요청도 생성하지 않는다.
+            return iter(())
+
+        return super().resolve_redirects(resp, req, **kwargs)
+
+
 def new_session() -> requests.Session:
     """역할 간 쿠키 분리. 환경 proxy/.netrc의 암묵적 인증도 사용하지 않음."""
-    s = requests.Session()
+    s = NoRedirectBodySession()
     s.trust_env = False  # avoid implicit .netrc / environment proxy credentials
     return s
 
 
 def bounded_send(s: requests.Session, method: str, target: str, path: str, budget: RequestBudget,
                  request_id: str, *, fields=None, file_info=None, headers=None,
-                 max_response_bytes=MAX_RESPONSE) -> tuple[dict, bytes | None]:
+                 max_response_bytes=MAX_RESPONSE, read_redirect_body=False, trace_id=None, on_send=None) -> tuple[dict, bytes | None]:
     """HTTP를 최대 1회 전송한다. 리다이렉트 미추적·TLS 확인·응답 상한 적용."""
     url = target + validate_path(path)
     h = {REQ_ID_HEADER: request_id}
     if headers:
         h.update(headers)
+    if trace_id is not None:
+        h["X-Amzn-Trace-Id"] = trace_id
     opened = None
     try:
         if file_info:
@@ -358,6 +426,11 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
             raise ConfigError("요청 준비 과정에서 origin이 바뀌었습니다")
         timeout = budget.begin()
         start = time.monotonic()
+
+        # 속도 제한 대기가 끝난 후 실제 HTTP 전송 직전 시각 기록
+        if on_send is not None:
+            on_send(utc_now())
+
         with s.send(prepared, allow_redirects=False, timeout=timeout, stream=True, verify=True) as resp:
             total = 0
             digest = hashlib.sha256()
@@ -365,21 +438,105 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
             content_length = resp.headers.get("Content-Length")
             if content_length and content_length.isdecimal() and int(content_length) > max_response_bytes:
                 raise TooLargeResponse("응답 Content-Length가 허용 크기를 초과합니다")
-            for chunk in resp.iter_content(chunk_size=64 * 1024):
-                elapsed_total = time.monotonic() - budget.started
-                if elapsed_total >= budget.duration:
-                    raise ExecutionError("응답을 읽는 중 전체 실행 시간 한도를 초과했습니다")
-                if not chunk:
-                    continue
-                total += len(chunk)
-                if total > max_response_bytes:
-                    raise TooLargeResponse("실제 응답이 허용 크기를 초과합니다")
-                digest.update(chunk)
-                # Capture only preparation HTML (never persist); all other content is discarded.
-                if path == "/accounts/login/" and total <= 65536:
-                    chunks.append(chunk)
+            
+            # 리다이렉트 본문에 대한 검증 요구가 없으면 본문을 수신하지 않는다.
+            if 300 <= resp.status_code < 400 and not read_redirect_body:
+                if time.monotonic() - budget.started >= budget.duration:
+                    raise ExecutionError("응답 헤더 수신 중 전체 실행 시간 한도를 초과했습니다")
+
+                request_body = prepared.body
+                if isinstance(request_body, bytes):
+                    request_body_bytes = len(request_body)
+                elif isinstance(request_body, str):
+                    request_body_bytes = len(request_body.encode("utf-8"))
+                else:
+                    request_body_bytes = None
+
+                safe_headers = {
+                    key: resp.headers[key]
+                    for key in (
+                        "Content-Type",
+                        "Content-Disposition",
+                        "X-Content-Type-Options",
+                        "Cache-Control",
+                        "X-Request-ID",
+                    )
+                    if key in resp.headers
+                }
+
+                return {
+                    "status": resp.status_code,
+                    "elapsed_ms": round((time.monotonic() - start) * 1000, 2),
+                    "location": resp.headers.get("Location"),
+                    "body_bytes": None,
+                    "sha256": None,
+                    "headers": safe_headers,
+                    "request_body_bytes": request_body_bytes,
+                }, None
+            
+            # 전체 실행 제한 시간을 절대 deadline으로 계산한다.
+            deadline = budget.started + budget.duration
+            remaining = deadline - time.monotonic()
+
+            if remaining <= 0:
+                raise ExecutionError(
+                    "응답을 읽는 중 전체 실행 시간 한도를 초과했습니다"
+                )
+
+            deadline_expired = threading.Event()
+
+            def interrupt_stream():
+                # 제한 시간에 도달하면 진행 중인 소켓 수신을 중단한다.
+                deadline_expired.set()
+                try:
+                    resp.raw._fp.fp.raw._sock.shutdown(socket.SHUT_RDWR)
+                except (AttributeError, OSError):
+                    pass
+
+            watchdog = threading.Timer(remaining, interrupt_stream)
+            watchdog.daemon = True
+            watchdog.start()
+
+            try:
+                for chunk in resp.iter_content(chunk_size=64 * 1024):
+                    if time.monotonic() >= deadline:
+                        raise ExecutionError(
+                            "응답을 읽는 중 전체 실행 시간 한도를 초과했습니다"
+                        )
+
+                    if not chunk:
+                        continue
+
+                    total += len(chunk)
+
+                    if total > max_response_bytes:
+                        raise TooLargeResponse(
+                            "실제 응답이 허용 크기를 초과합니다"
+                        )
+
+                    digest.update(chunk)
+
+                    # 로그인 준비 HTML만 메모리에 보관한다.
+                    if path == "/accounts/login/" and total <= 65536:
+                        chunks.append(chunk)
+
+                if deadline_expired.is_set() or time.monotonic() >= deadline:
+                    raise ExecutionError(
+                        "응답을 읽는 중 전체 실행 시간 한도를 초과했습니다"
+                    )
+
+            except (requests.RequestException, OSError) as exc:
+                if deadline_expired.is_set() or time.monotonic() >= deadline:
+                    raise ExecutionError(
+                        "응답을 읽는 중 전체 실행 시간 한도를 초과했습니다"
+                    ) from exc
+                raise
+
+            finally:
+                watchdog.cancel()
+                watchdog.join()
             safe_headers = {key: resp.headers[key] for key in (
-                "Content-Type", "Content-Disposition", "X-Content-Type-Options", "Cache-Control"
+                "Content-Type", "Content-Disposition", "X-Content-Type-Options", "Cache-Control", "X-Request-ID"
             ) if key in resp.headers}
 
             request_body = prepared.body
@@ -414,10 +571,16 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
                run_id: str, prep_events: list, max_response_bytes: int) -> None:
     """역할별 시험 계정으로 로그인한다. 비밀번호는 대화형 입력하고 기록 금지."""
     print(f"[인증 준비] {role}: 가상 시험 계정 정보를 대화형으로 입력하세요", file=sys.stderr)
-    username = input(f"  {role} 사용자 이름: ").strip()
+    try:
+        username = input(f"  {role} 사용자 이름: ").strip()
+    except EOFError as exc:
+        raise ExecutionError("사용자 이름 입력을 받을 수 없습니다") from exc
     if not username:
         raise ExecutionError("사용자 이름이 비어 있습니다")
-    password = getpass.getpass(f"  {role} 비밀번호(화면 미표시): ")
+    try:
+        password = getpass.getpass(f"  {role} 비밀번호(화면 미표시): ")
+    except EOFError as exc:
+        raise ExecutionError("비밀번호 입력을 받을 수 없습니다") from exc
     if not password:
         raise ExecutionError("비밀번호가 비어 있습니다")
     rid = str(uuid.uuid4())
@@ -433,9 +596,20 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
     if not csrf:
         raise ExecutionError("CSRF 토큰 준비 실패")
     rid = str(uuid.uuid4())
-    detail, _ = bounded_send(s, "POST", target, "/accounts/login/", budget, rid,
-                            fields={"username": username, "password": password, "csrfmiddlewaretoken": csrf},
-                            headers={"X-CSRFToken": csrf, RUN_ID_HEADER: run_id}, max_response_bytes=max_response_bytes)
+    detail, _ = bounded_send(
+        s, "POST", target, "/accounts/login/", budget, rid,
+        fields={
+            "username": username,
+            "password": password,
+            "csrfmiddlewaretoken": csrf,
+        },
+        headers={
+            "Origin": serialize_origin_header(target),
+            "X-CSRFToken": csrf,
+            RUN_ID_HEADER: run_id,
+        },
+        max_response_bytes=max_response_bytes,
+    )
     prep_events.append({"request_id": rid, "stage": "login_submit", "http_status": detail["status"]})
     # No redirect follow. Login POST success is expected to redirect away from login.
     login_redirect = same_origin_redirect_path(detail["location"], target)
@@ -488,9 +662,9 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
         headers["X-CSRFToken"] = csrf
 
     # Origin 공격은 '목적지' 변경이 아니라 헤더만 변경한다.
-    origin_mode = payload.get("origin_mode", "absent")
+    origin_mode = payload.get("origin_mode", "same")
     if origin_mode == "same":
-        headers["Origin"] = target
+        headers["Origin"] = serialize_origin_header(target)
     elif origin_mode == "foreign":
         headers["Origin"] = "https://attacker.invalid"
 
@@ -557,7 +731,7 @@ def check_http_expected(detail: dict, expected: dict, *, target_origin: str | No
 def base_record(run_id: str, case: dict) -> dict:
     """요청 1건에 대한 결과 기본 필드를 만든다. 최초 판정은 UNKNOWN."""
     return dict(
-        run_id=run_id, request_id=str(uuid.uuid4()), case_id=case["case_id"],
+        run_id=run_id, request_id=str(uuid.uuid4()), trace_id=new_trace_id(), case_id=case["case_id"],
         timestamp_utc=utc_now(), elapsed_ms=None, auth_role=case["auth_role"],
         category=case["category"], method=case["method"], path=safe_path_log(case["path"]),
         expected_app=case["expected_app"], expected_waf=case["expected_waf"],
@@ -619,6 +793,9 @@ def run(args) -> int:
     total_cases = len(suite["cases"])
     phase = getattr(args, "phase", None)
     suite = select_phase(suite, phase)
+    if any("checkpoint_before" in case for case in suite["cases"]) and not getattr(args, "manual_checkpoints", False):
+        raise ConfigError("수동 체크포인트 시험에는 --manual-checkpoints 옵션이 필요합니다")
+    validate_selected_checkpoint_sequence(suite)
     phase_label = "전체" if phase is None else f"{phase}회차"
     print(
         f"대상={target}  suite={suite['suite_id']}  "
@@ -660,6 +837,42 @@ def run(args) -> int:
                 if role != "anonymous" and not prepped.get(role):
                     prep_login(sess, target, budget, role, run_id, prep_events, args.max_response_bytes)
                     prepped[role] = True
+                
+                if case.get("checkpoint_before") == "deactivate_member_b":
+                    baseline_ok = any(
+                        previous["auth_role"] == "member_b"
+                        and previous["method"] == "GET"
+                        and previous["path"] == safe_path_log(case["path"])
+                        and previous["expected_app"]["http_status"] == 200
+                        and previous["http_status"] == 200
+                        and previous["http_expectation_match"] is True
+                        and previous["transport_status"] == "OK"
+                        for previous in records
+                    )
+
+                    if not baseline_ok:
+                        raise ExecutionError("B의 활성 상태 기준 요청이 HTTP 200으로 확인되지 않아 비활성화 체크포인트를 중단합니다")
+                    
+                    print("\n[수동 체크포인트] B 계정 비활성화", file=sys.stderr)
+                    print("1. 별도 관리자 화면에서 member_b를 비활성화하세요.", file=sys.stderr)
+                    print("2. member_a와 P1 및 공유 관계는 유지하세요.", file=sys.stderr)
+                    print("3. 이 CLI는 B의 기존 세션을 유지합니다.", file=sys.stderr)
+
+                    try:
+                        confirmation = input("비활성화 확인 후 DEACTIVATED 입력: ").strip()
+                    except EOFError as exc:
+                        raise ExecutionError("수동 확인 입력을 받을 수 없습니다") from exc
+
+                    if confirmation != "DEACTIVATED":
+                        raise ExecutionError("계정 비활성화 확인이 완료되지 않았습니다")
+
+                    prep_events.append({
+                        "stage": "manual_checkpoint",
+                        "case_id": case["case_id"],
+                        "action": "deactivate_member_b_confirmed",
+                        "timestamp_utc": utc_now(),
+                    })
+
                 # 인가/CSRF 준비와 HTTP 전송을 분리해 run()의 흐름을 단순하게 유지한다.
                 fields, headers, file_info = prepare_case_request(
                     sess, case, root, target, budget, run_id, prep_events, args.max_response_bytes
@@ -667,7 +880,15 @@ def run(args) -> int:
                 detail, _ = bounded_send(
                     sess, case["method"], target, case["path"], budget, record["request_id"],
                     fields=fields, file_info=file_info, headers=headers,
-                    max_response_bytes=args.max_response_bytes
+                    trace_id=record["trace_id"],
+                    max_response_bytes=args.max_response_bytes,
+                    read_redirect_body=any(
+                        key in case["expected_app"]
+                        for key in ("body_bytes", "sha256")
+                    ),
+                    on_send=lambda timestamp: record.update(
+                        timestamp_utc=timestamp
+                    ),
                 )
                 record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
                               redirect_target=safe_location(detail["location"]),
@@ -723,21 +944,141 @@ def log_lines(path: Path) -> list[dict]:
 
 
 def log_request_id(event: dict) -> str | None:
-    """로그에서 X-Haven-Request-ID를 꺼낸다. AWS WAF 헤더 형식도 지원."""
-    if isinstance(event.get("request_id"), str):
-        return event["request_id"]
+    """CLI 요청 ID를 추출한다. 앱·WAF·기존 로그 형식을 지원."""
+
+    # Django 앱 로그: 서버 자체 ID와 CLI 요청 ID를 구분한다.
+    client_id = event.get("client_request_id")
+    if isinstance(client_id, str) and client_id.strip():
+        return client_id
+
+    # 기존 앱 로그 및 로컬 synthetic fixture 호환성 유지.
+    request_id = event.get("request_id")
+    if isinstance(request_id, str) and request_id.strip():
+        return request_id
+
+    # AWS WAF 원본 로그: HTTP 요청 헤더에서 추출.
     req = event.get("httpRequest", {})
     if not isinstance(req, dict):
         return None
-    for header in req.get("headers", []):
-        if isinstance(header, dict) and str(header.get("name", "")).lower() == REQ_ID_HEADER.lower():
-            return header.get("value")
+
+    headers = req.get("headers", [])
+    if not isinstance(headers, list):
+        return None
+
+    for header in headers:
+        if not isinstance(header, dict):
+            continue
+
+        name = str(header.get("name", "")).lower()
+        value = header.get("value")
+
+        if (name == REQ_ID_HEADER.lower() and isinstance(value, str) and value.strip()):
+            return value
+
     return None
+
+
+TRACE_ROOT_RE = re.compile(
+    r"1-[0-9a-f]{8}-[0-9a-f]{24}",
+    re.IGNORECASE,
+)
+
+
+def extract_trace_root(value: object) -> str | None:
+    """AWS Trace ID에서 Root 값만 정규화해 추출한다."""
+    if not isinstance(value, str):
+        return None
+
+    parts = [part.strip() for part in value.split(";")]
+    roots = []
+
+    for part in parts:
+        if "=" in part:
+            name, candidate = part.split("=", 1)
+
+            if name.strip().lower() == "root":
+                candidate = candidate.strip()
+
+                if not TRACE_ROOT_RE.fullmatch(candidate):
+                    return None
+
+                roots.append(candidate.lower())
+
+        elif len(parts) == 1 and TRACE_ROOT_RE.fullmatch(part):
+            roots.append(part.lower())
+
+    # Root가 없거나 여러 개면 임의로 선택하지 않는다.
+    return roots[0] if len(roots) == 1 else None
+
+
+def log_trace_root(event: dict) -> str | None:
+    """Django 앱 로그 또는 AWS WAF 로그에서 Trace Root를 추출한다."""
+    roots = []
+
+    # Django 앱: request_id에 Trace ID가 기록될 수 있다.
+    for field in ("trace_id", "request_id"):
+        root = extract_trace_root(event.get(field))
+        if root is not None:
+            roots.append(root)
+
+    # AWS WAF: httpRequest.headers에서 원본 요청 헤더를 찾는다.
+    request = event.get("httpRequest", {})
+    if isinstance(request, dict):
+        headers = request.get("headers", [])
+
+        if isinstance(headers, list):
+            for header in headers:
+                if not isinstance(header, dict):
+                    continue
+
+                if str(header.get("name", "")).lower() != "x-amzn-trace-id":
+                    continue
+
+                root = extract_trace_root(header.get("value"))
+                if root is None:
+                    return None
+
+                roots.append(root)
+
+    if not roots or len(set(roots)) != 1:
+        return None
+
+    return roots[0]
+
+
+def event_matches_run(event: dict, row: dict) -> bool:
+    """로그와 CLI 결과의 요청 식별자가 일치하는지 확인한다."""
+
+    # 과거 결과 파일: trace_id 필드 자체가 없었던 버전.
+    if "trace_id" not in row:
+        return log_request_id(event) == row.get("request_id")
+
+    expected_root = extract_trace_root(row["trace_id"])
+
+    # Trace ID가 잘못된 실행 결과는 기존 ID로 대체하지 않는다.
+    if expected_root is None:
+        return False
+
+    actual_root = log_trace_root(event)
+
+    if actual_root is not None:
+        return actual_root == expected_root
+
+    # 기존 로컬 mock 로그만 레거시 ID 비교를 허용한다.
+    if event.get("synthetic_fixture") is True:
+        return log_request_id(event) == row.get("request_id")
+
+    # 실제 로그에 Trace Root가 없으면 연결하지 않는다.
+    return False
 
 
 def log_timestamp(event: dict) -> datetime | None:
     """ISO UTC 또는 AWS 밀리초 epoch를 UTC datetime으로 정규화."""
-    val = event.get("timestamp_utc", event.get("timestamp"))
+    val = event.get("timestamp_utc")
+    if val is None:
+        val = event.get("ts")
+    if val is None:
+        val = event.get("timestamp")
     if isinstance(val, (float, int)):
         if val > 10**11:  # AWS WAF epoch millis
             val /= 1000
@@ -765,7 +1106,7 @@ def plausible_event(event: dict, row: dict, origin: str) -> bool:
 
 
 def correlate(args) -> int:
-    """run 결과와 로그를 request_id 기준으로 조합하고 판정 증거를 평가."""
+    """실행 결과와 WAF·앱 로그를 Trace Root 기준으로 연결하고 검증한다."""
     state = load_json(args.run_json)
     if not isinstance(state, dict) or not isinstance(state.get("results"), list) or not state.get("run_id"):
         raise ConfigError("올바른 run results JSON이 아닙니다")
@@ -785,8 +1126,8 @@ def correlate(args) -> int:
             records.append(row)
             continue
         # request_id가 일치해도 시각·run_id가 충돌하면 신뢰할 수 없다.
-        waf_events = [e for e in waf if log_request_id(e) == row["request_id"]]
-        app_events = [e for e in app if log_request_id(e) == row["request_id"]]
+        waf_events = [event for event in waf if event_matches_run(event, row)]
+        app_events = [event for event in app if event_matches_run(event, row)]
         valid_waf = len(waf_events) == 1 and plausible_event(waf_events[0], row, origin)
         valid_app = len(app_events) == 1 and plausible_event(app_events[0], row, origin)
         needs_waf = row["expected_waf"] != "NOT_APPLICABLE"
@@ -803,7 +1144,7 @@ def correlate(args) -> int:
             if e.get("synthetic_fixture") is True:
                 row["evidence_kind"] = "SYNTHETIC_FIXTURE_NOT_REAL_WAF"
             action = str(e.get("action", e.get("waf_action", "UNKNOWN"))).upper()
-            counts = [x.get("ruleId") for x in e.get("nonTerminatingMatchingRules", []) if isinstance(x, dict) and x.get("action") == "COUNT"]
+            counts = extract_count_rule_ids(e)
             row["rule_id"] = e.get("terminatingRuleId", e.get("rule_id"))
             row["waf_action"] = action
             row["count_rule_ids"] = counts
@@ -815,38 +1156,103 @@ def correlate(args) -> int:
             ev = app_events[0]
             if ev.get("synthetic_fixture") is True:
                 row["evidence_kind"] = "SYNTHETIC_FIXTURE_NOT_REAL_WAF"
+
             app_status = ev.get("http_status", ev.get("status"))
             row["app_observed"] = True
-            row["app_validity"] = "MATCH" if (app_status == row["expected_app"]["http_status"] and row["http_expectation_match"]) else "MISMATCH"
-        elif row["waf_verdict"] == "BLOCK":
-            row["app_observed"] = False
-            row["app_validity"] = "NOT_APPLICABLE"
+
+            row["app_validity"] = (
+                "MATCH"
+                if (
+                    app_status == row["expected_app"]["http_status"]
+                    and row["http_expectation_match"]
+                )
+                else "MISMATCH"
+            )
+
         else:
-            row["app_validity"] = "UNKNOWN"
+            # 앱 로그가 확인되지 않은 경우
+            row["app_observed"] = False
+
+            if (
+                row["waf_verdict"] == "BLOCK"
+                and row["expected_waf"] == "BLOCK"
+            ):
+                # 명시적인 WAF 차단 시험에서는 앱 미도달이 정상
+                row["app_validity"] = "NOT_APPLICABLE"
+            else:
+                # 앱 검증이 필요한 시험에서 로그가 없으면 미확정
+                row["app_validity"] = "UNKNOWN"
         # 정상 HTTP 코드보다 WAF/앱 증거의 일관성을 먼저 확인한다.
-        evidence_ok = not conflict and ((valid_waf or not needs_waf) and (valid_app or row["waf_verdict"] == "BLOCK"))
+        # 앱 로그 생략은 명시적인 WAF BLOCK 시험에서만 허용한다.
+        expected_block = row["expected_waf"] == "BLOCK"
+        actual_block = row["waf_verdict"] == "BLOCK"
+
+        app_evidence_ok = valid_app or (expected_block and actual_block)
+
+        evidence_ok = (
+            not conflict
+            and (valid_waf or not needs_waf)
+            and app_evidence_ok
+        )
         waf_match = True
         if needs_waf:
             expected = row["expected_waf"]
             if expected == "COUNT":
-                waf_match = bool(counts) or action == "COUNT"
+                waf_match = (
+                    row["waf_verdict"] == "ALLOW"
+                    and (bool(counts) or action == "COUNT")
+                )
             else:
                 waf_match = row["waf_verdict"] == expected
-        if not evidence_ok:
+        
+        # 유효한 WAF 로그에서 기대 동작과의 불일치가
+        # 확정되었다면 앱 로그가 없어도 FAIL로 판정한다.
+        confirmed_waf_mismatch = (
+            valid_waf
+            and needs_waf
+            and row["waf_verdict"] in {"ALLOW", "BLOCK"}
+            and not waf_match
+            and not conflict
+        )
+
+        if confirmed_waf_mismatch:
+            # WAF 불일치는 확정되었지만,
+            # 앱 로그가 없으면 전체 상관분석은 미해결 상태다.
+            row["correlation_status"] = (
+                "MATCHED" if valid_app else "UNRESOLVED"
+            )
+            row["verdict"] = "FAIL"
+
+        elif not evidence_ok:
             row["correlation_status"] = "UNRESOLVED"
             row["verdict"] = "UNKNOWN"
+
             if conflict:
                 row["waf_verdict"] = "UNKNOWN"
                 row["app_validity"] = "UNKNOWN"
+
         else:
             row["correlation_status"] = "MATCHED"
-            if not waf_match or row["http_expectation_match"] is False or row["app_validity"] == "MISMATCH":
+
+            if (
+                not waf_match
+                or row["http_expectation_match"] is False
+                or row["app_validity"] == "MISMATCH"
+            ):
                 row["verdict"] = "FAIL"
-            elif row["app_validity"] in {"MATCH", "NOT_APPLICABLE"}:
-                # DB·브라우저 확인이 남은 보안 시나리오는 자동 PASS 금지.
-                row["verdict"] = ("PASS" if row.get("verification_mode") == "http_only" else "UNKNOWN")
+
+            elif row["app_validity"] in {
+                "MATCH", "NOT_APPLICABLE"
+            }:
+                row["verdict"] = (
+                    "PASS"
+                    if row.get("verification_mode") == "http_only"
+                    else "UNKNOWN"
+                )
+
             else:
                 row["verdict"] = "UNKNOWN"
+
         records.append(row)
     out = {k: v for k, v in state.items() if k not in {"results", "preparation_events"}}
     out["source"] = "correlated_from_local_logs"
@@ -856,6 +1262,64 @@ def correlate(args) -> int:
     code = get_exit_code(records, incomplete=bool(state.get("stopped_reason")) or bool(state.get("unexecuted_cases")))
     print(f"correlate 결과: {args.output_dir / 'correlated_results.json'} (종료 코드 {code})", file=sys.stderr)
     return code
+
+
+def extract_count_rule_ids(event: dict) -> list[str]:
+    """AWS WAF 최상위·규칙 그룹 내부의 Count 매칭을 수집한다."""
+    counts = []
+
+    def collect(rules, group_id=None):
+        if not isinstance(rules, list):
+            return
+
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+
+            if rule.get("action") != "COUNT":
+                continue
+
+            rule_id = rule.get("ruleId")
+            if not isinstance(rule_id, str) or not rule_id:
+                continue
+
+            if group_id:
+                counts.append(f"{group_id}::{rule_id}")
+            else:
+                counts.append(rule_id)
+
+    # 1. Web ACL 최상위 Count
+    collect(event.get("nonTerminatingMatchingRules"))
+
+    # 2. 규칙 그룹 내부 Count
+    groups = event.get("ruleGroupList")
+    if isinstance(groups, list):
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+
+            group_id = group.get("ruleGroupId")
+            if not isinstance(group_id, str) or not group_id:
+                continue
+
+            collect(
+                group.get("nonTerminatingMatchingRules"),
+                group_id
+            )
+
+            # 3. 기존 excludedRules Count 로그 호환
+            excluded = group.get("excludedRules")
+            if isinstance(excluded, list):
+                for rule in excluded:
+                    if not isinstance(rule, dict):
+                        continue
+
+                    rule_id = rule.get("ruleId")
+                    if isinstance(rule_id, str) and rule_id:
+                        counts.append(f"{group_id}::{rule_id}")
+
+    # 중복 제거, 발견 순서 유지
+    return list(dict.fromkeys(counts))
 
 
 def create_parser():
@@ -874,11 +1338,13 @@ def create_parser():
     r.add_argument("--rate", type=float, default=1)
     r.add_argument("--max-duration", type=float, default=300)
     r.add_argument("--max-response-bytes", type=int, default=MAX_RESPONSE)
+    r.add_argument("--manual-checkpoints", action="store_true", help="계정 상태 변경 등 수동 체크포인트 허용")
     c = commands.add_parser("correlate", help="기존 run 결과에 로컬 JSONL WAF/앱 로그를 연결")
     c.add_argument("--run-json", required=True, type=Path)
     c.add_argument("--waf-log", required=True, type=Path)
     c.add_argument("--app-log", required=True, type=Path)
     c.add_argument("--output-dir", required=True, type=Path)
+
     return parser
 
 

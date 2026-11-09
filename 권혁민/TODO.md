@@ -127,3 +127,20 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 
 - **화요일까지:** 저장소 루트에서 `powershell -ExecutionPolicy Bypass -File 안민수\dev-db-setup.ps1` 실행(Minsoo 브랜치, main 병합 후엔 main) → 로컬 PostgreSQL 16 + `haven_dev`. 끝에 `OK` 4줄이 나와야 하고, 비밀번호는 `%APPDATA%\postgresql\pgpass.conf`에만 있으니 공유하지 마세요
 - **기다릴 것:** 실제 시험만 요찬님 코드 필요. fixture·점검 준비는 지금 가능
+
+## 혁민's progress · 2026-11-09 (2회차 준비)
+
+- 공유 전 접근 거부, 공유 후 읽기 허용·변경 거부, 공유 해제 후 접근 거부 fixture 준비.
+- 소유자 비활성화 시 공유 대상 접근 차단 fixture 준비.
+- 공유 대상 비활성화 후 기존 세션 재사용을 위한 수동 체크포인트 시험 준비.
+- CLI는 승인된 대상과 요청 예산을 준수하며, 자동 계정 상태 변경은 수행하지 않음.
+- 실제 Django 앱·DB·AWS WAF 보안 검증은 아직 미실행.
+
+### 남은 작업
+
+- [ ] 신규 SH-06 전체 회귀 테스트 실행 및 결과 기록
+- [ ] 신요찬 공유 생성·해제 POST 필드와 share_id 처리 방식 확인
+- [ ] 관리자 계정 활성·비활성화 기능 계약 확인
+- [ ] 실제 Django 앱에서 기존 세션 접근 거부 및 DB 불변성 검증
+- [ ] 앱/WAF 로그의 request_id 연결 확인
+- [ ] 2회차 PR 제출 및 통합 검증

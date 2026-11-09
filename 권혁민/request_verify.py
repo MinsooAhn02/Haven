@@ -173,7 +173,7 @@ def validate_suite(suite: object, fixtures: Path):
     if not isinstance(cases, list) or not cases:
         raise ConfigError("cases는 비어 있지 않은 목록이어야 합니다")
     found = set()
-    for item in cases:
+    for index, item in enumerate(cases):
         required = {"case_id", "category", "method", "path", "auth_role", "input_reference",
                     "expected_app", "expected_waf", "max_requests", "note"}
         if not isinstance(item, dict) or not required.issubset(item):
@@ -187,6 +187,22 @@ def validate_suite(suite: object, fixtures: Path):
                 raise ConfigError(f"{cid}: phase는 1~4 정수여야 합니다")
         if item["method"] not in METHODS or item["auth_role"] not in ROLES:
             raise ConfigError(f"{cid}: method/auth_role 오류")
+        if "checkpoint_before" in item:
+            if (
+                item["checkpoint_before"] != "deactivate_member_b"
+                or item["auth_role"] != "member_b"
+            ):
+                raise ConfigError(
+                    f"{cid}: checkpoint_before 설정 오류"
+                )
+
+            if not any(
+                previous.get("auth_role") == "member_b"
+                for previous in cases[:index]
+            ):
+                raise ConfigError(
+                    f"{cid}: B 세션 기준 요청이 먼저 필요합니다"
+                )
         validate_path(item["path"])
         if not isinstance(item["category"], str) or not item["category"].strip() or not isinstance(item["note"], str):
             raise ConfigError(f"{cid}: category/note 오류")
@@ -676,6 +692,8 @@ def run(args) -> int:
     total_cases = len(suite["cases"])
     phase = getattr(args, "phase", None)
     suite = select_phase(suite, phase)
+    if any("checkpoint_before" in case for case in suite["cases"]) and not getattr(args, "manual_checkpoints", False):
+        raise ConfigError("수동 체크포인트 시험에는 --manual-checkpoints 옵션이 필요합니다")
     phase_label = "전체" if phase is None else f"{phase}회차"
     print(
         f"대상={target}  suite={suite['suite_id']}  "
@@ -717,6 +735,27 @@ def run(args) -> int:
                 if role != "anonymous" and not prepped.get(role):
                     prep_login(sess, target, budget, role, run_id, prep_events, args.max_response_bytes)
                     prepped[role] = True
+                if case.get("checkpoint_before") == "deactivate_member_b":
+                    print("\n[수동 체크포인트] B 계정 비활성화", file=sys.stderr)
+                    print("1. 별도 관리자 화면에서 member_b를 비활성화하세요.", file=sys.stderr)
+                    print("2. member_a와 P1 및 공유 관계는 유지하세요.", file=sys.stderr)
+                    print("3. 이 CLI는 B의 기존 세션을 유지합니다.", file=sys.stderr,)
+
+                    try:
+                        confirmation = input("비활성화 확인 후 DEACTIVATED 입력: ").strip()
+                    except EOFError as exc:
+                        raise ExecutionError("수동 확인 입력을 받을 수 없습니다") from exc
+
+                    if confirmation != "DEACTIVATED":
+                        raise ExecutionError("계정 비활성화 확인이 완료되지 않았습니다")
+
+                    prep_events.append({
+                        "stage": "manual_checkpoint",
+                        "case_id": case["case_id"],
+                        "action": "deactivate_member_b_confirmed",
+                        "timestamp_utc": utc_now(),
+                    })
+
                 # 인가/CSRF 준비와 HTTP 전송을 분리해 run()의 흐름을 단순하게 유지한다.
                 fields, headers, file_info = prepare_case_request(
                     sess, case, root, target, budget, run_id, prep_events, args.max_response_bytes
@@ -935,11 +974,13 @@ def create_parser():
     r.add_argument("--rate", type=float, default=1)
     r.add_argument("--max-duration", type=float, default=300)
     r.add_argument("--max-response-bytes", type=int, default=MAX_RESPONSE)
+    r.add_argument("--manual-checkpoints", action="store_true", help="계정 상태 변경 등 수동 체크포인트 허용")
     c = commands.add_parser("correlate", help="기존 run 결과에 로컬 JSONL WAF/앱 로그를 연결")
     c.add_argument("--run-json", required=True, type=Path)
     c.add_argument("--waf-log", required=True, type=Path)
     c.add_argument("--app-log", required=True, type=Path)
     c.add_argument("--output-dir", required=True, type=Path)
+
     return parser
 
 

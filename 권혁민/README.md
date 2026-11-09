@@ -17,10 +17,14 @@
 │   ├── cases_local.json          # 로컬 mock·CLI 회귀 시험
 │   ├── cases_haven_template.json # 실제 앱 연동용 시험표·회차 구분
 │   ├── cases_body_boundary.json  # 요청 body 8191/8192/8193바이트 경계 시험
-│   └── ...                      # 인증 기초 시험·POST 입력·업로드 샘플 등
+│   ├── cases_share_granted.json  # 공유 후 읽기 허용·변경 거부
+│   ├── cases_share_revoked.json  # 공유 해제 후 접근 거부
+│   ├── cases_owner_inactive.json # 소유자 비활성화
+│   ├── cases_member_inactive.json# 수신자 비활성화·기존 세션
+│   └── ...                       # POST 입력·첨부 샘플 등
 ├── tests/
 │   └── test_request_verify.py    # CLI 단위·로컬 통합 테스트
-└── requirements.txt             # 실행·테스트 의존성
+└── requirements.txt              # 실행·테스트 의존성
 ```
 
 `fixtures/`는 주요 파일만 표시했다. Haven 앱 연동용 케이스는
@@ -116,7 +120,7 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
 ```
 
 - `csrf_mode`: `valid`(세션의 CSRF 토큰), `missing`(토큰 제외), `invalid`(고정 잘못된 토큰).
-- `origin_mode`: `absent`(기본), `same`(대상 origin), `foreign`(고정 `https://attacker.invalid`를 **Origin 헤더 값**으로만 사용; 그 호스트로 요청 전송하지 않음).
+- `origin_mode`: `same`(기본), `absent`(Origin 헤더 생략), `foreign`(고정 `https://attacker.invalid`를 **Origin 헤더 값**으로만 사용).
 - `pad_form_body_to`: 숫자 1~8193. `body` 문자열 필드에 ASCII 패딩을 추가해 **실제 form-encoded POST Body가 목표 바이트 수**가 되게 함. 파일 multipart와 동시 사용하지 않음. CSRF 인코딩 오버헤드 포함.
 - `file`: `{ "field_name":"attachment", "local_fixture_path":"sample.txt", "filename":"harmless.txt", "content_type":"text/plain" }`. 실제 파일 내용은 결과에 저장하지 않음.
 - 업로드 경계 시험은 **전체 multipart 직렬화 길이**를 `response_summary.request_body_bytes`로 확인할 수 있지만, 현재 `pad_form_body_to`는 multipart 정확한 크기 자동 맞춤 기능이 아니다.
@@ -146,13 +150,45 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
   selected_cases, excluded_cases를 기록한다.
 - 제외된 다른 회차 케이스는 미실행 오류로 계산하지 않는다.
 
-현재 Haven 템플릿은 총 37개이며,
-1회차 32개·2회차 4개·3회차 1개로 구성되어 있다.
+현재 cases_haven_template.json은 총 43개이며,
+1회차 34개·2회차 8개·3회차 1개로 구성되어 있다.
+
+공유 허용·해제·비활성화처럼 사전 DB 상태가 서로 다른
+시나리오는 별도 fixture 파일로 구분하여 관리한다.
 이는 현재 준비된 케이스의 분류이며, 회차별 전체 요구사항을
 모두 구현했다는 의미는 아니다.
 
 Haven 템플릿은 실제 Django 앱과 시험 데이터가 준비된 뒤 사용한다.
 로컬 mock 서버에서 앱의 권한·공유·첨부 기능을 검증할 수는 없다.
+
+### 계정 비활성화 수동 체크포인트
+
+`--manual-checkpoints` 옵션은 계정 상태 변경 등
+시험 중 사람의 개입이 필요한 경우에만 사용한다.
+
+SH-06 시험은 다음 순서로 진행한다.
+
+1. 활성 계정 member_b로 로그인한다.
+2. 공유받은 P1에 접근하여 정상 조회를 확인한다.
+3. CLI가 체크포인트에서 중단되면 별도 관리자 화면에서
+   member_b를 비활성화한다.
+4. 터미널에 `DEACTIVATED`를 입력한다.
+5. 기존 세션을 유지한 채 P1과 공유 목록에 재접근한다.
+
+실행 예시:
+
+```cmd
+python request_verify.py run --target https://YOUR-APP-HOST --allowlist allowlist.json --cases fixtures/cases_member_inactive.json --fixture-dir fixtures --output-dir output_member_inactive --manual-checkpoints
+```
+
+주의사항:
+
+- 옵션이 없으면 체크포인트가 필요한 시험은 실행 전에 거부한다.
+- CLI는 계정을 직접 비활성화하지 않는다.
+- 확인 문자열 입력만으로 실제 계정 상태 변경이 증명되지는 않는다.
+- 실제 비활성 여부와 접근 거부는 Django/DB에서 별도로 검증한다.
+- 전체 요청 수·속도·실행 시간 제한은 계속 적용된다.
+- 시험은 승인된 테스트 환경과 가상 계정에서만 수행한다.
 
 ### 인증과 결과 기록
 

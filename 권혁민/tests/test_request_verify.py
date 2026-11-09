@@ -1147,3 +1147,221 @@ def test_phase2_share_revoke_changes_access():
 
     # 공유 해제가 소유자 A의 조회 권한을 없애면 안 된다.
     assert a_after["expected_app"]["http_status"] == 200
+
+
+@pytest.mark.parametrize(
+    "case_id, role, path, status",
+    [
+        (
+            "SH-06-A-INACTIVE-B-SHARED-LIST",
+            "member_b", "/posts/shared/", 200
+        ),
+        (
+            "SH-06-A-INACTIVE-B-DETAIL",
+            "member_b", "/posts/1/", 404
+        ),
+        (
+            "SH-06-A-INACTIVE-C-DETAIL",
+            "member_c", "/posts/1/", 404
+        ),
+    ],
+)
+def test_phase2_owner_inactive_fixture(
+    case_id, role, path, status
+):
+    """소유자 비활성화 이후의 접근 통제 fixture를 검증한다."""
+    fixture_root = ROOT / "fixtures"
+
+    suite = cli.load_json(
+        fixture_root / "cases_owner_inactive.json"
+    )
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        item["case_id"]: item
+        for item in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["method"] == "GET"
+    assert case["path"] == path
+    assert case["auth_role"] == role
+    assert case["input_reference"] is None
+    assert case["expected_app"]["http_status"] == status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"
+
+
+def test_phase2_owner_inactive_blocks_shared_access():
+    """소유자 비활성화 전후 공유 대상의 조회 기대값을 비교한다."""
+    fixture_root = ROOT / "fixtures"
+
+    granted = cli.load_json(
+        fixture_root / "cases_share_granted.json"
+    )
+    inactive = cli.load_json(
+        fixture_root / "cases_owner_inactive.json"
+    )
+
+    cli.validate_suite(granted, fixture_root)
+    cli.validate_suite(inactive, fixture_root)
+
+    granted_cases = {
+        case["case_id"]: case
+        for case in granted["cases"]
+    }
+    inactive_cases = {
+        case["case_id"]: case
+        for case in inactive["cases"]
+    }
+
+    before = granted_cases["SH-01-B-DETAIL-ALLOWED"]
+    after = inactive_cases["SH-06-A-INACTIVE-B-DETAIL"]
+
+    assert before["path"] == after["path"] == "/posts/1/"
+    assert before["auth_role"] == after["auth_role"] == "member_b"
+
+    # A가 활성일 때 B에게 공유된 P1은 조회 가능.
+    assert before["expected_app"]["http_status"] == 200
+
+    # A가 비활성화되면 B의 조회도 차단.
+    assert after["expected_app"]["http_status"] == 404
+
+
+@pytest.mark.parametrize(
+    "case_id, path, status",
+    [
+        ("SH-06-B-ACTIVE-BASELINE", "/posts/1/", 200),
+        ("SH-06-B-INACTIVE-DETAIL", "/posts/1/", 302),
+        ("SH-06-B-INACTIVE-SHARED-LIST", "/posts/shared/", 302),
+    ],
+)
+def test_phase2_member_inactive_contract(case_id, path, status):
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(
+        fixture_root / "cases_member_inactive.json"
+    )
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {c["case_id"]: c for c in suite["cases"]}
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["method"] == "GET"
+    assert case["auth_role"] == "member_b"
+    assert case["path"] == path
+    assert case["expected_app"]["http_status"] == status
+    assert case["verification_mode"] == "manual_required"
+
+    if status == 302:
+        assert case["expected_app"]["redirect_path"] == (
+            "/accounts/login/"
+        )
+
+    if case_id == "SH-06-B-INACTIVE-DETAIL":
+        assert case["checkpoint_before"] == "deactivate_member_b"
+
+
+def test_manual_checkpoint_reuses_member_b_session(
+    tmp_path, monkeypatch
+):
+    """모의 응답에서 B 세션 유지·재로그인 방지를 검증한다."""
+    args = inputs(tmp_path, 8765)
+    args.cases = ROOT / "fixtures" / "cases_member_inactive.json"
+    args.manual_checkpoints = True
+
+    login_calls = []
+    requests_seen = []
+    inactive = {"value": False}
+
+    def fake_login(session, target, budget, role, *a, **kw):
+        login_calls.append(role)
+        session.cookies.set("sessionid", "unit-b-session")
+
+    def fake_send(
+        session, method, target, path, budget, request_id, **kw
+    ):
+        requests_seen.append({
+            "session_id": id(session),
+            "cookie": session.cookies.get("sessionid"),
+            "inactive": inactive["value"],
+            "path": path,
+        })
+
+        status = 302 if inactive["value"] else 200
+
+        return {
+            "status": status,
+            "elapsed_ms": 0.1,
+            "location": (
+                "/accounts/login/?next=" + path
+                if status == 302 else None
+            ),
+            "body_bytes": 0,
+            "sha256": None,
+            "headers": {},
+            "request_body_bytes": None,
+        }, None
+
+    def confirm_deactivation(prompt):
+        assert "DEACTIVATED" in prompt
+        inactive["value"] = True
+        return "DEACTIVATED"
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        "builtins.input", confirm_deactivation
+    )
+
+    assert cli.run(args) == 3  # 로그 대조 전이므로 UNKNOWN
+
+    assert login_calls == ["member_b"]
+    assert len(requests_seen) == 3
+
+    # 세 요청 모두 동일한 메모리 세션과 쿠키 사용.
+    assert len({
+        request["session_id"] for request in requests_seen
+    }) == 1
+    assert all(
+        request["cookie"] == "unit-b-session"
+        for request in requests_seen
+    )
+
+    assert [r["inactive"] for r in requests_seen] == [
+        False, True, True
+    ]
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+
+    assert [
+        r["http_status"] for r in result["results"]
+    ] == [200, 302, 302]
+    assert all(
+        r["http_expectation_match"] is True
+        for r in result["results"]
+    )
+
+    assert any(
+        event["stage"] == "manual_checkpoint"
+        for event in result["preparation_events"]
+    )
+
+
+def test_manual_checkpoint_requires_opt_in(tmp_path):
+    """허용 옵션 없이 수동 체크포인트 실행을 시작하지 않는다."""
+    args = inputs(tmp_path, 8765)
+    args.cases = ROOT / "fixtures" / "cases_member_inactive.json"
+    args.manual_checkpoints = False
+
+    with pytest.raises(
+        cli.ConfigError,
+        match="--manual-checkpoints",
+    ):
+        cli.run(args)
+
+    assert not args.output_dir.exists()

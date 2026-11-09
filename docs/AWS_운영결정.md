@@ -22,6 +22,7 @@
 | 10 | 서버 사양 | Web 1 + DB 1, 둘 다 **t3.small**, 디스크 gp3 20GB(암호화, DB 데이터도 같은 디스크), 공인 IP 없음, IMDSv2 필수, 키 페어 없이 SSM만. AMI는 Ubuntu 24.04 최신을 실행 때 조회(쓴 ID·날짜 기록). 태그 Project=Haven, Owner=minsung(NAT·EIP 포함). 구축 스크립트는 bash(`set -euo pipefail`, `MSYS_NO_PATHCONV=1`) | 대수는 민성 설계 그대로. 1GB(t3.micro)에 Django/PostgreSQL은 빠듯해서 2GB. 세부값은 민성 설계 5.4 제안을 승인 | 확정 (세부값 11/09) |
 | 11 | 사전 승인 | 이 문서 범위의 IAM 적용·VPC/EC2/NAT 구축·매일 `nat-down`/`nat-up`은 **조장 사전 승인.** 담당자가 따로 묻지 않고 진행 | AI로 작업이 빨라져 승인 대기가 병목이 되지 않게 | 확정. 연결 시험용 임시 EC2(t3.micro, 공인 IP 없음, 시험 당일 삭제)와 구축 직후·앱 배포 전 재부팅 시험도 포함. 단, **전체 삭제·공유 DB 데이터 삭제처럼 되돌릴 수 없는 작업은 그때마다 조장 확인** |
 | 12 | 도메인 (3회차 HTTPS) | **화요일(11/10) 팀 논의 후 구매.** 추천안: 저렴한 도메인 + Cloudflare 무료 DNS | 무료 서브도메인(DuckDNS 등)은 CNAME이 안 돼 ALB·ACM 검증에 못 씀. `*.vercel.app`은 Vercel 호스팅 전용. 도메인을 AWS 밖에 두면 계정 이전 때 CNAME만 바꾸면 됨(9번), Route 53 요금도 없음 | 논의 대기 (가격 미확인) |
+| 13 | 서버 비밀값·코드·백업 | 비밀값은 **SSM Parameter Store SecureString `/haven/*`**, web-1은 **읽기 전용 deploy key**로 GitHub에서 코드 받기, DB 백업은 **`s3://haven-backup-<계정ID>/db-backups/`** | Git·명령 인자·로그에 비밀값이 남지 않고 계정 이전 때 같은 절차. 필요한 IAM: Role에 `ssm:GetParameter`(`parameter/haven/*`)·`s3:PutObject`·`s3:GetObject`(`db-backups/*`), 민수에 `ssm:PutParameter`·`ssm:GetParameter`. 스크립트는 `안민수/server/`(#28·#30) | 확정 (11/09 16시). IAM 반영은 보람 #29 |
 
 ## 예산 경보와 행동
 
@@ -53,6 +54,8 @@
 - 2026-11-09 오후 조장 확정: 4번 변경, 10~12번 추가.
 - 2026-11-09 오후 늦게: 크레딧 $120(운영 $100 + 예비 $20), EC2 Role 이름, 서버 세부 설정(민성 설계 5.4)·bash 스크립트 확정. 전체 삭제 스크립트는 지울 목록 출력 후 조장 확인.
 - 2026-11-09 민성 연결확인표(`이민성/network/연결확인표.md`) 요청에 답: 가동 09~21시, 시험용 임시 EC2·재부팅 시험 사전 승인, 시험 DB 계정 허용 `haven_app`·거부 `postgres`(민수가 서버 pg_hba 설정).
+
+- 2026-11-09 16시: 13번 추가(비밀값 SSM, deploy key, 백업 버킷). 보람에게 #29 반영 요청.
 
 ## 이번 결정으로 바뀌는 작업
 

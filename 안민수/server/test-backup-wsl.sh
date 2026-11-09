@@ -66,6 +66,27 @@ cp "$T/dump.bak" "$B/$TS/haven.dump"
 cp "$B/$TS/counts" "$T/counts.bak"; sed -i "s/^auth_user .*/auth_user 999/" "$B/$TS/counts"
 expect_fail "restore whose row counts differ is reported" bash "$D/restore.sh" "$TS"
 cp "$T/counts.bak" "$B/$TS/counts"
+echo "== uploads backup/restore"
+U=/srv/haven/uploads; mkdir -p "$U/p1"; echo a > "$U/p1/a.txt"; echo "b b" > "$U/p1/file with space.pdf"; head -c 300000 /dev/urandom > "$U/big.bin"; chown -R haven:haven "$U"
+expect_fail "uploads backup while app is running (writes not paused)" bash "$D/backup-uploads.sh" "$TS"
+expect_fail "uploads backup with bad time" bash "$D/backup-uploads.sh" now
+systemctl stop haven
+expect_ok "DB backup for bundle" bash "$D/backup.sh"
+UTS=$(grep -o '[0-9]\{8\}T[0-9]\{6\}Z' "$T/out" | head -1)
+expect_ok "uploads backup into same folder ($UTS)" bash "$D/backup-uploads.sh" "$UTS"
+systemctl start haven
+check "bundle folder has DB + uploads files" bash -c "cd '$B/$UTS' && test -s haven.dump -a -s manifest -a -s uploads.tar -a -s uploads.list -a -s uploads.manifest"
+expect_ok "restore uploads into isolated dir" bash "$D/restore-uploads.sh" "$UTS"
+check "  ...3 files, same content" bash -c "[ \$(find /srv/haven/restore-check/uploads -type f | wc -l) = 3 ] && cmp -s '$U/big.bin' /srv/haven/restore-check/uploads/big.bin"
+expect_ok "restore uploads again (check dir recreated)" bash "$D/restore-uploads.sh" "$UTS"
+expect_fail "restore uploads into live dir (not empty) is refused" env TARGET_DIR=$U bash "$D/restore-uploads.sh" "$UTS"
+mkdir -p /srv/haven/newacct-uploads
+expect_ok "restore uploads into empty dir (new account case)" env TARGET_DIR=/srv/haven/newacct-uploads bash "$D/restore-uploads.sh" "$UTS"
+rm -rf /srv/haven/newacct-uploads
+cp "$B/$UTS/uploads.tar" "$T/tar.bak"; printf x >> "$B/$UTS/uploads.tar"
+expect_fail "restore of corrupted uploads.tar is refused" bash "$D/restore-uploads.sh" "$UTS"
+cp "$T/tar.bak" "$B/$UTS/uploads.tar"
+expect_fail "restore uploads of missing backup" bash "$D/restore-uploads.sh" 20000101T000000Z
 check "app still healthy" [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/healthz)" = 200 ]
 sql postgres "DROP DATABASE haven_newacct" >/dev/null
 

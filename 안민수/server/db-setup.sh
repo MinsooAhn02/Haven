@@ -12,7 +12,9 @@ ipv4='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
 [[ $LISTEN_IP =~ $ipv4 ]] || die "LISTEN_IP must be an IPv4 address: $LISTEN_IP"
 [[ $DB_NAME =~ ^[a-z_][a-z0-9_]*$ ]] || die "bad DB_NAME: $DB_NAME"
 
-# 설치 전에 비밀값부터 읽는다: 못 읽으면 아무것도 바꾸지 않고 멈춘다.
+# Ubuntu AMI에는 aws CLI가 없다(web-setup.sh와 같은 방식으로 설치). 시험의 가짜 aws가 이 빈틈을 가렸었다.
+command -v aws >/dev/null || snap install aws-cli --classic
+# PostgreSQL 설치 전에 비밀값부터 읽는다: 못 읽으면 DB는 건드리지 않고 멈춘다.
 OWNER_PW=$(secret db/owner_password)
 APP_PW=$(secret db/app_password)
 

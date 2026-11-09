@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}내 기록 | Haven 기록{% endblock %}
+{% block body %}
+<main class="page-shell">
+  <header class="page-heading"><h1>내 기록</h1><p class="intro">내가 작성한 기록을 확인하고 관리할 수 있습니다.</p></header>
+  <p><a class="button button-primary" href="{% url 'posts:create' %}">새 기록 작성</a></p>
+  {% if posts %}
+    <section class="panel" aria-label="내 기록 목록">
+      <ul class="record-list">
+        {% for post in posts %}
+          <li class="record-row">
+            <h2 class="record-title">{{ post.title }}</h2>
+            <a class="record-link" href="{% url 'posts:detail' pk=post.pk %}">기록 열기</a>
+          </li>
+        {% endfor %}
+      </ul>
+      {% if page_obj %}
+        <nav class="pagination" aria-label="기록 목록 페이지 이동">
+          {% if page_obj.has_previous %}<a class="page-link" href="?page={{ page_obj.previous_page_number }}">이전 페이지</a>{% else %}<span class="page-link" aria-disabled="true">이전 페이지</span>{% endif %}
+          <span class="page-count">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 페이지</span>
+          {% if page_obj.has_next %}<a class="page-link" href="?page={{ page_obj.next_page_number }}">다음 페이지</a>{% else %}<span class="page-link" aria-disabled="true">다음 페이지</span>{% endif %}
+        </nav>
+      {% endif %}
+    </section>
+  {% else %}
+    <section class="panel empty-state"><h2>아직 기록이 없습니다</h2><p>첫 기록을 작성하면 이곳에서 확인할 수 있습니다.</p><a class="button button-primary" href="{% url 'posts:create' %}">새 기록 작성</a></section>
+  {% endif %}
+</main>
+{% endblock %}

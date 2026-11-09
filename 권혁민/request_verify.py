@@ -29,7 +29,7 @@ REQ_ID_HEADER = "X-Haven-Request-ID"
 RUN_ID_HEADER = "X-Haven-Run-ID"
 MAX_RESPONSE = 2 * 1024 * 1024
 RESULT_FIELDS = [
-    "run_id", "request_id", "case_id", "timestamp_utc", "elapsed_ms",
+    "run_id", "request_id", "trace_id", "case_id", "timestamp_utc", "elapsed_ms",
     "auth_role", "category", "method", "path", "expected_app", "expected_waf",
     "http_status", "redirect_target", "response_summary", "app_observed",
     "waf_action", "rule_id", "waf_verdict", "app_validity", "transport_status",
@@ -55,6 +55,13 @@ class TooLargeResponse(ExecutionError):
 def utc_now() -> str:
     """UTC ISO 타임스탬프를 반환한다. 로컬 시각과 섞이지 않도록 모든 증거에 사용."""
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+def new_trace_id() -> str:
+    """AWS X-Amzn-Trace-Id 형식의 Root 값을 생성한다."""
+    epoch_hex = f"{int(time.time()):08x}"
+    random_hex = uuid.uuid4().hex[:24]
+    return f"Root=1-{epoch_hex}-{random_hex}"
 
 
 def load_json(path: Path):
@@ -366,12 +373,14 @@ def new_session() -> requests.Session:
 
 def bounded_send(s: requests.Session, method: str, target: str, path: str, budget: RequestBudget,
                  request_id: str, *, fields=None, file_info=None, headers=None,
-                 max_response_bytes=MAX_RESPONSE, read_redirect_body=False) -> tuple[dict, bytes | None]:
+                 max_response_bytes=MAX_RESPONSE, read_redirect_body=False, trace_id=None) -> tuple[dict, bytes | None]:
     """HTTP를 최대 1회 전송한다. 리다이렉트 미추적·TLS 확인·응답 상한 적용."""
     url = target + validate_path(path)
     h = {REQ_ID_HEADER: request_id}
     if headers:
         h.update(headers)
+    if trace_id is not None:
+        h["X-Amzn-Trace-Id"] = trace_id
     opened = None
     try:
         if file_info:
@@ -413,6 +422,7 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
                         "Content-Disposition",
                         "X-Content-Type-Options",
                         "Cache-Control",
+                        "X-Request-ID",
                     )
                     if key in resp.headers
                 }
@@ -441,7 +451,7 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
                 if path == "/accounts/login/" and total <= 65536:
                     chunks.append(chunk)
             safe_headers = {key: resp.headers[key] for key in (
-                "Content-Type", "Content-Disposition", "X-Content-Type-Options", "Cache-Control"
+                "Content-Type", "Content-Disposition", "X-Content-Type-Options", "Cache-Control", "X-Request-ID"
             ) if key in resp.headers}
 
             request_body = prepared.body
@@ -630,7 +640,7 @@ def check_http_expected(detail: dict, expected: dict, *, target_origin: str | No
 def base_record(run_id: str, case: dict) -> dict:
     """요청 1건에 대한 결과 기본 필드를 만든다. 최초 판정은 UNKNOWN."""
     return dict(
-        run_id=run_id, request_id=str(uuid.uuid4()), case_id=case["case_id"],
+        run_id=run_id, request_id=str(uuid.uuid4()), trace_id=new_trace_id(), case_id=case["case_id"],
         timestamp_utc=utc_now(), elapsed_ms=None, auth_role=case["auth_role"],
         category=case["category"], method=case["method"], path=safe_path_log(case["path"]),
         expected_app=case["expected_app"], expected_waf=case["expected_waf"],
@@ -763,6 +773,7 @@ def run(args) -> int:
                 detail, _ = bounded_send(
                     sess, case["method"], target, case["path"], budget, record["request_id"],
                     fields=fields, file_info=file_info, headers=headers,
+                    trace_id=record["trace_id"],
                     max_response_bytes=args.max_response_bytes,
                     read_redirect_body=any(
                         key in case["expected_app"]
@@ -823,15 +834,37 @@ def log_lines(path: Path) -> list[dict]:
 
 
 def log_request_id(event: dict) -> str | None:
-    """로그에서 X-Haven-Request-ID를 꺼낸다. AWS WAF 헤더 형식도 지원."""
-    if isinstance(event.get("request_id"), str):
-        return event["request_id"]
+    """CLI 요청 ID를 추출한다. 앱·WAF·기존 로그 형식을 지원."""
+
+    # Django 앱 로그: 서버 자체 ID와 CLI 요청 ID를 구분한다.
+    client_id = event.get("client_request_id")
+    if isinstance(client_id, str) and client_id.strip():
+        return client_id
+
+    # 기존 앱 로그 및 로컬 synthetic fixture 호환성 유지.
+    request_id = event.get("request_id")
+    if isinstance(request_id, str) and request_id.strip():
+        return request_id
+
+    # AWS WAF 원본 로그: HTTP 요청 헤더에서 추출.
     req = event.get("httpRequest", {})
     if not isinstance(req, dict):
         return None
-    for header in req.get("headers", []):
-        if isinstance(header, dict) and str(header.get("name", "")).lower() == REQ_ID_HEADER.lower():
-            return header.get("value")
+
+    headers = req.get("headers", [])
+    if not isinstance(headers, list):
+        return None
+
+    for header in headers:
+        if not isinstance(header, dict):
+            continue
+
+        name = str(header.get("name", "")).lower()
+        value = header.get("value")
+
+        if (name == REQ_ID_HEADER.lower() and isinstance(value, str) and value.strip()):
+            return value
+
     return None
 
 

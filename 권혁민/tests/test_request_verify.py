@@ -1467,3 +1467,154 @@ def test_bounded_send_trace_id_header(monkeypatch):
 
         assert detail["status"] == 200
         assert observed == [trace_id]
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (
+            "Root=1-67891233-abcdef012345678912345678",
+            "1-67891233-abcdef012345678912345678",
+        ),
+        (
+            "Self=1-67891233-111111111111111111111111;"
+            "Root=1-67891233-abcdef012345678912345678",
+            "1-67891233-abcdef012345678912345678",
+        ),
+        (
+            "1-67891233-abcdef012345678912345678",
+            "1-67891233-abcdef012345678912345678",
+        ),
+        (
+            "Root=invalid",
+            None,
+        ),
+        (
+            "Root=1-67891233-abcdef012345678912345678;"
+            "Root=1-67891233-abcdef012345678912345678",
+            None,
+        ),
+        (
+            None,
+            None,
+        ),
+    ],
+)
+def test_extract_trace_root(value, expected):
+    """Trace Root 정규화 및 잘못된 형식 거부."""
+    assert cli.extract_trace_root(value) == expected
+
+
+@pytest.mark.parametrize(
+    "scenario, expected_code",
+    [
+        ("matched", 0),
+        ("mismatched", 3),
+        ("missing", 3),
+        ("duplicate", 3),
+    ],
+)
+def test_real_trace_root_correlation(
+    tmp_path, scenario, expected_code
+):
+    """Trace Root 일치·불일치·누락·중복을 검증한다."""
+
+    now = datetime.now(timezone.utc)
+
+    case = {
+        "case_id": "TRACE-TEST",
+        "category": "authorization",
+        "method": "GET",
+        "path": "/healthz",
+        "auth_role": "anonymous",
+        "expected_app": {"http_status": 200},
+        "expected_waf": "ALLOW",
+        "verification_mode": "http_only",
+    }
+
+    row = cli.base_record("trace-test-run", case)
+    row.update(
+        transport_status="OK",
+        http_status=200,
+        http_expectation_match=True,
+    )
+
+    run_json = tmp_path / "results.json"
+    run_json.write_text(
+        json.dumps({
+            "run_id": "trace-test-run",
+            "target_origin": "https://haven.example:443",
+            "results": [row],
+        }),
+        encoding="utf-8",
+    )
+
+    waf_event = {
+        "timestamp": int(now.timestamp() * 1000),
+        "action": "ALLOW",
+        "httpRequest": {
+            "headers": [
+                {
+                    "name": "X-Amzn-Trace-Id",
+                    "value": row["trace_id"],
+                }
+            ],
+        },
+    }
+
+    app_event = {
+        "ts": now.isoformat(),
+        "request_id": (
+            "Self=1-67891233-111111111111111111111111;"
+            + row["trace_id"]
+        ),
+        "status": 200,
+    }
+
+    waf_events = [waf_event]
+
+    if scenario == "mismatched":
+        app_event["request_id"] = (
+            "Root=1-67891233-000000000000000000000000"
+        )
+
+    elif scenario == "missing":
+        # 기존 CLI ID가 있어도 실제 로그는 Root 없이 연결 금지.
+        waf_event["httpRequest"]["headers"] = []
+        waf_event["request_id"] = row["request_id"]
+        app_event["request_id"] = row["request_id"]
+
+    elif scenario == "duplicate":
+        waf_events.append(dict(waf_event))
+
+    waf_path = tmp_path / "waf.jsonl"
+    app_path = tmp_path / "app.jsonl"
+
+    waf_path.write_text(
+        "".join(json.dumps(e) + "\n" for e in waf_events),
+        encoding="utf-8",
+    )
+    app_path.write_text(
+        json.dumps(app_event) + "\n",
+        encoding="utf-8",
+    )
+
+    args = Namespace(
+        run_json=run_json,
+        waf_log=waf_path,
+        app_log=app_path,
+        output_dir=tmp_path / "correlated",
+    )
+
+    assert cli.correlate(args) == expected_code
+
+    result = cli.load_json(
+        args.output_dir / "correlated_results.json"
+    )["results"][0]
+
+    if scenario == "matched":
+        assert result["correlation_status"] == "MATCHED"
+        assert result["verdict"] == "PASS"
+    else:
+        assert result["correlation_status"] == "UNRESOLVED"
+        assert result["verdict"] == "UNKNOWN"

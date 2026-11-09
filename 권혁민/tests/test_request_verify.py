@@ -1799,3 +1799,77 @@ def test_phase2_admin_access_contract(
     assert case["expected_app"]["http_status"] == expected_status
     assert case["expected_waf"] == "NOT_APPLICABLE"
     assert case["verification_mode"] == "manual_required"
+
+
+@pytest.mark.parametrize(
+    "case_id, role, method, status",
+    [
+        ("SH-04-A-SHARES-GET-BASELINE",
+         "member_a", "GET", 200),
+        ("SH-02-C-SHARES-GET-DENIED",
+         "member_c", "GET", 404),
+        ("SH-02-C-SHARES-POST-DENIED",
+         "member_c", "POST", 404),
+        ("SH-07-ANON-SHARES-GET",
+         "anonymous", "GET", 302),
+    ],
+)
+def test_phase2_share_management_access(
+    case_id, role, method, status
+):
+    """공유 관리 엔드포인트의 역할별 시험 계약."""
+
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(
+        fixture_root / "cases_share_granted.json"
+    )
+
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        item["case_id"]: item
+        for item in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["path"] == "/posts/1/shares/"
+    assert case["auth_role"] == role
+    assert case["method"] == method
+    assert case["expected_app"]["http_status"] == status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"
+
+    if method == "POST":
+        assert case["input_reference"] == "post_empty_valid.json"
+    else:
+        assert case["input_reference"] is None
+
+    if role == "anonymous":
+        assert case["expected_app"]["redirect_path"] == (
+            "/accounts/login/"
+        )
+
+
+def test_share_management_baseline_precedes_denials():
+    """소유자 정상 대조군을 거부 시험보다 먼저 배치한다."""
+
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_share_granted.json"
+    )
+
+    positions = {
+        item["case_id"]: index
+        for index, item in enumerate(suite["cases"])
+    }
+
+    baseline = positions["SH-04-A-SHARES-GET-BASELINE"]
+
+    for case_id in (
+        "SH-02-B-SHARES-GET-DENIED",
+        "SH-02-B-SHARES-POST-DENIED",
+        "SH-02-C-SHARES-GET-DENIED",
+        "SH-02-C-SHARES-POST-DENIED",
+    ):
+        assert baseline < positions[case_id]

@@ -826,3 +826,145 @@ def test_probe_slow_redirect_body_is_not_read(tmp_path):
         assert redirect["http_expectation_match"] is True
         assert redirect["response_summary"]["body_bytes"] is None
         assert redirect["response_summary"]["sha256"] is None
+
+
+@pytest.mark.parametrize(
+    "origin_mode, expected_origin",
+    [
+        (None, "https://haven.example:443"),
+        ("same", "https://haven.example:443"),
+        ("absent", None),
+        ("foreign", "https://attacker.invalid"),
+    ],
+)
+def test_prepare_case_post_origin_modes(
+    tmp_path, origin_mode, expected_origin
+):
+    """정상·생략·외부 Origin 시험을 구분한다."""
+    payload = {
+        "csrf_mode": "valid",
+        "fields": {
+            "title": "Origin test",
+            "body": "Safe test content",
+        },
+    }
+
+    if origin_mode is not None:
+        payload["origin_mode"] = origin_mode
+
+    payload_file = tmp_path / "origin_payload.json"
+    payload_file.write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+
+    cli.validate_payload(payload, tmp_path)
+
+    case = {
+        "method": "POST",
+        "path": "/posts/new/",
+        "input_reference": payload_file.name,
+    }
+
+    budget = cli.RequestBudget(
+        Namespace(
+            max_requests=10,
+            rate=5,
+            timeout=3,
+            max_duration=60,
+        )
+    )
+
+    with cli.new_session() as session:
+        session.cookies.set("csrftoken", "unit-csrf-token")
+
+        fields, headers, file_info = cli.prepare_case_request(
+            session,
+            case,
+            tmp_path,
+            "https://haven.example:443",
+            budget,
+            "test-run",
+            [],
+            cli.MAX_RESPONSE,
+        )
+
+    assert headers.get("Origin") == expected_origin
+    assert headers["X-CSRFToken"] == "unit-csrf-token"
+    assert fields["csrfmiddlewaretoken"] == "unit-csrf-token"
+    assert file_info is None
+
+
+def test_login_prep_sends_same_origin(monkeypatch):
+    """로그인 준비 POST에 정상 Origin과 CSRF 토큰을 포함한다."""
+    requests_seen = []
+
+    def fake_bounded_send(
+        session, method, target, path, budget, request_id, **kwargs
+    ):
+        requests_seen.append({
+            "method": method,
+            "path": path,
+            "headers": kwargs.get("headers", {}),
+            "fields": kwargs.get("fields"),
+        })
+
+        if method == "GET":
+            html = (
+                b'<input name="csrfmiddlewaretoken" '
+                b'value="unit-csrf-token">'
+            )
+            return {"status": 200}, html
+
+        session.cookies.set("sessionid", "unit-session")
+        return {
+            "status": 302,
+            "location": "/posts/",
+        }, None
+
+    monkeypatch.setattr(cli, "bounded_send", fake_bounded_send)
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda _prompt: "member_a",
+    )
+    monkeypatch.setattr(
+        cli.getpass,
+        "getpass",
+        lambda _prompt: "unit-password",
+    )
+
+    budget = cli.RequestBudget(
+        Namespace(
+            max_requests=10,
+            rate=5,
+            timeout=3,
+            max_duration=60,
+        )
+    )
+
+    with cli.new_session() as session:
+        cli.prep_login(
+            session,
+            "https://haven.example:443",
+            budget,
+            "member_a",
+            "test-run",
+            [],
+            cli.MAX_RESPONSE,
+        )
+
+    assert len(requests_seen) == 2
+
+    login_post = requests_seen[1]
+
+    assert login_post["method"] == "POST"
+    assert login_post["path"] == "/accounts/login/"
+    assert login_post["headers"]["Origin"] == (
+        "https://haven.example:443"
+    )
+    assert login_post["headers"]["X-CSRFToken"] == (
+        "unit-csrf-token"
+    )
+    assert login_post["fields"]["csrfmiddlewaretoken"] == (
+        "unit-csrf-token"
+    )

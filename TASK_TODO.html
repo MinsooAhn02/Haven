@@ -103,9 +103,9 @@ window.addEventListener("error", e => {
 // 항목 done:true = 실제로 실행·확인한 것만
 const GH = "https://github.com/MinsooAhn02/Haven";
 const DATA = {
-  updated: "2026-11-09 (월) 오후",
+  updated: "2026-11-09 (월) 13시",
   week: "2026-11-09(월) ~ 11-13(금) · 1·2회차",
-  mainSha: "eaf710f 기준",
+  mainSha: "a231767 기준",
   direction: [
     ["이번 주", "1·2회차 끝내기 — 로컬 앱·공유 기능·화면·시험 + AWS 구축(수) → 첫 배포(목·금) → 백업·복원 연습. 다음 주(11/16~20)는 3·4회차"],
     ["확정", "AWS 운영 결정 확정: 서울 · 계정당 $100 · NAT+S3 · t3.small 2대 · 매일 밤 NAT 삭제 · AWS 작업 사전 승인(되돌릴 수 없는 삭제만 확인) — docs/AWS_운영결정.md"],
@@ -128,32 +128,32 @@ const DATA = {
   ],
   people: [
     {id: "Minsoo", name: "안민수", no: 1, role: "팀장 · 공통 환경 · CI · DB · 배포", folder: "안민수", status: "run",
-     main: [{t: "AWS 운영 결정 확정", done: true}, {t: "로컬 PostgreSQL 16 + 팀원용 dev-db-setup.ps1 (재실행·권한 분리 깨짐 감지 확인)", done: true}, {t: "요찬 코드 → 개발 DB·앱 CI 연결"}, {t: "서버 설치·배포·되돌리기 스크립트 (Ubuntu 24.04 · Nginx · Gunicorn · systemd · DB 역할 분리)"}, {t: "목·금 AWS 첫 배포 → 재시작 후 유지 확인"}],
+     main: [{t: "AWS 운영 결정 확정", done: true}, {t: "로컬 PostgreSQL 16 + 팀원용 dev-db-setup.ps1 (재실행·권한 분리 깨짐 감지 확인)", done: true}, {t: "요찬 앱을 민수 PC 개발 DB에서 실행: check·migrate 성공, 푸른 템플릿 붙여 64/65 (남은 1개 shared_list.html은 #26으로 추가됨)", done: true}, {t: "#25 병합 후 앱 CI job을 ci.yml에 연결 → GitHub에서 65개 실행 확인"}, {t: "서버 설치·배포·되돌리기 스크립트 (Ubuntu 24.04 · Nginx · Gunicorn · systemd · DB 역할 분리)"}, {t: "목·금 AWS 첫 배포 → 재시작 후 유지 확인"}],
      queue: [{t: "백업(DB dump + manifest) → 격리 복원 연습"}, {t: "화: 도메인 구매 논의 주재 (저렴한 도메인 + Cloudflare DNS 추천)"}, {t: "PR 병합 판단 (짝 리뷰 결과 확인)"}],
      dep: "배포는 요찬 앱 + 민성 서버 연결 필요"},
     {id: "Yochan", name: "신요찬", no: 5, role: "Django 인증·모델·CRUD·공유·첨부", folder: "신요찬", status: "run",
-     main: [{t: "앱 계약 v1 공유 (신요찬/앱계약.md)", done: true}, {t: "인증·소유자 CRUD + 타인 404 · CSRF 403 시험 (화 17:30 목표)"}, {t: "읽기 공유·해제 + 미공유·해제 후 거부 시험"}, {t: "계정 활성/비활성 · 제한된 계정 관리"}],
+     main: [{t: "앱 계약 v1 공유 (신요찬/앱계약.md)", done: true}, {t: "인증·소유자 CRUD + 타인 404 · CSRF 403 시험 — 자체 65개 통과 · 결함 일부러 넣은 시험 15개, PR #25 (혁민 보안 점검 대기)", done: true}, {t: "읽기 공유·해제 + 미공유·해제 후 거부 시험"}, {t: "계정 활성/비활성 · 제한된 계정 관리"}],
      queue: [{t: "첨부 모델 · 비공개 저장 · 다운로드 인가 · 형식/크기 한도 (3회차 앱 코드)"}, {t: "화까지 안민수/dev-db-setup.ps1 실행"}],
      dep: "", note: "Python 3.12·3.13 둘 다 · PR마다 혁민 보안 점검"},
     {id: "Pureun", name: "노푸른", no: 2, role: "화면 · Django Templates · CSS", folder: "노푸른", status: "run",
-     main: [{t: "결정 답변 (#6 템플릿 경로 · #7 가입 후 이동 · #8 405 화면)"}, {t: "1회차 템플릿 전부 (로그인·가입·목록·상세·작성/수정·삭제·404/403/405)"}, {t: "요찬 코드에 연결 → 브라우저 흐름 확인"}, {t: "2회차 화면: 공유 목록 · 공유 관리/해제 · 계정 관리 · 이력"}],
+     main: [{t: "1회차 템플릿 전부 + 오류 화면(400·403·404·405·413·500) + 공유받은 목록 (#26 병합, csrf_token 있음 · |safe 없음 확인)", done: true}, {t: "요찬 #25 병합 후 브라우저로 로그인→목록→작성→상세→수정→삭제 흐름 확인"}, {t: "2회차 화면: 공유 목록 · 공유 관리/해제 · 계정 관리 · 이력"}],
      queue: [{t: "3회차 첨부 업로드/다운로드 화면"}, {t: "키보드·반응형·빈 목록·오류 점검표"}, {t: "화까지 안민수/dev-db-setup.ps1 실행"}, {t: "짝 리뷰: 요찬이 템플릿 context 대조"}],
      dep: "연결 확인은 요찬 코드 필요 (템플릿 작성은 지금)"},
     {id: "Hyeokmin", name: "권혁민", no: 3, role: "레드팀 · 요청 CLI · WAF · 로그", folder: "권혁민", status: "run",
-     main: [{t: "#7 요청 CLI 병합 (51 passed)", done: true}, {t: "1회차 fixture path·필드·CSRF 맞추기 + 결정 #9·#10·#11 답변 + 느린 302 제한"}, {t: "2회차 공유·해제·비활성 + 3회차 첨부 fixture"}, {t: "요찬 PR마다 보안 점검 (인가 누락 · IDOR · CSRF · 경로 조작)"}, {t: "로컬 실제 시험 → AWS 배포 후 같은 시험 재실행"}],
+     main: [{t: "#7 요청 CLI 병합 (51 passed)", done: true}, {t: "1회차 fixture 계약 맞추기 + 느린 302 제한 + 2회차 공유·해제·비활성 fixture + trace ID 대조 (시험 100개, 민수 재실행 통과, PR 전)", done: true}, {t: "요찬 PR #25 보안 점검 (인가 누락 · IDOR · CSRF) → PR 코멘트"}, {t: "#25 병합 후 로컬 실제 시험 → AWS 배포 후 재실행"}, {t: "결정 #9·#10·#11 답변 (아직 없음)"}],
      queue: [{t: "request_id 로그 대조 도구"}, {t: "WAF Count 관찰 계획 (규칙 · 요청 · 기대값)"}, {t: "화까지 안민수/dev-db-setup.ps1 실행"}],
      dep: "실제 시험은 요찬 코드 필요"},
     {id: "Boram", name: "김보람", no: 4, role: "계정 · IAM · 접근 · 비용", folder: "김보람", status: "run",
-     main: [{t: "#8 · #11 점검 기록 병합", done: true}, {t: "비용표 초안 (24시간·12시간 비교, $100으로 23~27일 — NAT·ALB·WAF 24시간 최악 기준)", done: true}, {t: "비용표 재계산: EC2·NAT 평일 09~21시 · ALB·WAF는 다음 주부터, 이번 주/다음 주 두 구간 (민수 추정 이번 주 하루 약 $1.7)"}, {t: "IAM 정책·Role JSON 전부 (사람별 + Web/DB EC2 Role) → 적용 → 허용/거부 실제 시험 (수 목표, 사전 승인). 민성 요청 4개: SSM Role 이름·PassRole 범위, SSM 허가/일반 계정, 로그·S3 Endpoint 정책, 적용 시각"}, {t: "예산 경보 $50/$80/$95 실제 설정 + 알림 수신 확인"}],
+     main: [{t: "#8 · #11 점검 기록 병합", done: true}, {t: "비용표 초안 (24시간·12시간 비교, $100으로 23~27일 — NAT·ALB·WAF 24시간 최악 기준)", done: true}, {t: "비용표 재계산: 이번 주 평일 $1.70 · 다음 주 $2.97 → 12/02까지 약 $53 (#24 병합)", done: true}, {t: "예산 경보 $50/$80/$95 실제 설정 + 이메일 인증 (예산 $100, 11/09~12/03)", done: true}, {t: "IAM 정책·Role JSON 전부 (사람별 + Web/DB EC2 Role) → 적용 → 허용/거부 실제 시험 (수 목표, 사전 승인). 민성 요청 4개: SSM Role 이름·PassRole 범위, SSM 허가/일반 계정, 로그·S3 Endpoint 정책, 적용 시각"}, {t: "EC2 Role haven-ec2-ssm-role / 프로파일 haven-ec2-ssm-profile 이름으로 생성"}],
      queue: [{t: "일별 비용 조회 스크립트 → 매일 보고에 금액"}, {t: "새 계정 세팅 절차 (접근·MFA·IAM·경보)"}, {t: "다른 리전 점검 · 종료 시 지울 자원 목록 양식"}, {t: "짝 리뷰: 민성 구축 스크립트 ↔ IAM 대조"}],
      dep: ""},
     {id: "Minsung", name: "이민성", no: 6, role: "VPC · EC2 · SSM · ALB/HTTPS · SG CLI", folder: "이민성", status: "run",
-     main: [{t: "SG 문서 보완 (#18 병합)", done: true}, {t: "SSM·Web→DB·출구·직접 접근 거부 확인표 (기대값까지, 이민성/network/연결확인표.md) + 결정 5번 확인 + SG outbound 80 반영 (Minsung 브랜치, PR 전)", done: true}, {t: "구축 스크립트 (AWS CLI, ID 변수): VPC·SG(outbound 80)·S3 Endpoint·NAT·EC2 2대"}, {t: "nat-up / nat-down (경로·EIP 확인 포함) + 전체 삭제 스크립트"}, {t: "수 구축 (사전 승인) → SSM · Web→DB · 직접 접근 거부 증거 + Python/apt 확인"}],
-     queue: [{t: "매일 밤 nat-down + EC2 중지, 아침 nat-up"}, {t: "ALB · ACM · HTTPS 설계 (3회차, 도메인은 화 결정)"}, {t: "live SG 읽기 수집 → AUD fixture 대조"}, {t: "연결확인표 PR + nat-up 후 경로·SSM 복구 확인 줄(RST-02) 추가"}],
+     main: [{t: "SG 문서 보완 (#18 병합)", done: true}, {t: "연결확인표 (기대값까지, RST-02 포함) + 결정 5번 확인 + SG outbound 80 + 서버 설정 5.4 (#23 병합)", done: true}, {t: "구축 스크립트 (bash, ID 변수, Role 이름 비면 멈춤): VPC·SG·S3 Endpoint·NAT·EC2 2대"}, {t: "nat-up / nat-down (경로·EIP 확인 포함) + 전체 삭제 스크립트"}, {t: "수 구축 (사전 승인) → SSM · Web→DB · 직접 접근 거부 증거 + Python/apt 확인"}],
+     queue: [{t: "매일 밤 nat-down + EC2 중지, 아침 nat-up"}, {t: "ALB · ACM · HTTPS 설계 (3회차, 도메인은 화 결정)"}, {t: "live SG 읽기 수집 → AUD fixture 대조"}],
      dep: "구축은 보람 IAM 적용 후"}
   ],
   flow: [
-    {from: "요찬 CRUD (화 17:30)", to: ["푸른 연결", "혁민 실제 시험·보안 점검", "민수 개발 DB·CI"], hot: true},
+    {from: "혁민 #25 보안 점검", to: ["요찬 #25 병합", "민수 앱 CI", "푸른 브라우저 흐름", "혁민 실제 시험"], hot: true},
     {from: "보람 IAM 적용 (수)", to: ["민성 구축 (수)"], hot: true},
     {from: "민성 연결 증거 + 요찬 공유 기능", to: ["민수 첫 배포 (목·금)"], hot: true},
     {from: "민수 첫 배포", to: ["백업·복원 연습", "혁민 AWS 재시험", "푸른 실제 흐름"]},
@@ -165,11 +165,12 @@ const DATA = {
     ["매일 저녁", "민수가 브랜치·PR·CI와 대조해 이 현황판 DATA 갱신 → main PR"],
     ["화", "도메인 구매 논의 (민수 주재)"],
     ["금 17:30", "1·2회차 판정과 다음 주(3·4회차) 배정"],
-    ["항상", "main 직접 푸시 금지 — 본인 브랜치 → PR. 작업 전 git pull"]
+    ["항상", "main 직접 푸시 금지 — 본인 브랜치 → PR. 작업 전 git pull (조장 상태 기록만 예외)"]
   ],
   log: [
     ["11/08", "운영 방식 전환: 날짜별 시간표 → 주력·대기열 배정 + 저녁 재배정. #13 · #14 병합, 6개 브랜치 최신 main으로 통일"],
     ["11/09 오전", "요찬 앱 계약 v1 수신 → 민수 결정 8개 답변. 민성 #18 병합. AWS 운영 결정 추천안 공유 (#20)"],
+    ["11/09 13시", "요찬 앱 코드 도착(#25, 혁민 검토 대기) — 민수 PC에서 푸른 템플릿 붙여 64/65. 푸른 템플릿 #26 · 민성 연결확인표 #23 · 보람 비용 재계산 #24(끝까지 약 $53) 병합. 보람 예산 경보 실제 설정. 크레딧 $120(운영 $100 + 예비 $20), EC2 Role 이름, 서버 세부 설정 확정"],
     ["11/09 오후", "민성 연결확인표(Minsung 816ceb1) → 가동 09~21시 · 시험용 임시 EC2 · 재부팅 시험 확정. 보람 비용표 초안(Boram 2171d06). AWS 결정 확정(매일 밤 NAT 삭제 · t3.small 2대 · 사전 승인). AI 전제로 2주 압축: 이번 주 1·2회차, 다음 주 3·4회차. 민수 로컬 PostgreSQL 16 + dev-db-setup.ps1"]
   ]
 };

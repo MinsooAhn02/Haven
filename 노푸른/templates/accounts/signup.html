@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}회원가입 | Haven 기록{% endblock %}
+{% block body %}
+<main class="auth-card" aria-labelledby="signup-title">
+  <p class="brand">Haven 기록</p>
+  <nav class="auth-nav" aria-label="계정 메뉴">
+    <a class="auth-link" href="{% url 'accounts:login' %}">로그인</a>
+    <a class="auth-link" href="{% url 'accounts:signup' %}" aria-current="page">회원가입</a>
+  </nav>
+  <h1 id="signup-title">회원가입</h1>
+  <p class="intro">새 계정을 만들기 위해 아래 내용을 입력해 주세요.</p>
+  {% if form.non_field_errors %}<div class="error-box" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+  <form method="post" action="{% url 'accounts:signup' %}">
+    {% csrf_token %}
+    <div class="field"><label for="id_username">아이디</label><input id="id_username" name="username" type="text" autocomplete="username" value="{{ form.username.value|default_if_none:'' }}">{% for error in form.username.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}</div>
+    <div class="field"><label for="id_password1">비밀번호</label><input id="id_password1" name="password1" type="password" autocomplete="new-password">{% for error in form.password1.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}</div>
+    <div class="field"><label for="id_password2">비밀번호 확인</label><input id="id_password2" name="password2" type="password" autocomplete="new-password">{% for error in form.password2.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}</div>
+    <button class="button button-primary" type="submit">가입하기</button>
+  </form>
+  <p class="login">이미 계정이 있나요? <a href="{% url 'accounts:login' %}">로그인</a></p>
+</main>
+{% endblock %}

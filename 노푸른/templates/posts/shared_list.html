@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}공유받은 기록 | Haven 기록{% endblock %}
+{% block body %}
+<main class="page-shell">
+  <header class="page-heading">
+    <h1>공유받은 기록</h1>
+    <p class="intro">다른 사람이 나와 공유한 기록을 확인할 수 있습니다.</p>
+  </header>
+  {% if posts %}
+    <section class="panel" aria-label="공유받은 기록 목록">
+      <ul class="record-list">
+        {% for post in posts %}
+          <li class="record-row">
+            <h2 class="record-title">{{ post.title }}</h2>
+            <a class="record-link" href="{% url 'posts:detail' pk=post.pk %}">기록 열기</a>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% else %}
+    <section class="panel empty-state" aria-live="polite">
+      <h2>공유받은 기록이 없습니다</h2>
+      <p>다른 사람이 기록을 공유하면 이곳에서 확인할 수 있습니다.</p>
+    </section>
+  {% endif %}
+</main>
+{% endblock %}

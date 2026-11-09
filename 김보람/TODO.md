@@ -48,7 +48,7 @@
 | 회차 | 상태 | 실제 진행·검증 결과 | 관련 문서·PR | 다음 작업·인계 |
 |---|---|---|---|---|
 | 1 | 부분 완료 | 루트·시험용 IAM 사용자 MFA 확인, 서울 리전 자원 조회, 크레딧·비용 알림 확인, 일부 허용·거부 시험 | [1회차](1회차.md), [결정현황](민수_인계_결정현황.md), PR #8(병합) | 남은 계정 복구/타 리전 확인 및 운영 결정 반영 |
-| 2 | 진행 중 | 11/09: $100 예산·$50/$80/$95 경보 설정, 공통 EC2 SSM Role·프로파일 생성, minsung 계정·제한된 PassRole 연결, 인프라 정책 생성(사용자 미연결), EC2 Role SSM 읽기 인라인 정책 연결. 실제 인프라 권한 허용·거부 시험은 미실시 | [2회차 작업 기록](2회차.md), [IAM 파일](IAM/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 인프라 정책 검증·연결, 안민수 SSM 권한, S3 GetObject/버킷명, 팀원별 허용·거부 시험 |
+| 2 | 진행 중 | 11/09: $100 예산·$50/$80/$95 경보 설정, 공통 EC2 SSM Role·프로파일 생성, minsung 계정·제한된 PassRole 연결, 인프라 정책 생성(사용자 미연결), EC2 Role SSM 읽기 인라인 정책 연결. 실제 인프라 권한 허용·거부 시험은 미실시 | [2회차 작업 기록](2회차.md), [IAM 파일](IAM/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 인프라 정책 검증·연결, 안민수 SSM 권한, S3 버킷명 확정·적용 검토, 팀원별 허용·거부 시험 |
 | 3 | 미착수 | 미확인 | — | 3회차 권한·WAF·로그 보완 |
 | 4 | 미착수 | 미확인 | — | 최종 권한/비용·자원 종료 검토 |
 
@@ -70,8 +70,9 @@
 - [ ] 이민성 구축 스크립트에 필요한 실제 EC2/VPC 권한·태그 조건 추가 확인 후 `minsung`에게 인프라 정책 연결
 - [ ] 민성님 사용자 최초 로그인·MFA 및 IAM 허용/거부 시험 기록
 - [ ] 안민수 담당 IAM 주체에 `ssm:PutParameter`, `ssm:GetParameter`(서울 `/haven/*`) 설정
-- [ ] [06_DB_S3_Backup_Policy.json](IAM/06_DB_S3_Backup_Policy.json)에 `s3:GetObject` 보완 및 버킷명 확정 후 적용 범위 검토
-- [ ] 실제 적용된 EC2 SSM 읽기 인라인 정책을 GitHub 정책 파일로 기록하고 PR #29 반영
+- [x] [06_DB_S3_Backup_Policy.json](IAM/06_DB_S3_Backup_Policy.json)에 백업 복원용 `s3:GetObject` 초안 추가 (버킷명 미확정·AWS 미적용)
+- [ ] S3 백업 버킷명 확정 후 실제 적용 범위 검토
+- [x] AWS에 적용한 EC2 SSM 읽기 인라인 정책을 [07_EC2_SSM_Parameter_Read_Policy.json](IAM/07_EC2_SSM_Parameter_Read_Policy.json) 템플릿으로 기록해 PR #29 반영 (계정 ID 변수는 실제 적용 전 치환)
 - [ ] 민성님에게 서버 Role/프로파일 및 적용·검증 상태 인계
 - [ ] 서버 구축 후 실제 허용·거부 시험, 다른 리전/잔여 과금 자원 확인
 

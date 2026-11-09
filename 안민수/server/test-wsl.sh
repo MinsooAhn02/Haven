@@ -66,6 +66,14 @@ check "migrated tables are owned by haven_owner" [ "$(app_sql "select count(*) f
 check "haven_app can read migrated tables" bash -c "PGPASSWORD=$APP_PW psql -X -q -h 127.0.0.1 -U haven_app -d haven -v ON_ERROR_STOP=1 -c 'select count(*) from auth_user' >/dev/null"
 expect_fail "haven_app still cannot DROP a migrated table" app_sql "drop table auth_user"
 check "env file is 640 root:haven" [ "$(stat -c '%a %U:%G' /etc/haven/haven.env)" = "640 root:haven" ]
+check "uploads dir is 750 haven:haven" [ "$(stat -c '%a %U:%G' /srv/haven/uploads)" = "750 haven:haven" ]
+check "env has HAVEN_UPLOAD_DIR, no CSRF line when unset" bash -c 'grep -qx "HAVEN_UPLOAD_DIR=/srv/haven/uploads" /etc/haven/haven.env && ! grep -q CSRF /etc/haven/haven.env'
+GPID=$(systemctl show -p MainPID --value haven)
+check "service can write uploads (ReadWritePaths)" bash -c "nsenter -t $GPID -m runuser -u haven -- touch /srv/haven/uploads/.probe && rm /srv/haven/uploads/.probe"
+check "service cannot write code dir (ProtectSystem=strict)" bash -c "! nsenter -t $GPID -m runuser -u haven -- touch /srv/haven/current/.probe 2>/dev/null"
+echo secret > /srv/haven/uploads/private.txt
+check "nginx does not serve uploads directly" bash -c '[ "$(curl -s -o /dev/null -w "%{http_code}" -H "Host: haven.test" http://127.0.0.1/uploads/private.txt)" != 200 ] && [ "$(curl -s -o /dev/null -w "%{http_code}" -H "Host: haven.test" http://127.0.0.1/static/../uploads/private.txt)" != 200 ]'
+rm /srv/haven/uploads/private.txt
 check "gunicorn runs as haven, not root" [ "$(ps -o user= -C gunicorn | sort -u)" = haven ]
 expect_ok "deploy same commit again" bash "$D/deploy.sh" "$GOOD"
 expect_fail "deploy broken commit (must roll back)" bash "$D/deploy.sh" "$BAD"

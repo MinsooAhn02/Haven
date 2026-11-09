@@ -45,7 +45,7 @@
 | 회차 | 상태 | 환경·실행 명령·기대/실제 결과 | PR·가림 증거 | 다음 담당자에게 전달할 것 |
 |---|---|---|---|---|
 | 1 | 완료 | 설계: `network/설계.md`(VPC·서브넷·라우팅·SG·출구/비용, 리전·D6는 김보람 권장, 팀장 승인 대기). SG CLI: Windows·Python 3.13.2, `sg_audit`에서 `python network_audit.py fixture --fixture fixtures\<이름>.json --baseline baseline.json --output-dir out\<이름>` 실행. 기대/실제 종료 코드 일치: pass 0(AUD-01), fail_public_db 1(AUD-02, SG-01), unknown_role 3(AUD-09, SG-06), error_access_denied 2(AUD-08). 덮어쓰기·없는 파일 시 ERROR(2) 확인 | PR 링크(https://github.com/MinsooAhn02/Haven/pull/2). 결과 요약 `sg_audit/README.md` 시험 결과. fixture는 가상 데이터라 가림 대상 없음. 리뷰 보완(팀장): 기대 자산 누락 UNKNOWN, 입력·출력 오류 ERROR(2), 부분 수집 결과 보존, unittest 5개 통과 | 김보람: 리전·D6 승인, 생성 자원·NAT 운영 기간(설계.md 5·6장). 권혁민: 기대 접근표(설계.md 4.3). 안민수: 메일 방식 회신 요청, EC2 OS(AMI) 후보 합의(이민성 제안). 미완료: live 모드·AUD-03~07·10·11(3회차 이후) |
-| 2 | 미착수 | 미확인 | — | — |
+| 2 | 진행 중 | **준비 완료, AWS 실행 전.** 환경: Windows Git Bash, aws-cli 2.39.6. 구축 스크립트 `infra/`(build·nat-up·nat-down·destroy) 작성. `bash -n` 6개 OK, `DRY_RUN=1 bash build.sh` → 1/8~8/8·nat-up 1/4~4/4 종료 0, nat-down·destroy(목록·--delete) 미리보기 종료 0. 거부 시험: 프로파일 빈 값 → VPC 생성 전 중단(1), DRY_RUN=2 → 중단(1), destroy --yes → 거절(1). SG 규칙 10줄 설계 4절과 양방향 대조 일치(`infra/SG수작업비교.md`). 연결 확인표 기대값 작성(`network/연결확인표.md`), 실제값은 수요일 구축 후 | PR 링크(#번호). AWS 호출 없음(DRY_RUN만)이라 가릴 값 없음. 수요일 실행 결과는 계정 번호·인스턴스 ID·IP 가려서 기록 | 김보람: IAM 적용(Role `haven-ec2-ssm-role`·프로파일 `haven-ec2-ssm-profile`, 민성 `iam:PassRole`은 이 Role만, `ssm:GetParameter`), 팀 계정 번호, 짝 리뷰. 안민수: 수요일 구축 직후 재부팅 시험(NET-06), pg_hba·`haven_app`/`postgres` 계정(NET-03), destroy 실행 시 사전 확인. 미완료: 실제 구축·연결 시험, EC2 중지·시작 스크립트 |
 | 3 | 미착수 | 미확인 | — | — |
 | 4 | 미착수 | 미확인 | — | — |
 

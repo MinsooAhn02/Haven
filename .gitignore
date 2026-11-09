@@ -4,3 +4,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Personal team-lead handoff notes and local agent entry point
+/.haven-local/
+/AGENTS.md

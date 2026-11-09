@@ -73,7 +73,7 @@
 - [x] [08_Minsoo_SSM_Parameters_Policy.json](IAM/08_Minsoo_SSM_Parameters_Policy.json) GitHub 정책 템플릿 기록
 - [x] 민수님 최초 IAM 콘솔 로그인 성공 보고 (MFA 등록 및 CloudShell 권한 부족 확인)
 - [x] [09_IAM_Self_MFA_Password_Policy.json](IAM/09_IAM_Self_MFA_Password_Policy.json) 본인 MFA/비밀번호 정책 초안 작성 및 [10_Minsoo_CloudShell_권한안내.md](IAM/10_Minsoo_CloudShell_권한안내.md) 추가
-- [ ] AWS `minsoo` 사용자에게 본인 MFA·비밀번호 정책과 AWS 관리형 `AWSCloudShellFullAccess` 실제 연결 (**아직 미적용**)
+- [x] AWS `minsoo` 사용자에 `Haven-IAM-Self-MFA-Password-Policy`, `AWSCloudShellFullAccess`, `Haven-Minsoo-SSM-Policy`, `IAMUserChangePassword` 총 4개 정책 연결 확인 (11/09 사용자 제공 IAM 화면)
 - [ ] 민수님 본인 MFA 등록·비밀번호 변경·CloudShell 서울 리전 생성 및 SSM 허용/거부 시험
 - [x] [06_DB_S3_Backup_Policy.json](IAM/06_DB_S3_Backup_Policy.json)에 `s3:PutObject`·`s3:GetObject` 초안 반영, 확정 버킷 이름 규칙 `haven-backup-${AWS_ACCOUNT_ID}` 반영
 - [x] AWS 공통 EC2 Role에 `Haven-EC2-S3-Backup-Restore` 인라인 정책 연결(권한 정책 생성·연결 화면 확인)

@@ -302,12 +302,63 @@ def test_response_header_case_insensitive():
 
     assert cli.check_http_expected(detail, expected)
 
+
 def test_haven_template_schema_and_fixture_references():
     """Haven 시험표의 스키마·ID 중복·입력 fixture 참조를 검증한다."""
     fixture_root = ROOT / "fixtures"
     suite = cli.load_json(fixture_root / "cases_haven_template.json")
 
     cli.validate_suite(suite, fixture_root)
+
+
+def test_haven_first_round_contract_routes():
+    """Yochan 1회차 앱 계약의 기본 경로와 폼 필드를 확인한다."""
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(
+        fixture_root / "cases_haven_template.json"
+    )
+
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        case["case_id"]: case
+        for case in suite["cases"]
+    }
+
+    expected_routes = {
+        "APP-01-HEALTHZ-GET": (
+            "GET", "/healthz", "anonymous", 200
+        ),
+        "APP-01-SIGNUP-GET": (
+            "GET", "/accounts/signup/", "anonymous", 200
+        ),
+        "APP-01-LOGIN-GET": (
+            "GET", "/accounts/login/", "anonymous", 200
+        ),
+        "APP-02-OWNER-LIST": (
+            "GET", "/posts/", "member_a", 200
+        ),
+        "APP-02-SHARED-EMPTY": (
+            "GET", "/posts/shared/", "member_a", 200
+        ),
+    }
+
+    for case_id, (method, path, role, status) in expected_routes.items():
+        case = cases[case_id]
+
+        assert case["phase"] == 1
+        assert case["method"] == method
+        assert case["path"] == path
+        assert case["auth_role"] == role
+        assert case["expected_app"]["http_status"] == status
+
+    # Yochan PostForm 계약: title, body
+    payload = cli.load_json(
+        fixture_root / "post_valid_record.json"
+    )
+    assert set(payload["fields"]) == {"title", "body"}
+    assert payload["csrf_mode"] == "valid"
+    
 
 def test_phase_selection_preserves_order_and_original():
     """선택한 회차만 반환하고, 순서와 원본을 유지한다."""

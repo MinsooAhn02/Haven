@@ -1,0 +1,39 @@
+{% load static %}
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Haven 기록{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/haven.css' %}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="{% url 'home' %}">Haven 기록</a>
+      <nav aria-label="주요 메뉴">
+        <ul class="nav-list">
+          {% if user.is_authenticated %}
+            <li><a class="nav-link" href="{% url 'posts:list' %}">내 기록</a></li>
+            <li>
+              <form method="post" action="{% url 'accounts:logout' %}" class="inline-form">
+                {% csrf_token %}
+                <button class="logout-button" type="submit">로그아웃</button>
+              </form>
+            </li>
+          {% else %}
+            <li><a class="nav-link" href="{% url 'accounts:login' %}">로그인</a></li>
+            <li><a class="nav-link" href="{% url 'accounts:signup' %}">회원가입</a></li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+  </header>
+  {% if messages %}
+    <div class="messages" role="status">
+      {% for message in messages %}<p class="message {{ message.tags }}">{{ message }}</p>{% endfor %}
+    </div>
+  {% endif %}
+  {% block body %}{% endblock %}
+</body>
+</html>

@@ -1,1 +1,16 @@
 
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowWebLogStreamWrite",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:ap-northeast-2:${AWS_ACCOUNT_ID}:log-group:/haven/web:log-stream:*"
+    }
+  ]
+}
+

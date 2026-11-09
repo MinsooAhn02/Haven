@@ -1,4 +1,5 @@
 {
   "csrf_mode": "missing",
+  "origin_mode": "absent",
   "fields": {"title": "fixture title", "body": "fixture body"}
 }

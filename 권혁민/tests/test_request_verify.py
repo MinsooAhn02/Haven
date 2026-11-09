@@ -2755,10 +2755,9 @@ def test_stalled_body_deadline_preempts_read_timeout(tmp_path):
             ["/stall-body", "/healthz"],
         )
 
-        # 개별 소켓 timeout은 길게 설정한다.
+        # 개별 timeout 설정은 1.5초지만,
+        # 실제 요청 timeout은 남은 전체 실행 예산으로 축소된다.
         args.timeout = 1.5
-
-        # 전체 실행 시간은 더 짧게 설정한다.
         args.max_duration = 0.25
 
         started = time.monotonic()

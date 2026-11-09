@@ -571,6 +571,22 @@ def probe_server(*, redirect_to=None):
                     pass
 
                 return
+
+            if self.path == "/stall-body":
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Length", "12")
+                    self.end_headers()
+                    self.wfile.flush()
+
+                    # 헤더는 보내지만 본문은 전달하지 않는다.
+                    # 클라이언트는 다음 바이트를 기다리게 된다.
+                    release_slow.wait(timeout=2)
+
+                except OSError:
+                    pass
+
+                return
             
             if self.path == "/slow-302-body":
                 self.send_response(302)
@@ -2251,7 +2267,8 @@ def test_serialize_origin_header(origin, expected):
     "expected_waf, mode, expected_code, expected_verdict",
     [
         ("NOT_APPLICABLE", "http_only", 3, "UNKNOWN"),
-        ("COUNT", "http_only", 3, "UNKNOWN"),
+        ("ALLOW", "http_only", 1, "FAIL"),
+        ("COUNT", "http_only", 1, "FAIL"),
         ("BLOCK", "http_only", 0, "PASS"),
         ("BLOCK", "manual_required", 3, "UNKNOWN"),
     ],
@@ -2335,6 +2352,11 @@ def test_waf_block_requires_explicit_block_expectation(
     else:
         assert result["app_validity"] == "UNKNOWN"
         assert result["correlation_status"] == "UNRESOLVED"
+
+    if expected_waf in {"ALLOW", "COUNT"}:
+        assert result["waf_verdict"] == "BLOCK"
+        assert result["correlation_status"] == "UNRESOLVED"
+        assert result["app_observed"] is False
 
 
 @pytest.mark.parametrize(
@@ -2721,3 +2743,46 @@ def test_login_eof_preserves_previous_results(
         # 세 번째 요청은 실행하지 않는다.
         assert result["total_http_requests_including_preparation"] == 1
         assert result["stopped_reason"]
+
+
+def test_stalled_body_deadline_preempts_read_timeout(tmp_path):
+    """본문 수신이 멈춘 경우 전체 제한 시간이 우선 적용된다."""
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/stall-body", "/healthz"],
+        )
+
+        # 개별 소켓 timeout은 길게 설정한다.
+        args.timeout = 1.5
+
+        # 전체 실행 시간은 더 짧게 설정한다.
+        args.max_duration = 0.25
+
+        started = time.monotonic()
+        assert cli.run(args) == 2
+        elapsed = time.monotonic() - started
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        # 개별 read timeout(1.5초)보다 먼저 중단돼야 한다.
+        assert elapsed < 0.9
+
+        # 첫 번째 요청 외에는 전송하지 않아야 한다.
+        assert [row["path"] for row in received] == [
+            "/stall-body"
+        ]
+
+        assert result["total_http_requests_including_preparation"] == 1
+        assert result["unexecuted_cases"] == 1
+        assert len(result["results"]) == 1
+
+        row = result["results"][0]
+
+        assert row["transport_status"] == "ERROR"
+        assert row["verdict"] == "ERROR"
+        assert "전체 실행 시간 한도" in result["stopped_reason"]

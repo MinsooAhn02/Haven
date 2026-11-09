@@ -251,25 +251,37 @@ def select_phase(suite: dict, phase: int | None) -> dict:
     if type(phase) is not int or phase not in {1, 2, 3, 4}:
         raise ConfigError("phase는 1~4 정수여야 합니다")
 
-    missing = [
-        case["case_id"]
-        for case in suite["cases"]
-        if "phase" not in case
-    ]
+    missing = [case["case_id"] for case in suite["cases"] if "phase" not in case]
     if missing:
-        raise ConfigError(
-            "--phase 사용 시 모든 케이스에 phase가 필요합니다: "
-            + ", ".join(missing)
-        )
+        raise ConfigError("--phase 사용 시 모든 케이스에 phase가 필요합니다: " + ", ".join(missing))
 
-    selected = [
-        case for case in suite["cases"]
-        if case["phase"] == phase
-    ]
+    selected = [case for case in suite["cases"] if case["phase"] == phase]
     if not selected:
         raise ConfigError(f"{phase}회차에 해당하는 케이스가 없습니다")
 
     return {**suite, "cases": selected}
+
+
+def validate_selected_checkpoint_sequence(suite: dict) -> None:
+    """실제로 선택된 케이스에 체크포인트 선행 조건이 있는지 확인한다."""
+
+    cases = suite["cases"]
+
+    for index, case in enumerate(cases):
+        if case.get("checkpoint_before") != "deactivate_member_b":
+            continue
+
+        baseline_found = any(
+            previous["auth_role"] == "member_b"
+            and previous["method"] == "GET"
+            and previous["path"] == case["path"]
+            and previous["expected_app"]["http_status"] == 200
+            and "checkpoint_before" not in previous
+            for previous in cases[:index]
+        )
+
+        if not baseline_found:
+            raise ConfigError(f"{case['case_id']}: 선택된 회차에 동일 기록을 조회하는 B의 활성 상태 기준 요청(HTTP 200)이 없습니다")
 
 
 def validate_payload(payload: object, root: Path):
@@ -704,6 +716,7 @@ def run(args) -> int:
     suite = select_phase(suite, phase)
     if any("checkpoint_before" in case for case in suite["cases"]) and not getattr(args, "manual_checkpoints", False):
         raise ConfigError("수동 체크포인트 시험에는 --manual-checkpoints 옵션이 필요합니다")
+    validate_selected_checkpoint_sequence(suite)
     phase_label = "전체" if phase is None else f"{phase}회차"
     print(
         f"대상={target}  suite={suite['suite_id']}  "
@@ -745,11 +758,26 @@ def run(args) -> int:
                 if role != "anonymous" and not prepped.get(role):
                     prep_login(sess, target, budget, role, run_id, prep_events, args.max_response_bytes)
                     prepped[role] = True
+                
                 if case.get("checkpoint_before") == "deactivate_member_b":
+                    baseline_ok = any(
+                        previous["auth_role"] == "member_b"
+                        and previous["method"] == "GET"
+                        and previous["path"] == safe_path_log(case["path"])
+                        and previous["expected_app"]["http_status"] == 200
+                        and previous["http_status"] == 200
+                        and previous["http_expectation_match"] is True
+                        and previous["transport_status"] == "OK"
+                        for previous in records
+                    )
+
+                    if not baseline_ok:
+                        raise ExecutionError("B의 활성 상태 기준 요청이 HTTP 200으로 확인되지 않아 비활성화 체크포인트를 중단합니다")
+                    
                     print("\n[수동 체크포인트] B 계정 비활성화", file=sys.stderr)
                     print("1. 별도 관리자 화면에서 member_b를 비활성화하세요.", file=sys.stderr)
                     print("2. member_a와 P1 및 공유 관계는 유지하세요.", file=sys.stderr)
-                    print("3. 이 CLI는 B의 기존 세션을 유지합니다.", file=sys.stderr,)
+                    print("3. 이 CLI는 B의 기존 세션을 유지합니다.", file=sys.stderr)
 
                     try:
                         confirmation = input("비활성화 확인 후 DEACTIVATED 입력: ").strip()

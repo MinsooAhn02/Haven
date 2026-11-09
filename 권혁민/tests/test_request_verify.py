@@ -1618,3 +1618,122 @@ def test_real_trace_root_correlation(
     else:
         assert result["correlation_status"] == "UNRESOLVED"
         assert result["verdict"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "invalid_condition",
+    ["filtered_baseline", "wrong_path", "wrong_status"],
+)
+def test_selected_checkpoint_rejects_invalid_baseline(
+    invalid_condition,
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_member_inactive.json"
+    )
+
+    baseline = suite["cases"][0]
+
+    if invalid_condition == "filtered_baseline":
+        baseline["phase"] = 1
+    elif invalid_condition == "wrong_path":
+        baseline["path"] = "/posts/2/"
+    elif invalid_condition == "wrong_status":
+        baseline["expected_app"]["http_status"] = 404
+
+    selected = cli.select_phase(suite, 2)
+
+    with pytest.raises(cli.ConfigError, match="기준 요청"):
+        cli.validate_selected_checkpoint_sequence(selected)
+
+
+def test_filtered_checkpoint_blocks_before_execution(
+    tmp_path, monkeypatch
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_member_inactive.json"
+    )
+    suite["cases"][0]["phase"] = 1
+
+    case_path = tmp_path / "filtered_cases.json"
+    case_path.write_text(
+        json.dumps(suite, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    args = inputs(tmp_path, 8765)
+    args.cases = case_path
+    args.phase = 2
+    args.manual_checkpoints = True
+
+    def fail_if_sent(*args, **kwargs):
+        pytest.fail("사전 검증 실패 시 HTTP 전송 금지")
+
+    monkeypatch.setattr(cli, "bounded_send", fail_if_sent)
+
+    with pytest.raises(cli.ConfigError, match="기준 요청"):
+        cli.run(args)
+
+    assert not args.output_dir.exists()
+
+
+def test_failed_baseline_prevents_manual_checkpoint(
+    tmp_path, monkeypatch
+):
+    args = inputs(tmp_path, 8765)
+    args.cases = (
+        ROOT / "fixtures" / "cases_member_inactive.json"
+    )
+    args.manual_checkpoints = True
+
+    sent_paths = []
+
+    def fake_login(session, target, budget, role, *a, **kw):
+        session.cookies.set("sessionid", "test-session")
+
+    def fake_send(
+        session, method, target, path, budget, request_id, **kw
+    ):
+        sent_paths.append(path)
+
+        return {
+            "status": 404,
+            "elapsed_ms": 0.1,
+            "location": None,
+            "body_bytes": 0,
+            "sha256": None,
+            "headers": {},
+            "request_body_bytes": None,
+        }, None
+
+    def forbid_checkpoint(prompt):
+        pytest.fail("기준 요청 실패 후 체크포인트 실행 금지")
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        "builtins.input", forbid_checkpoint
+    )
+
+    assert cli.run(args) == 2
+
+    # 첫 번째 기준 요청만 전송되어야 한다.
+    assert sent_paths == ["/posts/1/"]
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+
+    records = result["results"]
+
+    assert len(records) == 2
+    assert records[0]["http_status"] == 404
+    assert records[0]["http_expectation_match"] is False
+
+    # 체크포인트 시작 전에 중단된 기록.
+    assert records[1]["transport_status"] == "ERROR"
+    assert result["unexecuted_cases"] == 1
+
+    assert not any(
+        event["stage"] == "manual_checkpoint"
+        for event in result["preparation_events"]
+    )

@@ -1066,3 +1066,84 @@ def test_phase2_shared_readonly_fixture(
     assert case["expected_app"]["http_status"] == status
     assert case["expected_waf"] == "NOT_APPLICABLE"
     assert case["verification_mode"] == "manual_required"
+
+
+@pytest.mark.parametrize(
+    "case_id, role, path, status",
+    [
+        ("SH-03-A-DETAIL-AFTER",
+         "member_a", "/posts/1/", 200),
+        ("SH-03-B-SHARED-LIST-AFTER",
+         "member_b", "/posts/shared/", 200),
+        ("SH-03-B-DETAIL-AFTER",
+         "member_b", "/posts/1/", 404),
+        ("SH-03-C-DETAIL-AFTER",
+         "member_c", "/posts/1/", 404),
+    ],
+)
+def test_phase2_share_revoked_fixture(
+    case_id, role, path, status
+):
+    """공유 해제 이후의 접근 권한 fixture를 검증한다."""
+    fixture_root = ROOT / "fixtures"
+
+    suite = cli.load_json(
+        fixture_root / "cases_share_revoked.json"
+    )
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        item["case_id"]: item
+        for item in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["auth_role"] == role
+    assert case["method"] == "GET"
+    assert case["path"] == path
+    assert case["input_reference"] is None
+    assert case["expected_app"]["http_status"] == status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"
+
+
+def test_phase2_share_revoke_changes_access():
+    """공유 해제 전후 B의 조회 권한 변화와 A의 소유권 유지를 확인한다."""
+    fixture_root = ROOT / "fixtures"
+
+    granted = cli.load_json(
+        fixture_root / "cases_share_granted.json"
+    )
+    revoked = cli.load_json(
+        fixture_root / "cases_share_revoked.json"
+    )
+
+    cli.validate_suite(granted, fixture_root)
+    cli.validate_suite(revoked, fixture_root)
+
+    before = {
+        case["case_id"]: case
+        for case in granted["cases"]
+    }
+    after = {
+        case["case_id"]: case
+        for case in revoked["cases"]
+    }
+
+    b_before = before["SH-01-B-DETAIL-ALLOWED"]
+    b_after = after["SH-03-B-DETAIL-AFTER"]
+    a_after = after["SH-03-A-DETAIL-AFTER"]
+
+    assert b_before["path"] == b_after["path"]
+    assert b_before["auth_role"] == b_after["auth_role"]
+
+    # 공유 중에는 B가 읽을 수 있다.
+    assert b_before["expected_app"]["http_status"] == 200
+
+    # 공유 해제 후에는 B가 더 이상 읽을 수 없다.
+    assert b_after["expected_app"]["http_status"] == 404
+
+    # 공유 해제가 소유자 A의 조회 권한을 없애면 안 된다.
+    assert a_after["expected_app"]["http_status"] == 200

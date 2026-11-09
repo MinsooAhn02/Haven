@@ -15,10 +15,11 @@ def home(request):
     return redirect("posts:list" if request.user.is_authenticated else "accounts:login")
 
 
-# Django 관리자 사이트는 연결하지 않는다. /admin/accounts/는 2회차 전용 화면 자리다(명세 2.2).
+# /admin/ 은 제한된 계정 관리(adminpanel)로 연결한다. Django 기본 관리자 사이트(admin.site.urls)는 연결하지 않는다(명세 2.2).
 urlpatterns = [
     path("", home, name="home"),
     path("accounts/", include("accounts.urls")),
     path("posts/", include("posts.urls")),
+    path("admin/", include("adminpanel.urls")),
     path("healthz", healthz, name="healthz"),
 ]

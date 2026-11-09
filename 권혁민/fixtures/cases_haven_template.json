@@ -4,6 +4,22 @@
   "suite_kind": "regression",
   "cases": [
     {
+      "case_id": "APP-01-HEALTHZ-GET",
+      "phase": 1,
+      "category": "availability",
+      "method": "GET",
+      "path": "/healthz",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "1회차 앱 계약: 비로그인 상태에서 /healthz는 HTTP 200과 ok 응답. DB 연결 정상 여부까지 증명하지 않음"
+    },
+    {
       "case_id": "APP-01-SIGNUP-GET",
       "phase": 1,
       "category": "authentication",
@@ -182,6 +198,22 @@
       "max_requests": 1,
       "verification_mode": "manual_required",
       "note": "A가 로그인해 본인 게시글 목록 GET; 미공유 타인 글이 보이지 않는지 별도 확인"
+    },
+    {
+      "case_id": "APP-02-SHARED-EMPTY",
+      "phase": 1,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "1회차 계약: 로그인 사용자가 공유받은 목록에 접근하면 200. 공유 기능 구현 전에는 빈 목록이어야 하며 화면 내용은 별도로 검증"
     },
     {
       "case_id": "APP-02-OWNER-NEW-GET",

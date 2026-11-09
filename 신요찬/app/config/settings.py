@@ -62,6 +62,8 @@ ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", required=True)
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
+    # LogEntry(계정 상태 변경 이력)를 쓰기 위해 설치만 한다. 관리자 사이트 URL은 연결하지 않는다(config/urls.py).
+    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -69,6 +71,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "accounts",
     "posts",
+    "adminpanel",
 ]
 
 MIDDLEWARE = [
@@ -81,6 +84,9 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "config.middleware.PrivateNoStoreMiddleware",
     "config.middleware.MethodNotAllowedPageMiddleware",
+    # 글 body 8,192바이트 초과 → 413. 목록 끝에 두어도 CSRF 검사(process_view)보다 먼저 실행된다.
+    # 413 화면에도 로그인 메뉴와 Cache-Control이 붙도록 인증·응답 미들웨어 안쪽에 둔다.
+    "config.middleware.PostBodyLimitMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

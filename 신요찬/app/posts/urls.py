@@ -11,4 +11,6 @@ urlpatterns = [
     path("<int:pk>/", views.post_detail, name="detail"),
     path("<int:pk>/edit/", views.post_edit, name="edit"),
     path("<int:pk>/delete/", views.post_delete, name="delete"),
+    path("<int:pk>/shares/", views.post_shares, name="shares"),
+    path("<int:pk>/shares/<int:share_id>/revoke/", views.share_revoke, name="share_revoke"),
 ]

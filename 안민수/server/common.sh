@@ -16,3 +16,11 @@ secret() {
   [[ -n $v && $v != None ]] || die "SSM $PARAM_PREFIX/$1 is empty"
   printf '%s' "$v"
 }
+
+# DB의 표별 행 수("표 행수" 한 줄씩). 백업 manifest와 복원 결과 비교에 쓴다.
+counts() {
+  runuser -u postgres -- psql -X -q -At -F' ' -v ON_ERROR_STOP=1 -d "$1" <<'SQL'
+SELECT format('SELECT %L, count(*) FROM %I.%I', tablename, schemaname, tablename)
+  FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename \gexec
+SQL
+}

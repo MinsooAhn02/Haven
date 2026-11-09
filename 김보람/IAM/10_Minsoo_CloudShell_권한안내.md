@@ -1,4 +1,4 @@
-# 민수 IAM 추가 권한 요구(2026-11-09) — 적용 전 점검
+# 민수 IAM 추가 권한 요구(2026-11-09) — 정책 연결 완료 / 기능 검증 대기
 
 ## 1. 요청
 - IAM 사용자 `minsoo`: 최초 로그인 뒤 MFA 본인 등록 및 자신의 비밀번호 변경
@@ -11,7 +11,7 @@
 4. CloudShell 사용 권한은 EC2/VPC/S3 등 리소스 자체의 추가 권한을 자동 부여하지 않는다. 필요한 서비스 작업은 역할별 최소 권한 정책으로 별도 심사한다.
 
 ## 3. 현재 상태 및 시험
-- **GitHub 정책 파일/안내 문서만 준비된 상태. AWS에서 위 두 권한을 아직 추가했다고 주장하지 않는다.**
+- **AWS IAM 사용자 `minsoo` 권한 목록 화면에서 4개 정책 연결 확인(사용자 제공 11/09 화면)**: `Haven-IAM-Self-MFA-Password-Policy`, `AWSCloudShellFullAccess`, `Haven-Minsoo-SSM-Policy`, `IAMUserChangePassword`. 단, 정책 연결과 실제 서비스 작업 성공은 별개.
 - `minsoo` 담당자 보고: IAM 사용자로 로그인은 성공했으나 `iam:ListMFADevices` 거부, CloudShell 생성 거부.
 - 연결 뒤 확인: 민수 본인 MFA 등록 성공, 자신 비밀번호 변경 확인, CloudShell 서울 리전 실행 성공.
 - 부정 시험: `minsoo`가 **다른 IAM 사용자의 MFA·비밀번호·역할**을 수정하지 못하는지 확인한다.

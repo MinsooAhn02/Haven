@@ -5,7 +5,7 @@
 - 서울 리전 `ap-northeast-2`에서 AWS CloudShell 환경 생성·사용
 
 ## 2. 정책과 적용 방법
-1. `09_IAM_Self_MFA_Password_Policy.json`의 `${AWS_ACCOUNT_ID}`를 해당 계정 ID로 치환한 뒤 IAM 정책으로 생성한다. `${aws:username}`은 IAM이 평가하는 정책 변수이므로 **그대로 둔다**.
+1. `09_IAM_Self_MFA_Password_Policy.json`의 내용을 그대로 IAM 정책에 붙여 넣어 생성한다. `arn:aws:iam::*:user/${aws:username}`은 **AWS 공식 정책 예시처럼 현재 로그인한 IAM 사용자 본인만** 대상으로 지정하는 방식이며 `${aws:username}`을 임의로 바꾸지 않는다.
 2. `minsoo` 사용자에게 위 MFA·비밀번호 정책을 연결한다. 이민성 등 본인 MFA 등록이 필요한 IAM 사용자에게도 같은 정책을 재사용할 수 있다.
 3. `minsoo` 사용자에게 AWS 관리형 정책 `AWSCloudShellFullAccess`를 직접 연결한다. 서울 리전에서 CloudShell 실행을 확인한다.
 4. CloudShell 사용 권한은 EC2/VPC/S3 등 리소스 자체의 추가 권한을 자동 부여하지 않는다. 필요한 서비스 작업은 역할별 최소 권한 정책으로 별도 심사한다.

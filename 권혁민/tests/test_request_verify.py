@@ -497,6 +497,22 @@ def probe_server(*, redirect_to=None):
                 "path": self.path,
                 "cookie": self.headers.get("Cookie", ""),
             })
+            
+            if self.path == "/slow-302-body":
+                self.send_response(302)
+                self.send_header("Location", "/accounts/login/")
+                self.send_header("Content-Length", "4")
+                self.end_headers()
+                self.wfile.flush()
+
+                # 헤더 전송 후 본문을 일부러 지연시킨다.
+                release_slow.wait(timeout=1)
+
+                try:
+                    self.wfile.write(b"slow")
+                except OSError:
+                    pass
+                return
 
             if self.path == "/slow":
                 release_slow.wait(timeout=5)
@@ -719,3 +735,43 @@ def test_probe_external_redirect_is_not_followed(tmp_path, monkeypatch):
             assert result["total_http_requests_including_preparation"] == 1
             assert result["results"][0]["http_status"] == 302
             assert result["results"][0]["redirect_target"] == destination
+
+
+def test_probe_slow_redirect_body_is_not_read(tmp_path):
+    """302 응답의 본문이 지연돼도 상태와 Location으로 판정한다."""
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/slow-302-body", "/healthz"],
+        )
+        args.timeout = 0.15
+
+        suite = cli.load_json(args.cases)
+        suite["cases"][0]["expected_app"] = {
+            "http_status": 302,
+            "redirect_path": "/accounts/login/",
+        }
+        args.cases.write_text(
+            json.dumps(suite),
+            encoding="utf-8",
+        )
+
+        # run은 로그 대조 전이므로 UNKNOWN(3)이 정상.
+        assert cli.run(args) == 3
+
+        result = cli.load_json(args.output_dir / "results.json")
+
+        assert result["unexecuted_cases"] == 0
+        assert len(received) == 2
+        assert all(
+            row["transport_status"] == "OK"
+            for row in result["results"]
+        )
+
+        redirect = result["results"][0]
+        assert redirect["http_status"] == 302
+        assert redirect["http_expectation_match"] is True
+        assert redirect["response_summary"]["body_bytes"] is None
+        assert redirect["response_summary"]["sha256"] is None

@@ -330,16 +330,27 @@ class RequestBudget:
         return max(0.001, min(self.timeout, remaining))
 
 
+class NoRedirectBodySession(requests.Session):
+    """리다이렉트를 따르지 않을 때 requests의 불필요한 본문 소비를 방지한다."""
+
+    def resolve_redirects(self, resp, req, **kwargs):
+        if kwargs.get("yield_requests", False):
+            # allow_redirects=False인 경우 다음 요청도 생성하지 않는다.
+            return iter(())
+
+        return super().resolve_redirects(resp, req, **kwargs)
+
+
 def new_session() -> requests.Session:
     """역할 간 쿠키 분리. 환경 proxy/.netrc의 암묵적 인증도 사용하지 않음."""
-    s = requests.Session()
+    s = NoRedirectBodySession()
     s.trust_env = False  # avoid implicit .netrc / environment proxy credentials
     return s
 
 
 def bounded_send(s: requests.Session, method: str, target: str, path: str, budget: RequestBudget,
                  request_id: str, *, fields=None, file_info=None, headers=None,
-                 max_response_bytes=MAX_RESPONSE) -> tuple[dict, bytes | None]:
+                 max_response_bytes=MAX_RESPONSE, read_redirect_body=False) -> tuple[dict, bytes | None]:
     """HTTP를 최대 1회 전송한다. 리다이렉트 미추적·TLS 확인·응답 상한 적용."""
     url = target + validate_path(path)
     h = {REQ_ID_HEADER: request_id}
@@ -365,6 +376,41 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
             content_length = resp.headers.get("Content-Length")
             if content_length and content_length.isdecimal() and int(content_length) > max_response_bytes:
                 raise TooLargeResponse("응답 Content-Length가 허용 크기를 초과합니다")
+            
+            # 리다이렉트 본문에 대한 검증 요구가 없으면 본문을 수신하지 않는다.
+            if 300 <= resp.status_code < 400 and not read_redirect_body:
+                if time.monotonic() - budget.started >= budget.duration:
+                    raise ExecutionError("응답 헤더 수신 중 전체 실행 시간 한도를 초과했습니다")
+
+                request_body = prepared.body
+                if isinstance(request_body, bytes):
+                    request_body_bytes = len(request_body)
+                elif isinstance(request_body, str):
+                    request_body_bytes = len(request_body.encode("utf-8"))
+                else:
+                    request_body_bytes = None
+
+                safe_headers = {
+                    key: resp.headers[key]
+                    for key in (
+                        "Content-Type",
+                        "Content-Disposition",
+                        "X-Content-Type-Options",
+                        "Cache-Control",
+                    )
+                    if key in resp.headers
+                }
+
+                return {
+                    "status": resp.status_code,
+                    "elapsed_ms": round((time.monotonic() - start) * 1000, 2),
+                    "location": resp.headers.get("Location"),
+                    "body_bytes": None,
+                    "sha256": None,
+                    "headers": safe_headers,
+                    "request_body_bytes": request_body_bytes,
+                }, None
+            
             for chunk in resp.iter_content(chunk_size=64 * 1024):
                 elapsed_total = time.monotonic() - budget.started
                 if elapsed_total >= budget.duration:
@@ -667,7 +713,11 @@ def run(args) -> int:
                 detail, _ = bounded_send(
                     sess, case["method"], target, case["path"], budget, record["request_id"],
                     fields=fields, file_info=file_info, headers=headers,
-                    max_response_bytes=args.max_response_bytes
+                    max_response_bytes=args.max_response_bytes,
+                    read_redirect_body=any(
+                        key in case["expected_app"]
+                        for key in ("body_bytes", "sha256")
+                    ),
                 )
                 record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
                               redirect_target=safe_location(detail["location"]),

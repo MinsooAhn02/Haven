@@ -39,6 +39,8 @@ DB_NAME=haven
 DB_USER=haven_app
 DB_PASSWORD=$APP_PW
 DB_HOST=$DB_HOST
+HAVEN_UPLOAD_DIR=$H/uploads
+${CSRF_TRUSTED_ORIGINS:+DJANGO_CSRF_TRUSTED_ORIGINS=$CSRF_TRUSTED_ORIGINS}
 EOF
 chgrp haven /etc/haven/haven.env.new && mv /etc/haven/haven.env.new /etc/haven/haven.env
 umask 022

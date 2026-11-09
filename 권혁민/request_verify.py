@@ -269,7 +269,7 @@ def validate_payload(payload: object, root: Path):
             raise ConfigError("시험용 파일이 단일 파일 상한을 초과합니다")
         if len(item["filename"]) > 255 or len(item["content_type"]) > 128:
             raise ConfigError("파일명 또는 MIME이 너무 깁니다")
-    if payload.get("origin_mode", "absent") not in {"absent", "same", "foreign"}:
+    if payload.get("origin_mode", "same") not in {"absent", "same", "foreign"}:
         raise ConfigError("origin_mode 오류 (absent/same/foreign)")
     if "pad_form_body_to" in payload:
         n = payload["pad_form_body_to"]
@@ -479,9 +479,20 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
     if not csrf:
         raise ExecutionError("CSRF 토큰 준비 실패")
     rid = str(uuid.uuid4())
-    detail, _ = bounded_send(s, "POST", target, "/accounts/login/", budget, rid,
-                            fields={"username": username, "password": password, "csrfmiddlewaretoken": csrf},
-                            headers={"X-CSRFToken": csrf, RUN_ID_HEADER: run_id}, max_response_bytes=max_response_bytes)
+    detail, _ = bounded_send(
+        s, "POST", target, "/accounts/login/", budget, rid,
+        fields={
+            "username": username,
+            "password": password,
+            "csrfmiddlewaretoken": csrf,
+        },
+        headers={
+            "Origin": target,
+            "X-CSRFToken": csrf,
+            RUN_ID_HEADER: run_id,
+        },
+        max_response_bytes=max_response_bytes,
+    )
     prep_events.append({"request_id": rid, "stage": "login_submit", "http_status": detail["status"]})
     # No redirect follow. Login POST success is expected to redirect away from login.
     login_redirect = same_origin_redirect_path(detail["location"], target)
@@ -534,7 +545,7 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
         headers["X-CSRFToken"] = csrf
 
     # Origin 공격은 '목적지' 변경이 아니라 헤더만 변경한다.
-    origin_mode = payload.get("origin_mode", "absent")
+    origin_mode = payload.get("origin_mode", "same")
     if origin_mode == "same":
         headers["Origin"] = target
     elif origin_mode == "foreign":

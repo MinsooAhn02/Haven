@@ -1,0 +1,56 @@
+
+{
+  "schema_version": 1,
+  "suite_id": "haven-owner-inactive-regression",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "SH-06-A-INACTIVE-B-SHARED-LIST",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A 비활성, B 활성, P1 ACTIVE 및 B 공유 관계 유지. B의 공유 목록은 200이지만 P1이 노출되면 안 됨. 화면 별도 확인"
+    },
+    {
+      "case_id": "SH-06-A-INACTIVE-B-DETAIL",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A 소유자 계정이 비활성 상태면 기존 공유 관계가 유지돼 있어도 B의 P1 직접 조회는 404여야 함"
+    },
+    {
+      "case_id": "SH-06-A-INACTIVE-C-DETAIL",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A 비활성 상태에서 미공유 사용자 C의 P1 직접 조회 역시 404이며 본문과 존재 여부가 노출되면 안 됨"
+    }
+  ]
+}

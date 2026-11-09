@@ -75,7 +75,11 @@
 - **가능한 인계 시각**
   - 확인표(기대값): 11/10(화) 보람님과 서버 Role 맞춘 뒤
   - 실제 확인 결과: 승인·구축 시 11/12(목)
-
+[AWS_운영결정 5번 확인 · 이민성]
+- Ubuntu 24.04 기본 Python 3.12: 맞음 (packages.ubuntu.com/noble/python3 → 3.12.3) https://packages.ubuntu.com/noble/python3
+- apt 기본 저장소 HTTP 80: 맞음 (EC2 Ubuntu 저장소 Port 80, AWS re:Post 사례) https://repost.aws/questions/QURAplea7CQY2d_4BOXR4HLQ/unable-to-connect-101-network-is-unreachable → “both on port 80” (Ctrl+F로 찾기)
+- 반영: 설계.md sg-web·sg-db outbound TCP 80 추가, 연결확인표 OUT-07 기대값 변경
+- 실제 서버의 apt 저장소 주소(ubuntu.sources)는 구축 후 확인표 OUT-03에서 최종 확인
 ## 민수's comment · 2026-11-09~13 실행 가이드
 
 - **월 오전** 보람과 리전·예산·출구의 미결 항목을 확인합니다. **화** 보람과 서버 Role, SSM·Web→DB·필요 출구·직접 접근 거부 확인표를 작성합니다.
@@ -89,6 +93,15 @@
 ## 민수's comment · 2026-11-08 이번 주 배정 (11/09~13)
 
 운영 방식이 바뀌었습니다. 날짜별 시간표 대신 **주력과 대기열**을 드립니다. **다 못 해도 괜찮아요.** 주력이 막히거나 끝나면 대기열로 넘어가고, 남은 건 매일 저녁 다시 나눕니다. 매일 끝나면 Discord에 오늘 상황 보고 부탁드립니다. 전체 현황은 main의 `TASK_TODO.html`(git pull 후 브라우저로 열기).
-- **주력:** ~~`864a847` SG 문서 보완 PR~~ + SSM·Web→DB·필요 출구·직접 접근 거부 확인표(기대값까지)
+- **주력:** ~`864a847` SG 문서 보완 PR~ + SSM·Web→DB·필요 출구·직접 접근 거부 확인표(기대값까지)
 - **대기열:** VPC/SG/EC2 구축 절차·변경안(승인 즉시 실행용) → live 읽기 수집 설계·AUD fixture 확장
 - **⏳ 기다릴 것:** 실제 구축은 민수 결정 + 보람 IAM·Role 필요. AWS 쓰기 작업은 승인 전 보류.
+
+
+## 민수's comment · 2026-11-09 배정 갱신
+
+AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 현황판 `TASK_TODO.html`도 오늘 기준으로 바꿨습니다. 다 못 해도 괜찮고, 끝나면 Discord에 오늘 상황 보고 부탁드립니다.
+- **완료:** SG 보완 PR #18 병합(`a3c962f`) — 추가 보완 필요 없음
+- **주력:** `docs/AWS_운영결정.md` 5번 확인(Ubuntu 24.04 기본 Python 3.12, apt 80 포트) + 서버 사양·대수·가동 시간을 보람님께 → SSM·Web→DB·출구·직접 접근 거부 확인표(기대값까지)
+- **대기열:** 구축 절차서 — 다른 계정에서 그대로 다시 만들 수 있게(계정 ID·ARN·자원 ID는 변수, 가능하면 AWS CLI 명령) → live 읽기 수집 설계·AUD fixture 확장
+- **⏳ 기다릴 것:** 실제 구축은 결정 확정 + 보람님 IAM 이후

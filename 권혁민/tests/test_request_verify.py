@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 import threading
 import time
+from datetime import datetime, timezone, timedelta
 
 import pytest
 
@@ -302,12 +303,63 @@ def test_response_header_case_insensitive():
 
     assert cli.check_http_expected(detail, expected)
 
+
 def test_haven_template_schema_and_fixture_references():
     """Haven 시험표의 스키마·ID 중복·입력 fixture 참조를 검증한다."""
     fixture_root = ROOT / "fixtures"
     suite = cli.load_json(fixture_root / "cases_haven_template.json")
 
     cli.validate_suite(suite, fixture_root)
+
+
+def test_haven_first_round_contract_routes():
+    """Yochan 1회차 앱 계약의 기본 경로와 폼 필드를 확인한다."""
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(
+        fixture_root / "cases_haven_template.json"
+    )
+
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        case["case_id"]: case
+        for case in suite["cases"]
+    }
+
+    expected_routes = {
+        "APP-01-HEALTHZ-GET": (
+            "GET", "/healthz", "anonymous", 200
+        ),
+        "APP-01-SIGNUP-GET": (
+            "GET", "/accounts/signup/", "anonymous", 200
+        ),
+        "APP-01-LOGIN-GET": (
+            "GET", "/accounts/login/", "anonymous", 200
+        ),
+        "APP-02-OWNER-LIST": (
+            "GET", "/posts/", "member_a", 200
+        ),
+        "APP-02-SHARED-EMPTY": (
+            "GET", "/posts/shared/", "member_a", 200
+        ),
+    }
+
+    for case_id, (method, path, role, status) in expected_routes.items():
+        case = cases[case_id]
+
+        assert case["phase"] == 1
+        assert case["method"] == method
+        assert case["path"] == path
+        assert case["auth_role"] == role
+        assert case["expected_app"]["http_status"] == status
+
+    # Yochan PostForm 계약: title, body
+    payload = cli.load_json(
+        fixture_root / "post_valid_record.json"
+    )
+    assert set(payload["fields"]) == {"title", "body"}
+    assert payload["csrf_mode"] == "valid"
+    
 
 def test_phase_selection_preserves_order_and_original():
     """선택한 회차만 반환하고, 순서와 원본을 유지한다."""
@@ -497,6 +549,60 @@ def probe_server(*, redirect_to=None):
                 "path": self.path,
                 "cookie": self.headers.get("Cookie", ""),
             })
+
+            if self.path in {"/slow-stream-200", "/slow-stream-302"}:
+                status = 302 if self.path.endswith("302") else 200
+
+                try:
+                    self.send_response(status)
+
+                    if status == 302:
+                        self.send_header("Location", "/accounts/login/")
+
+                    self.send_header("Content-Length", "12")
+                    self.end_headers()
+
+                    for _ in range(12):
+                        self.wfile.write(b"x")
+                        self.wfile.flush()
+                        time.sleep(0.08)
+
+                except OSError:
+                    pass
+
+                return
+
+            if self.path == "/stall-body":
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Length", "12")
+                    self.end_headers()
+                    self.wfile.flush()
+
+                    # 헤더는 보내지만 본문은 전달하지 않는다.
+                    # 클라이언트는 다음 바이트를 기다리게 된다.
+                    release_slow.wait(timeout=2)
+
+                except OSError:
+                    pass
+
+                return
+            
+            if self.path == "/slow-302-body":
+                self.send_response(302)
+                self.send_header("Location", "/accounts/login/")
+                self.send_header("Content-Length", "4")
+                self.end_headers()
+                self.wfile.flush()
+
+                # 헤더 전송 후 본문을 일부러 지연시킨다.
+                release_slow.wait(timeout=1)
+
+                try:
+                    self.wfile.write(b"slow")
+                except OSError:
+                    pass
+                return
 
             if self.path == "/slow":
                 release_slow.wait(timeout=5)
@@ -719,3 +825,1963 @@ def test_probe_external_redirect_is_not_followed(tmp_path, monkeypatch):
             assert result["total_http_requests_including_preparation"] == 1
             assert result["results"][0]["http_status"] == 302
             assert result["results"][0]["redirect_target"] == destination
+
+
+def test_probe_slow_redirect_body_is_not_read(tmp_path):
+    """302 응답의 본문이 지연돼도 상태와 Location으로 판정한다."""
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/slow-302-body", "/healthz"],
+        )
+        args.timeout = 0.15
+
+        suite = cli.load_json(args.cases)
+        suite["cases"][0]["expected_app"] = {
+            "http_status": 302,
+            "redirect_path": "/accounts/login/",
+        }
+        args.cases.write_text(
+            json.dumps(suite),
+            encoding="utf-8",
+        )
+
+        # run은 로그 대조 전이므로 UNKNOWN(3)이 정상.
+        assert cli.run(args) == 3
+
+        result = cli.load_json(args.output_dir / "results.json")
+
+        assert result["unexecuted_cases"] == 0
+        assert len(received) == 2
+        assert all(
+            row["transport_status"] == "OK"
+            for row in result["results"]
+        )
+
+        redirect = result["results"][0]
+        assert redirect["http_status"] == 302
+        assert redirect["http_expectation_match"] is True
+        assert redirect["response_summary"]["body_bytes"] is None
+        assert redirect["response_summary"]["sha256"] is None
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/slow-stream-200", "/slow-stream-302"]
+)
+def test_streaming_body_respects_global_deadline(tmp_path, path):
+    """느린 응답에서도 전체 실행 제한을 지키고 부분 결과를 보존한다."""
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            [path, "/healthz"]
+        )
+
+        args.timeout = 0.2
+        args.max_duration = 0.25
+
+        suite = cli.load_json(args.cases)
+
+        suite["cases"][0]["expected_app"] = {
+            "http_status": 302 if path.endswith("302") else 200,
+            "body_bytes": 12,
+        }
+
+        args.cases.write_text(
+            json.dumps(suite),
+            encoding="utf-8"
+        )
+
+        started = time.monotonic()
+        assert cli.run(args) == 2
+        elapsed = time.monotonic() - started
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        # 실행 제한 0.25초 + 테스트 환경 허용 오차
+        assert elapsed < 0.60
+
+        # 첫 요청만 전송되어야 한다.
+        assert [row["path"] for row in received] == [path]
+
+        # 부분 결과 보존
+        assert result["total_http_requests_including_preparation"] == 1
+        assert result["unexecuted_cases"] == 1
+        assert len(result["results"]) == 1
+
+        row = result["results"][0]
+
+        assert row["transport_status"] == "ERROR"
+        assert row["verdict"] == "ERROR"
+        assert result["stopped_reason"]
+
+
+@pytest.mark.parametrize(
+    "origin_mode, expected_origin",
+    [
+        (None, "https://haven.example"),
+        ("same", "https://haven.example"),
+        ("absent", None),
+        ("foreign", "https://attacker.invalid"),
+    ],
+)
+def test_prepare_case_post_origin_modes(
+    tmp_path, origin_mode, expected_origin
+):
+    """정상·생략·외부 Origin 시험을 구분한다."""
+    payload = {
+        "csrf_mode": "valid",
+        "fields": {
+            "title": "Origin test",
+            "body": "Safe test content",
+        },
+    }
+
+    if origin_mode is not None:
+        payload["origin_mode"] = origin_mode
+
+    payload_file = tmp_path / "origin_payload.json"
+    payload_file.write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+
+    cli.validate_payload(payload, tmp_path)
+
+    case = {
+        "method": "POST",
+        "path": "/posts/new/",
+        "input_reference": payload_file.name,
+    }
+
+    budget = cli.RequestBudget(
+        Namespace(
+            max_requests=10,
+            rate=5,
+            timeout=3,
+            max_duration=60,
+        )
+    )
+
+    with cli.new_session() as session:
+        session.cookies.set("csrftoken", "unit-csrf-token")
+
+        fields, headers, file_info = cli.prepare_case_request(
+            session,
+            case,
+            tmp_path,
+            "https://haven.example:443",
+            budget,
+            "test-run",
+            [],
+            cli.MAX_RESPONSE,
+        )
+
+    assert headers.get("Origin") == expected_origin
+    assert headers["X-CSRFToken"] == "unit-csrf-token"
+    assert fields["csrfmiddlewaretoken"] == "unit-csrf-token"
+    assert file_info is None
+
+
+def test_login_prep_sends_same_origin(monkeypatch):
+    """로그인 준비 POST에 정상 Origin과 CSRF 토큰을 포함한다."""
+    requests_seen = []
+
+    def fake_bounded_send(
+        session, method, target, path, budget, request_id, **kwargs
+    ):
+        requests_seen.append({
+            "method": method,
+            "path": path,
+            "headers": kwargs.get("headers", {}),
+            "fields": kwargs.get("fields"),
+        })
+
+        if method == "GET":
+            html = (
+                b'<input name="csrfmiddlewaretoken" '
+                b'value="unit-csrf-token">'
+            )
+            return {"status": 200}, html
+
+        session.cookies.set("sessionid", "unit-session")
+        return {
+            "status": 302,
+            "location": "/posts/",
+        }, None
+
+    monkeypatch.setattr(cli, "bounded_send", fake_bounded_send)
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda _prompt: "member_a",
+    )
+    monkeypatch.setattr(
+        cli.getpass,
+        "getpass",
+        lambda _prompt: "unit-password",
+    )
+
+    budget = cli.RequestBudget(
+        Namespace(
+            max_requests=10,
+            rate=5,
+            timeout=3,
+            max_duration=60,
+        )
+    )
+
+    with cli.new_session() as session:
+        cli.prep_login(
+            session,
+            "https://haven.example:443",
+            budget,
+            "member_a",
+            "test-run",
+            [],
+            cli.MAX_RESPONSE,
+        )
+
+    assert len(requests_seen) == 2
+
+    login_post = requests_seen[1]
+
+    assert login_post["method"] == "POST"
+    assert login_post["path"] == "/accounts/login/"
+    assert login_post["headers"]["Origin"] == (
+        "https://haven.example"
+    )
+    assert login_post["headers"]["X-CSRFToken"] == (
+        "unit-csrf-token"
+    )
+    assert login_post["fields"]["csrfmiddlewaretoken"] == (
+        "unit-csrf-token"
+    )
+
+
+@pytest.mark.parametrize(
+    "case_id, method, path, role, status",
+    [
+        (
+            "SH-01-B-SHARED-BEFORE",
+            "GET", "/posts/shared/", "member_b", 200
+        ),
+        (
+            "SH-01-C-SHARED-BEFORE",
+            "GET", "/posts/shared/", "member_c", 200
+        ),
+        (
+            "SH-01-B-DETAIL-BEFORE",
+            "GET", "/posts/1/", "member_b", 404
+        ),
+        (
+            "SH-07-ANON-SHARED-GET",
+            "GET", "/posts/shared/", "anonymous", 302
+        ),
+    ],
+)
+def test_phase2_share_contract(
+    case_id, method, path, role, status
+):
+    """2회차 공유 전 접근 통제 fixture 계약을 확인한다."""
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(
+        fixture_root / "cases_haven_template.json"
+    )
+
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        case["case_id"]: case
+        for case in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["method"] == method
+    assert case["path"] == path
+    assert case["auth_role"] == role
+    assert case["expected_app"]["http_status"] == status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"
+
+    if case_id == "SH-07-ANON-SHARED-GET":
+        assert case["expected_app"]["redirect_path"] == (
+            "/accounts/login/"
+        )
+
+@pytest.mark.parametrize(
+    "case_id, role, method, path, status",
+    [
+        ("SH-01-B-SHARED-LIST",
+         "member_b", "GET", "/posts/shared/", 200),
+        ("SH-01-B-DETAIL-ALLOWED",
+         "member_b", "GET", "/posts/1/", 200),
+        ("SH-01-C-DETAIL-DENIED",
+         "member_c", "GET", "/posts/1/", 404),
+        ("SH-02-B-EDIT-GET-DENIED",
+         "member_b", "GET", "/posts/1/edit/", 404),
+        ("SH-02-B-EDIT-POST-DENIED",
+         "member_b", "POST", "/posts/1/edit/", 404),
+        ("SH-02-B-DELETE-POST-DENIED",
+         "member_b", "POST", "/posts/1/delete/", 404),
+        ("SH-02-B-SHARES-GET-DENIED",
+         "member_b", "GET", "/posts/1/shares/", 404),
+        ("SH-02-B-DELETE-GET-DENIED",
+        "member_b", "GET", "/posts/1/delete/", 404),
+        ("SH-02-B-SHARES-POST-DENIED",
+        "member_b", "POST", "/posts/1/shares/", 404),
+    ],
+)
+def test_phase2_shared_readonly_fixture(
+    case_id, role, method, path, status
+):
+    """공유 후 읽기 허용·변경 거부 fixture를 검증한다."""
+    fixture_root = ROOT / "fixtures"
+
+    suite = cli.load_json(
+        fixture_root / "cases_share_granted.json"
+    )
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        item["case_id"]: item
+        for item in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["auth_role"] == role
+    assert case["method"] == method
+    assert case["path"] == path
+    assert case["expected_app"]["http_status"] == status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"
+
+
+@pytest.mark.parametrize(
+    "case_id, role, path, status",
+    [
+        ("SH-03-A-DETAIL-AFTER",
+         "member_a", "/posts/1/", 200),
+        ("SH-03-B-SHARED-LIST-AFTER",
+         "member_b", "/posts/shared/", 200),
+        ("SH-03-B-DETAIL-AFTER",
+         "member_b", "/posts/1/", 404),
+        ("SH-03-C-DETAIL-AFTER",
+         "member_c", "/posts/1/", 404),
+    ],
+)
+def test_phase2_share_revoked_fixture(
+    case_id, role, path, status
+):
+    """공유 해제 이후의 접근 권한 fixture를 검증한다."""
+    fixture_root = ROOT / "fixtures"
+
+    suite = cli.load_json(
+        fixture_root / "cases_share_revoked.json"
+    )
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        item["case_id"]: item
+        for item in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["auth_role"] == role
+    assert case["method"] == "GET"
+    assert case["path"] == path
+    assert case["input_reference"] is None
+    assert case["expected_app"]["http_status"] == status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"
+
+
+def test_phase2_share_revoke_changes_access():
+    """공유 해제 전후 B의 조회 권한 변화와 A의 소유권 유지를 확인한다."""
+    fixture_root = ROOT / "fixtures"
+
+    granted = cli.load_json(
+        fixture_root / "cases_share_granted.json"
+    )
+    revoked = cli.load_json(
+        fixture_root / "cases_share_revoked.json"
+    )
+
+    cli.validate_suite(granted, fixture_root)
+    cli.validate_suite(revoked, fixture_root)
+
+    before = {
+        case["case_id"]: case
+        for case in granted["cases"]
+    }
+    after = {
+        case["case_id"]: case
+        for case in revoked["cases"]
+    }
+
+    b_before = before["SH-01-B-DETAIL-ALLOWED"]
+    b_after = after["SH-03-B-DETAIL-AFTER"]
+    a_after = after["SH-03-A-DETAIL-AFTER"]
+
+    assert b_before["path"] == b_after["path"]
+    assert b_before["auth_role"] == b_after["auth_role"]
+
+    # 공유 중에는 B가 읽을 수 있다.
+    assert b_before["expected_app"]["http_status"] == 200
+
+    # 공유 해제 후에는 B가 더 이상 읽을 수 없다.
+    assert b_after["expected_app"]["http_status"] == 404
+
+    # 공유 해제가 소유자 A의 조회 권한을 없애면 안 된다.
+    assert a_after["expected_app"]["http_status"] == 200
+
+
+@pytest.mark.parametrize(
+    "case_id, role, path, status",
+    [
+        (
+            "SH-06-A-INACTIVE-B-SHARED-LIST",
+            "member_b", "/posts/shared/", 200
+        ),
+        (
+            "SH-06-A-INACTIVE-B-DETAIL",
+            "member_b", "/posts/1/", 404
+        ),
+        (
+            "SH-06-A-INACTIVE-C-DETAIL",
+            "member_c", "/posts/1/", 404
+        ),
+    ],
+)
+def test_phase2_owner_inactive_fixture(
+    case_id, role, path, status
+):
+    """소유자 비활성화 이후의 접근 통제 fixture를 검증한다."""
+    fixture_root = ROOT / "fixtures"
+
+    suite = cli.load_json(
+        fixture_root / "cases_owner_inactive.json"
+    )
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        item["case_id"]: item
+        for item in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["method"] == "GET"
+    assert case["path"] == path
+    assert case["auth_role"] == role
+    assert case["input_reference"] is None
+    assert case["expected_app"]["http_status"] == status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"
+
+
+def test_phase2_owner_inactive_blocks_shared_access():
+    """소유자 비활성화 전후 공유 대상의 조회 기대값을 비교한다."""
+    fixture_root = ROOT / "fixtures"
+
+    granted = cli.load_json(
+        fixture_root / "cases_share_granted.json"
+    )
+    inactive = cli.load_json(
+        fixture_root / "cases_owner_inactive.json"
+    )
+
+    cli.validate_suite(granted, fixture_root)
+    cli.validate_suite(inactive, fixture_root)
+
+    granted_cases = {
+        case["case_id"]: case
+        for case in granted["cases"]
+    }
+    inactive_cases = {
+        case["case_id"]: case
+        for case in inactive["cases"]
+    }
+
+    before = granted_cases["SH-01-B-DETAIL-ALLOWED"]
+    after = inactive_cases["SH-06-A-INACTIVE-B-DETAIL"]
+
+    assert before["path"] == after["path"] == "/posts/1/"
+    assert before["auth_role"] == after["auth_role"] == "member_b"
+
+    # A가 활성일 때 B에게 공유된 P1은 조회 가능.
+    assert before["expected_app"]["http_status"] == 200
+
+    # A가 비활성화되면 B의 조회도 차단.
+    assert after["expected_app"]["http_status"] == 404
+
+
+@pytest.mark.parametrize(
+    "case_id, path, status",
+    [
+        ("SH-06-B-ACTIVE-BASELINE", "/posts/1/", 200),
+        ("SH-06-B-INACTIVE-DETAIL", "/posts/1/", 302),
+        ("SH-06-B-INACTIVE-SHARED-LIST", "/posts/shared/", 302),
+    ],
+)
+def test_phase2_member_inactive_contract(case_id, path, status):
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(
+        fixture_root / "cases_member_inactive.json"
+    )
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {c["case_id"]: c for c in suite["cases"]}
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["method"] == "GET"
+    assert case["auth_role"] == "member_b"
+    assert case["path"] == path
+    assert case["expected_app"]["http_status"] == status
+    assert case["verification_mode"] == "manual_required"
+
+    if status == 302:
+        assert case["expected_app"]["redirect_path"] == (
+            "/accounts/login/"
+        )
+
+    if case_id == "SH-06-B-INACTIVE-DETAIL":
+        assert case["checkpoint_before"] == "deactivate_member_b"
+
+
+def test_manual_checkpoint_reuses_member_b_session(
+    tmp_path, monkeypatch
+):
+    """모의 응답에서 B 세션 유지·재로그인 방지를 검증한다."""
+    args = inputs(tmp_path, 8765)
+    args.cases = ROOT / "fixtures" / "cases_member_inactive.json"
+    args.manual_checkpoints = True
+
+    login_calls = []
+    requests_seen = []
+    inactive = {"value": False}
+
+    def fake_login(session, target, budget, role, *a, **kw):
+        login_calls.append(role)
+        session.cookies.set("sessionid", "unit-b-session")
+
+    def fake_send(
+        session, method, target, path, budget, request_id, **kw
+    ):
+        requests_seen.append({
+            "session_id": id(session),
+            "cookie": session.cookies.get("sessionid"),
+            "inactive": inactive["value"],
+            "path": path,
+        })
+
+        status = 302 if inactive["value"] else 200
+
+        return {
+            "status": status,
+            "elapsed_ms": 0.1,
+            "location": (
+                "/accounts/login/?next=" + path
+                if status == 302 else None
+            ),
+            "body_bytes": 0,
+            "sha256": None,
+            "headers": {},
+            "request_body_bytes": None,
+        }, None
+
+    def confirm_deactivation(prompt):
+        assert "DEACTIVATED" in prompt
+        inactive["value"] = True
+        return "DEACTIVATED"
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        "builtins.input", confirm_deactivation
+    )
+
+    assert cli.run(args) == 3  # 로그 대조 전이므로 UNKNOWN
+
+    assert login_calls == ["member_b"]
+    assert len(requests_seen) == 3
+
+    # 세 요청 모두 동일한 메모리 세션과 쿠키 사용.
+    assert len({
+        request["session_id"] for request in requests_seen
+    }) == 1
+    assert all(
+        request["cookie"] == "unit-b-session"
+        for request in requests_seen
+    )
+
+    assert [r["inactive"] for r in requests_seen] == [
+        False, True, True
+    ]
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+
+    assert [
+        r["http_status"] for r in result["results"]
+    ] == [200, 302, 302]
+    assert all(
+        r["http_expectation_match"] is True
+        for r in result["results"]
+    )
+
+    assert any(
+        event["stage"] == "manual_checkpoint"
+        for event in result["preparation_events"]
+    )
+
+
+def test_manual_checkpoint_requires_opt_in(tmp_path):
+    """허용 옵션 없이 수동 체크포인트 실행을 시작하지 않는다."""
+    args = inputs(tmp_path, 8765)
+    args.cases = ROOT / "fixtures" / "cases_member_inactive.json"
+    args.manual_checkpoints = False
+
+    with pytest.raises(
+        cli.ConfigError,
+        match="--manual-checkpoints",
+    ):
+        cli.run(args)
+
+    assert not args.output_dir.exists()
+
+
+@pytest.mark.parametrize(
+    "event, expected_id",
+    [
+        (
+            {
+                "request_id": "server-id",
+                "client_request_id": "cli-id",
+            },
+            "cli-id",
+        ),
+        (
+            {
+                "request_id": "legacy-id",
+            },
+            "legacy-id",
+        ),
+        (
+            {
+                "httpRequest": {
+                    "headers": [
+                        {
+                            "name": "x-haven-request-id",
+                            "value": "waf-cli-id",
+                        }
+                    ]
+                }
+            },
+            "waf-cli-id",
+        ),
+        (
+            {
+                "request_id": "server-id",
+                "client_request_id": "",
+            },
+            "server-id",
+        ),
+        (
+            {},
+            None,
+        ),
+    ],
+)
+def test_log_request_id_compatibility(event, expected_id):
+    """앱·WAF·기존 로그 형식의 요청 ID 추출을 검증한다."""
+    assert cli.log_request_id(event) == expected_id
+
+
+def test_trace_id_format():
+    """생성한 Trace ID가 AWS Root 형식을 만족하는지 확인한다."""
+    import re
+
+    trace_id = cli.new_trace_id()
+
+    assert re.fullmatch(
+        r"Root=1-[0-9a-f]{8}-[0-9a-f]{24}",
+        trace_id,
+    )
+
+
+def test_bounded_send_trace_id_header(monkeypatch):
+    """실제 로컬 HTTP 요청에 Trace ID가 포함되는지 확인한다."""
+    observed = []
+    original_send = cli.requests.Session.send
+
+    def capture_send(session, request, **kwargs):
+        observed.append(
+            request.headers.get("X-Amzn-Trace-Id")
+        )
+        return original_send(session, request, **kwargs)
+
+    monkeypatch.setattr(
+        cli.requests.Session, "send", capture_send
+    )
+
+    with probe_server() as (port, _received):
+        target = f"http://127.0.0.1:{port}"
+        trace_id = cli.new_trace_id()
+
+        budget = cli.RequestBudget(
+            Namespace(
+                max_requests=5,
+                rate=5,
+                timeout=3,
+                max_duration=30,
+            )
+        )
+
+        with cli.new_session() as session:
+            detail, _ = cli.bounded_send(
+                session,
+                "GET",
+                target,
+                "/healthz",
+                budget,
+                "test-request-id",
+                trace_id=trace_id,
+            )
+
+        assert detail["status"] == 200
+        assert observed == [trace_id]
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (
+            "Root=1-67891233-abcdef012345678912345678",
+            "1-67891233-abcdef012345678912345678",
+        ),
+        (
+            "Self=1-67891233-111111111111111111111111;"
+            "Root=1-67891233-abcdef012345678912345678",
+            "1-67891233-abcdef012345678912345678",
+        ),
+        (
+            "1-67891233-abcdef012345678912345678",
+            "1-67891233-abcdef012345678912345678",
+        ),
+        (
+            "Root=invalid",
+            None,
+        ),
+        (
+            "Root=1-67891233-abcdef012345678912345678;"
+            "Root=1-67891233-abcdef012345678912345678",
+            None,
+        ),
+        (
+            None,
+            None,
+        ),
+    ],
+)
+def test_extract_trace_root(value, expected):
+    """Trace Root 정규화 및 잘못된 형식 거부."""
+    assert cli.extract_trace_root(value) == expected
+
+
+@pytest.mark.parametrize(
+    "scenario, expected_code",
+    [
+        ("matched", 0),
+        ("mismatched", 3),
+        ("missing", 3),
+        ("duplicate", 3),
+    ],
+)
+def test_real_trace_root_correlation(
+    tmp_path, scenario, expected_code
+):
+    """Trace Root 일치·불일치·누락·중복을 검증한다."""
+
+    now = datetime.now(timezone.utc)
+
+    case = {
+        "case_id": "TRACE-TEST",
+        "category": "authorization",
+        "method": "GET",
+        "path": "/healthz",
+        "auth_role": "anonymous",
+        "expected_app": {"http_status": 200},
+        "expected_waf": "ALLOW",
+        "verification_mode": "http_only",
+    }
+
+    row = cli.base_record("trace-test-run", case)
+    row.update(
+        transport_status="OK",
+        http_status=200,
+        http_expectation_match=True,
+    )
+
+    run_json = tmp_path / "results.json"
+    run_json.write_text(
+        json.dumps({
+            "run_id": "trace-test-run",
+            "target_origin": "https://haven.example:443",
+            "results": [row],
+        }),
+        encoding="utf-8",
+    )
+
+    waf_event = {
+        "timestamp": int(now.timestamp() * 1000),
+        "action": "ALLOW",
+        "httpRequest": {
+            "headers": [
+                {
+                    "name": "X-Amzn-Trace-Id",
+                    "value": row["trace_id"],
+                }
+            ],
+        },
+    }
+
+    app_event = {
+        "ts": now.isoformat(),
+        "request_id": (
+            "Self=1-67891233-111111111111111111111111;"
+            + row["trace_id"]
+        ),
+        "status": 200,
+    }
+
+    waf_events = [waf_event]
+
+    if scenario == "mismatched":
+        app_event["request_id"] = (
+            "Root=1-67891233-000000000000000000000000"
+        )
+
+    elif scenario == "missing":
+        # 기존 CLI ID가 있어도 실제 로그는 Root 없이 연결 금지.
+        waf_event["httpRequest"]["headers"] = []
+        waf_event["request_id"] = row["request_id"]
+        app_event["request_id"] = row["request_id"]
+
+    elif scenario == "duplicate":
+        waf_events.append(dict(waf_event))
+
+    waf_path = tmp_path / "waf.jsonl"
+    app_path = tmp_path / "app.jsonl"
+
+    waf_path.write_text(
+        "".join(json.dumps(e) + "\n" for e in waf_events),
+        encoding="utf-8",
+    )
+    app_path.write_text(
+        json.dumps(app_event) + "\n",
+        encoding="utf-8",
+    )
+
+    args = Namespace(
+        run_json=run_json,
+        waf_log=waf_path,
+        app_log=app_path,
+        output_dir=tmp_path / "correlated",
+    )
+
+    assert cli.correlate(args) == expected_code
+
+    result = cli.load_json(
+        args.output_dir / "correlated_results.json"
+    )["results"][0]
+
+    if scenario == "matched":
+        assert result["correlation_status"] == "MATCHED"
+        assert result["verdict"] == "PASS"
+    else:
+        assert result["correlation_status"] == "UNRESOLVED"
+        assert result["verdict"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "invalid_condition",
+    ["filtered_baseline", "wrong_path", "wrong_status"],
+)
+def test_selected_checkpoint_rejects_invalid_baseline(
+    invalid_condition,
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_member_inactive.json"
+    )
+
+    baseline = suite["cases"][0]
+
+    if invalid_condition == "filtered_baseline":
+        baseline["phase"] = 1
+    elif invalid_condition == "wrong_path":
+        baseline["path"] = "/posts/2/"
+    elif invalid_condition == "wrong_status":
+        baseline["expected_app"]["http_status"] = 404
+
+    selected = cli.select_phase(suite, 2)
+
+    with pytest.raises(cli.ConfigError, match="기준 요청"):
+        cli.validate_selected_checkpoint_sequence(selected)
+
+
+def test_filtered_checkpoint_blocks_before_execution(
+    tmp_path, monkeypatch
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_member_inactive.json"
+    )
+    suite["cases"][0]["phase"] = 1
+
+    case_path = tmp_path / "filtered_cases.json"
+    case_path.write_text(
+        json.dumps(suite, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    args = inputs(tmp_path, 8765)
+    args.cases = case_path
+    args.phase = 2
+    args.manual_checkpoints = True
+
+    def fail_if_sent(*args, **kwargs):
+        pytest.fail("사전 검증 실패 시 HTTP 전송 금지")
+
+    monkeypatch.setattr(cli, "bounded_send", fail_if_sent)
+
+    with pytest.raises(cli.ConfigError, match="기준 요청"):
+        cli.run(args)
+
+    assert not args.output_dir.exists()
+
+
+def test_failed_baseline_prevents_manual_checkpoint(
+    tmp_path, monkeypatch
+):
+    args = inputs(tmp_path, 8765)
+    args.cases = (
+        ROOT / "fixtures" / "cases_member_inactive.json"
+    )
+    args.manual_checkpoints = True
+
+    sent_paths = []
+
+    def fake_login(session, target, budget, role, *a, **kw):
+        session.cookies.set("sessionid", "test-session")
+
+    def fake_send(
+        session, method, target, path, budget, request_id, **kw
+    ):
+        sent_paths.append(path)
+
+        return {
+            "status": 404,
+            "elapsed_ms": 0.1,
+            "location": None,
+            "body_bytes": 0,
+            "sha256": None,
+            "headers": {},
+            "request_body_bytes": None,
+        }, None
+
+    def forbid_checkpoint(prompt):
+        pytest.fail("기준 요청 실패 후 체크포인트 실행 금지")
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        "builtins.input", forbid_checkpoint
+    )
+
+    assert cli.run(args) == 2
+
+    # 첫 번째 기준 요청만 전송되어야 한다.
+    assert sent_paths == ["/posts/1/"]
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+
+    records = result["results"]
+
+    assert len(records) == 2
+    assert records[0]["http_status"] == 404
+    assert records[0]["http_expectation_match"] is False
+
+    # 체크포인트 시작 전에 중단된 기록.
+    assert records[1]["transport_status"] == "ERROR"
+    assert result["unexecuted_cases"] == 1
+
+    assert not any(
+        event["stage"] == "manual_checkpoint"
+        for event in result["preparation_events"]
+    )
+
+
+@pytest.mark.parametrize(
+    "case_id, role, path, expected_status",
+    [
+        (
+            "APP-07-MEMBER-ADMIN-GET",
+            "member_a",
+            "/admin/accounts/",
+            403,
+        ),
+        (
+            "APP-07-MEMBER-EVENTS-GET",
+            "member_b",
+            "/admin/account-events/",
+            403,
+        ),
+        (
+            "APP-09-OPERATOR-ADMIN-GET",
+            "operator",
+            "/admin/accounts/",
+            200,
+        ),
+        (
+            "SH-07-OPERATOR-P1-DENIED",
+            "operator",
+            "/posts/1/",
+            404,
+        ),
+    ],
+)
+def test_phase2_admin_access_contract(
+    case_id, role, path, expected_status
+):
+    """2회차 관리자 접근 통제 fixture 계약 검증."""
+
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(
+        fixture_root / "cases_haven_template.json"
+    )
+
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        case["case_id"]: case
+        for case in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["auth_role"] == role
+    assert case["method"] == "GET"
+    assert case["path"] == path
+    assert case["input_reference"] is None
+    assert case["expected_app"]["http_status"] == expected_status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"
+
+
+@pytest.mark.parametrize(
+    "case_id, role, method, status",
+    [
+        ("SH-04-A-SHARES-GET-BASELINE",
+         "member_a", "GET", 200),
+        ("SH-02-C-SHARES-GET-DENIED",
+         "member_c", "GET", 404),
+        ("SH-02-C-SHARES-POST-DENIED",
+         "member_c", "POST", 404),
+        ("SH-07-ANON-SHARES-GET",
+         "anonymous", "GET", 302),
+    ],
+)
+def test_phase2_share_management_access(
+    case_id, role, method, status
+):
+    """공유 관리 엔드포인트의 역할별 시험 계약."""
+
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(
+        fixture_root / "cases_share_granted.json"
+    )
+
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        item["case_id"]: item
+        for item in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["path"] == "/posts/1/shares/"
+    assert case["auth_role"] == role
+    assert case["method"] == method
+    assert case["expected_app"]["http_status"] == status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"
+
+    if method == "POST":
+        assert case["input_reference"] == "post_empty_valid.json"
+    else:
+        assert case["input_reference"] is None
+
+    if role == "anonymous":
+        assert case["expected_app"]["redirect_path"] == (
+            "/accounts/login/"
+        )
+
+
+def test_share_management_baseline_precedes_denials():
+    """소유자 정상 대조군을 거부 시험보다 먼저 배치한다."""
+
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_share_granted.json"
+    )
+
+    positions = {
+        item["case_id"]: index
+        for index, item in enumerate(suite["cases"])
+    }
+
+    baseline = positions["SH-04-A-SHARES-GET-BASELINE"]
+
+    for case_id in (
+        "SH-02-B-SHARES-GET-DENIED",
+        "SH-02-B-SHARES-POST-DENIED",
+        "SH-02-C-SHARES-GET-DENIED",
+        "SH-02-C-SHARES-POST-DENIED",
+    ):
+        assert baseline < positions[case_id]
+
+
+@pytest.mark.parametrize(
+    "option, invalid_value",
+    [
+        ("timeout", 0),
+        ("timeout", 31),
+        ("max_requests", 0),
+        ("max_requests", 1001),
+        ("rate", 0),
+        ("rate", 6),
+        ("max_duration", 0),
+        ("max_duration", 901),
+        ("max_response_bytes", 0),
+        ("max_response_bytes", cli.MAX_RESPONSE + 1),
+    ],
+)
+def test_invalid_limits_block_before_network(
+    tmp_path, monkeypatch, option, invalid_value
+):
+    """잘못된 한도는 HTTP 전송 및 출력 폴더 생성 전 거부."""
+
+    args = inputs(tmp_path, 8765)
+    setattr(args, option, invalid_value)
+
+    def forbidden_send(*args, **kwargs):
+        pytest.fail("잘못된 제한값으로 HTTP 전송 시도")
+
+    monkeypatch.setattr(cli, "bounded_send", forbidden_send)
+
+    with pytest.raises(cli.ConfigError, match=option):
+        cli.run(args)
+
+    assert not args.output_dir.exists()
+
+
+def test_duration_limit_preserves_partial_results(
+    tmp_path, monkeypatch
+):
+    """첫 요청 후 시간 한도를 초과하면 다음 요청을 보내지 않는다."""
+
+    original_begin = cli.RequestBudget.begin
+
+    def expire_before_second_request(self):
+        if self.count == 1:
+            self.started -= self.duration + 1
+
+        return original_begin(self)
+
+    monkeypatch.setattr(
+        cli.RequestBudget,
+        "begin",
+        expire_before_second_request,
+    )
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz"] * 3,
+        )
+
+        assert cli.run(args) == 2
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        assert len(received) == 1
+        assert result["total_http_requests_including_preparation"] == 1
+        assert result["unexecuted_cases"] == 1
+        assert len(result["results"]) == 2
+
+        assert result["results"][0]["transport_status"] == "OK"
+        assert result["results"][1]["transport_status"] == "ERROR"
+        assert "전체 실행 시간 한도" in result["stopped_reason"]
+
+
+@pytest.mark.parametrize(
+    "include_content_length",
+    [True, False],
+)
+def test_response_size_limit_stops_remaining_requests(
+    tmp_path, monkeypatch, include_content_length
+):
+    """선언된 크기 또는 실제 수신 크기가 한도를 넘으면 중단."""
+
+    sent = []
+
+    def fake_send(session, request, **kwargs):
+        sent.append(request.url)
+
+        response = cli.requests.Response()
+        response.status_code = 200
+        response.url = request.url
+        response._content = b"X" * 20
+        response._content_consumed = True
+
+        if include_content_length:
+            response.headers["Content-Length"] = "20"
+
+        return response
+
+    monkeypatch.setattr(
+        cli.NoRedirectBodySession,
+        "send",
+        fake_send,
+    )
+
+    args = probe_inputs(
+        tmp_path,
+        8765,
+        ["/healthz"] * 2,
+    )
+    args.max_response_bytes = 8
+
+    assert cli.run(args) == 2
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+
+    assert len(sent) == 1
+    assert result["total_http_requests_including_preparation"] == 1
+    assert result["unexecuted_cases"] == 1
+    assert len(result["results"]) == 1
+    assert result["results"][0]["transport_status"] == "ERROR"
+    assert result["results"][0]["verdict"] == "ERROR"
+
+    error = result["results"][0]["response_summary"]["error"]
+
+    if include_content_length:
+        assert "Content-Length" in error
+    else:
+        assert "실제 응답" in error
+
+
+def test_login_preparation_respects_request_limit(
+    tmp_path, monkeypatch
+):
+    """로그인 준비 GET도 전체 요청 수에 포함한다."""
+
+    with server(tmp_path) as (port, waf, _app):
+        suite = cli.load_json(
+            ROOT / "fixtures" / "cases_local.json"
+        )
+        suite["cases"] = [
+            {
+                **suite["cases"][1],
+                "auth_role": "member_a",
+                "expected_app": {"http_status": 200},
+            }
+        ]
+
+        case_file = tmp_path / "login_limit.json"
+        case_file.write_text(
+            json.dumps(suite),
+            encoding="utf-8",
+        )
+
+        args = inputs(
+            tmp_path,
+            port,
+            max_requests=1,
+        )
+        args.cases = case_file
+
+        monkeypatch.setattr(
+            "builtins.input",
+            lambda prompt: "member_a",
+        )
+        monkeypatch.setattr(
+            cli.getpass,
+            "getpass",
+            lambda prompt: "test-secret-password",
+        )
+
+        assert cli.run(args) == 2
+
+        result_path = args.output_dir / "results.json"
+        result = cli.load_json(result_path)
+
+        assert result["total_http_requests_including_preparation"] == 1
+        assert len(result["preparation_events"]) == 1
+        assert result["preparation_events"][0]["stage"] == "login_form"
+        assert result["results"][0]["transport_status"] == "ERROR"
+        assert "요청 수 한도" in result["stopped_reason"]
+
+        assert len(waf.read_text(encoding="utf-8").splitlines()) == 1
+
+        assert "test-secret-password" not in result_path.read_text(
+            encoding="utf-8"
+        )
+
+
+def test_csrf_preparation_respects_request_limit(tmp_path):
+    """CSRF 준비 GET 이후 예산이 없으면 변경 POST를 전송하지 않는다."""
+
+    with server(tmp_path) as (port, waf, _app):
+        suite = cli.load_json(
+            ROOT / "fixtures" / "cases_local.json"
+        )
+
+        suite["cases"] = [
+            {
+                **suite["cases"][0],
+                "case_id": "LIMIT-CSRF-PREPARATION",
+                "category": "csrf",
+                "method": "POST",
+                "path": "/posts/new/",
+                "auth_role": "anonymous",
+                "input_reference": "post_valid_record.json",
+                "expected_app": {"http_status": 302},
+            }
+        ]
+
+        case_file = tmp_path / "csrf_limit.json"
+        case_file.write_text(
+            json.dumps(suite),
+            encoding="utf-8",
+        )
+
+        args = inputs(
+            tmp_path,
+            port,
+            max_requests=1,
+        )
+        args.cases = case_file
+
+        assert cli.run(args) == 2
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        assert result["total_http_requests_including_preparation"] == 1
+        assert len(result["preparation_events"]) == 1
+        assert result["preparation_events"][0]["stage"] == "csrf_form"
+        assert result["results"][0]["transport_status"] == "ERROR"
+        assert "요청 수 한도" in result["stopped_reason"]
+
+        # 실제 변경 POST는 전송되지 않아야 한다.
+        assert len(waf.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_output_write_failure_returns_exit_code_2(
+    tmp_path, monkeypatch
+):
+    """결과 기록 실패를 성공으로 처리하지 않는다."""
+
+    def fail_save(*args, **kwargs):
+        raise OSError("simulated output write failure")
+
+    monkeypatch.setattr(cli, "save_results", fail_save)
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz"] * 2,
+        )
+
+        exit_code = cli.main([
+            "run",
+            "--target", args.target,
+            "--allowlist", str(args.allowlist),
+            "--cases", str(args.cases),
+            "--fixture-dir", str(args.fixture_dir),
+            "--output-dir", str(args.output_dir),
+            "--rate", "5",
+        ])
+
+        assert exit_code == 2
+        assert len(received) == 1
+
+        assert not (
+            args.output_dir / "results.json"
+        ).exists()
+
+
+@pytest.mark.parametrize(
+    "origin, expected",
+    [
+        ("https://haven.example", "https://haven.example"),
+        ("https://haven.example:443", "https://haven.example"),
+        ("https://haven.example:8443", "https://haven.example:8443"),
+        ("http://127.0.0.1:80", "http://127.0.0.1"),
+        ("http://127.0.0.1:8000", "http://127.0.0.1:8000"),
+        ("http://[::1]:8000", "http://[::1]:8000"),
+    ],
+)
+def test_serialize_origin_header(origin, expected):
+    """기본 포트는 생략하고 비기본 포트는 유지한다."""
+    assert cli.serialize_origin_header(origin) == expected
+
+
+@pytest.mark.parametrize(
+    "expected_waf, mode, expected_code, expected_verdict",
+    [
+        ("NOT_APPLICABLE", "http_only", 3, "UNKNOWN"),
+        ("ALLOW", "http_only", 1, "FAIL"),
+        ("COUNT", "http_only", 1, "FAIL"),
+        ("BLOCK", "http_only", 0, "PASS"),
+        ("BLOCK", "manual_required", 3, "UNKNOWN"),
+    ],
+)
+def test_waf_block_requires_explicit_block_expectation(
+    tmp_path, expected_waf, mode, expected_code, expected_verdict
+):
+    """예상하지 않은 WAF 차단이 앱 검증 PASS로 이어지지 않는다."""
+
+    case = {
+        "case_id": "WAF-BLOCK-TEST",
+        "category": "SEC",
+        "method": "POST",
+        "path": "/posts/new/",
+        "auth_role": "member_a",
+        "expected_app": {"http_status": 403},
+        "expected_waf": expected_waf,
+        "verification_mode": mode,
+    }
+
+    row = cli.base_record("unit-run", case)
+    row.update(
+        transport_status="OK",
+        http_status=403,
+        http_expectation_match=True,
+    )
+
+    origin = "https://haven.example:443"
+
+    run_file = tmp_path / "results.json"
+    run_file.write_text(
+        json.dumps({
+            "run_id": "unit-run",
+            "target_origin": origin,
+            "results": [row],
+            "unexecuted_cases": 0,
+            "stopped_reason": None,
+        }),
+        encoding="utf-8",
+    )
+
+    waf_event = {
+        "run_id": "unit-run",
+        "target_origin": origin,
+        "timestamp_utc": row["timestamp_utc"],
+        "trace_id": row["trace_id"],
+        "action": "BLOCK",
+        "terminatingRuleId": "block-rule",
+        "nonTerminatingMatchingRules": [
+            {"ruleId": "count-rule", "action": "COUNT"}
+        ],
+    }
+
+    waf_file = tmp_path / "waf.jsonl"
+    waf_file.write_text(
+        json.dumps(waf_event) + "\n",
+        encoding="utf-8",
+    )
+
+    app_file = tmp_path / "app.jsonl"
+    app_file.write_text("", encoding="utf-8")
+
+    args = Namespace(
+        run_json=run_file,
+        waf_log=waf_file,
+        app_log=app_file,
+        output_dir=tmp_path / "correlated",
+    )
+
+    assert cli.correlate(args) == expected_code
+
+    result = cli.load_json(
+        args.output_dir / "correlated_results.json"
+    )["results"][0]
+
+    assert result["verdict"] == expected_verdict
+    assert result["app_observed"] is False
+
+    if expected_waf == "BLOCK":
+        assert result["app_validity"] == "NOT_APPLICABLE"
+    else:
+        assert result["app_validity"] == "UNKNOWN"
+        assert result["correlation_status"] == "UNRESOLVED"
+
+    if expected_waf in {"ALLOW", "COUNT"}:
+        assert result["waf_verdict"] == "BLOCK"
+        assert result["correlation_status"] == "UNRESOLVED"
+        assert result["app_observed"] is False
+
+
+@pytest.mark.parametrize(
+    "event, expected",
+    [
+        # 최상위 Count
+        (
+            {
+                "nonTerminatingMatchingRules": [
+                    {"ruleId": "TOP_COUNT", "action": "COUNT"}
+                ]
+            },
+            ["TOP_COUNT"]
+        ),
+
+        # 규칙 그룹 내부 Count
+        (
+            {
+                "ruleGroupList": [
+                    {
+                        "ruleGroupId": "GROUP_A",
+                        "nonTerminatingMatchingRules": [
+                            {"ruleId": "SQLi_BODY", "action": "COUNT"}
+                        ]
+                    }
+                ]
+            },
+            ["GROUP_A::SQLi_BODY"]
+        ),
+
+        # 여러 그룹에 같은 이름의 규칙
+        (
+            {
+                "ruleGroupList": [
+                    {
+                        "ruleGroupId": "GROUP_A",
+                        "nonTerminatingMatchingRules": [
+                            {"ruleId": "RULE_1", "action": "COUNT"}
+                        ]
+                    },
+                    {
+                        "ruleGroupId": "GROUP_B",
+                        "nonTerminatingMatchingRules": [
+                            {"ruleId": "RULE_1", "action": "COUNT"}
+                        ]
+                    }
+                ]
+            },
+            ["GROUP_A::RULE_1", "GROUP_B::RULE_1"]
+        ),
+
+        # excludedRules 형식
+        (
+            {
+                "ruleGroupList": [
+                    {
+                        "ruleGroupId": "GROUP_A",
+                        "excludedRules": [
+                            {
+                                "ruleId": "LEGACY_RULE",
+                                "exclusionType": "EXCLUDED_AS_COUNT"
+                            }
+                        ]
+                    }
+                ]
+            },
+            ["GROUP_A::LEGACY_RULE"]
+        ),
+
+        # Count가 아닌 CAPTCHA는 제외
+        (
+            {
+                "nonTerminatingMatchingRules": [
+                    {"ruleId": "CAPTCHA_RULE", "action": "CAPTCHA"}
+                ]
+            },
+            []
+        ),
+
+        # AWS 로그의 null 필드 대응
+        (
+            {
+                "nonTerminatingMatchingRules": None,
+                "ruleGroupList": [
+                    {
+                        "ruleGroupId": "GROUP_A",
+                        "nonTerminatingMatchingRules": None,
+                        "excludedRules": None
+                    }
+                ]
+            },
+            []
+        ),
+    ],
+)
+def test_extract_count_rule_ids(event, expected):
+    """AWS WAF Count 규칙을 최상위·그룹 내부에서 추출한다."""
+    assert cli.extract_count_rule_ids(event) == expected
+
+
+def test_correlate_group_count_allows_valid_app(tmp_path):
+    """그룹 내부 Count + WAF ALLOW + 앱 정상 도달을 PASS로 판정한다."""
+
+    case = {
+        "case_id": "GROUP-COUNT-TEST",
+        "category": "SEC",
+        "method": "GET",
+        "path": "/posts/",
+        "auth_role": "member_a",
+        "expected_app": {"http_status": 200},
+        "expected_waf": "COUNT",
+        "verification_mode": "http_only",
+    }
+
+    row = cli.base_record("unit-run", case)
+    row.update(
+        transport_status="OK",
+        http_status=200,
+        http_expectation_match=True,
+    )
+
+    origin = "https://haven.example:443"
+
+    run_file = tmp_path / "results.json"
+    run_file.write_text(
+        json.dumps({
+            "run_id": "unit-run",
+            "target_origin": origin,
+            "results": [row],
+            "unexecuted_cases": 0,
+            "stopped_reason": None,
+        }),
+        encoding="utf-8",
+    )
+
+    waf_event = {
+        "run_id": "unit-run",
+        "target_origin": origin,
+        "timestamp_utc": row["timestamp_utc"],
+        "trace_id": row["trace_id"],
+        "action": "ALLOW",
+        "ruleGroupList": [
+            {
+                "ruleGroupId": "SQLi_GROUP",
+                "nonTerminatingMatchingRules": [
+                    {"ruleId": "SQLi_BODY", "action": "COUNT"}
+                ]
+            }
+        ],
+    }
+
+    app_event = {
+        "run_id": "unit-run",
+        "target_origin": origin,
+        "timestamp_utc": row["timestamp_utc"],
+        "trace_id": row["trace_id"],
+        "http_status": 200,
+    }
+
+    waf_file = tmp_path / "waf.jsonl"
+    waf_file.write_text(
+        json.dumps(waf_event) + "\n",
+        encoding="utf-8",
+    )
+
+    app_file = tmp_path / "app.jsonl"
+    app_file.write_text(
+        json.dumps(app_event) + "\n",
+        encoding="utf-8",
+    )
+
+    args = Namespace(
+        run_json=run_file,
+        waf_log=waf_file,
+        app_log=app_file,
+        output_dir=tmp_path / "correlated",
+    )
+
+    assert cli.correlate(args) == 0
+
+    result = cli.load_json(
+        args.output_dir / "correlated_results.json"
+    )["results"][0]
+
+    assert result["count_rule_ids"] == [
+        "SQLi_GROUP::SQLi_BODY"
+    ]
+    assert result["waf_verdict"] == "ALLOW"
+    assert result["app_validity"] == "MATCH"
+    assert result["verdict"] == "PASS"
+
+
+def test_request_timestamp_uses_send_time_after_login_delay(
+    tmp_path, monkeypatch
+):
+    """로그인 준비가 120초 넘게 걸려도 실제 전송 시각으로 로그를 대조한다."""
+
+    clock = {
+        "now": datetime(2026, 11, 9, 6, 0, tzinfo=timezone.utc)
+    }
+
+    # 테스트용 UTC 시계
+    monkeypatch.setattr(
+        cli,
+        "utc_now",
+        lambda: clock["now"].isoformat(timespec="milliseconds")
+    )
+
+    def fake_login(*args, **kwargs):
+        # 실제로 130초 기다리지 않고 시계만 이동
+        clock["now"] += timedelta(seconds=130)
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz"],
+            ["member_a"]
+        )
+
+        assert cli.run(args) == 3
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        row = result["results"][0]
+
+        # 실제 HTTP 요청은 정상 전송
+        assert row["transport_status"] == "OK"
+        assert len(received) == 1
+
+        # 로그인 준비 후 실제 전송 시각 기록
+        expected_time = clock["now"].isoformat(
+            timespec="milliseconds"
+        )
+        assert row["timestamp_utc"] == expected_time
+
+        origin = cli.canonical_origin(args.target)
+
+        # 실제 전송 시각에 기록된 로그는 정상 연결
+        event = {
+            "run_id": row["run_id"],
+            "target_origin": origin,
+            "timestamp_utc": expected_time,
+        }
+
+        assert cli.plausible_event(event, row, origin)
+
+        # 로그인 준비 이전의 오래된 로그는 거부
+        old_event = {
+            **event,
+            "timestamp_utc": (
+                clock["now"] - timedelta(seconds=130)
+            ).isoformat(timespec="milliseconds"),
+        }
+
+        assert not cli.plausible_event(
+            old_event, row, origin
+        )
+
+
+@pytest.mark.parametrize("stage", ["username", "password"])
+def test_login_input_eof_records_error(
+    tmp_path, monkeypatch, capsys, stage
+):
+    """로그인 입력 EOF를 ERROR로 기록하고 후속 요청을 중단한다."""
+
+    def raise_eof(_prompt):
+        raise EOFError
+
+    if stage == "username":
+        monkeypatch.setattr("builtins.input", raise_eof)
+
+    else:
+        monkeypatch.setattr(
+            "builtins.input",
+            lambda _prompt: "test-user"
+        )
+        monkeypatch.setattr(
+            cli.getpass, "getpass", raise_eof
+        )
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz", "/healthz"],
+            ["member_a", "anonymous"],
+        )
+
+        assert cli.run(args) == 2
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        # 로그인 실패 후 실제 HTTP 요청이 발생하지 않아야 한다.
+        assert received == []
+        assert result["total_http_requests_including_preparation"] == 0
+
+        # 실패한 첫 번째 케이스와 미실행 케이스를 구분한다.
+        assert len(result["results"]) == 1
+        assert result["unexecuted_cases"] == 1
+
+        row = result["results"][0]
+
+        assert row["transport_status"] == "ERROR"
+        assert row["verdict"] == "ERROR"
+        assert row["response_summary"]["error"]
+        assert result["stopped_reason"]
+
+        # 처리되지 않은 예외의 traceback이 출력되면 안 된다.
+        captured = capsys.readouterr()
+        assert "Traceback" not in captured.err        
+
+
+def test_login_eof_preserves_previous_results(
+    tmp_path, monkeypatch
+):
+    """앞선 요청 결과를 유지하고 다음 역할의 로그인 EOF에서 중단한다."""
+
+    original_login = cli.prep_login
+
+    def fake_login(
+        session, target, budget, role,
+        run_id, prep_events, max_response_bytes
+    ):
+        if role == "member_a":
+            # 첫 역할은 인증이 완료된 상황으로 가정한다.
+            session.cookies.set(
+                "sessionid",
+                "test-member-a",
+                domain="127.0.0.1",
+                path="/",
+            )
+            return
+
+        return original_login(
+            session, target, budget, role,
+            run_id, prep_events, max_response_bytes
+        )
+
+    def raise_eof(_prompt):
+        raise EOFError
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr("builtins.input", raise_eof)
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz", "/healthz", "/healthz"],
+            ["member_a", "member_b", "anonymous"],
+        )
+
+        assert cli.run(args) == 2
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        # 첫 번째 요청만 정상 전송한다.
+        assert len(received) == 1
+
+        # 두 번째 케이스에서 중단된다.
+        assert len(result["results"]) == 2
+        assert result["unexecuted_cases"] == 1
+
+        first = result["results"][0]
+        second = result["results"][1]
+
+        # 기존 성공 기록 유지
+        assert first["transport_status"] == "OK"
+        assert first["http_status"] == 200
+
+        # 두 번째 로그인 EOF 기록
+        assert second["transport_status"] == "ERROR"
+        assert second["verdict"] == "ERROR"
+
+        # 세 번째 요청은 실행하지 않는다.
+        assert result["total_http_requests_including_preparation"] == 1
+        assert result["stopped_reason"]
+
+
+def test_stalled_body_deadline_preempts_read_timeout(tmp_path):
+    """본문 수신이 멈춘 경우 전체 제한 시간이 우선 적용된다."""
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/stall-body", "/healthz"],
+        )
+
+        # 개별 timeout 설정은 1.5초지만,
+        # 실제 요청 timeout은 남은 전체 실행 예산으로 축소된다.
+        args.timeout = 1.5
+        args.max_duration = 0.25
+
+        started = time.monotonic()
+        assert cli.run(args) == 2
+        elapsed = time.monotonic() - started
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        # 개별 read timeout(1.5초)보다 먼저 중단돼야 한다.
+        assert elapsed < 0.9
+
+        # 첫 번째 요청 외에는 전송하지 않아야 한다.
+        assert [row["path"] for row in received] == [
+            "/stall-body"
+        ]
+
+        assert result["total_http_requests_including_preparation"] == 1
+        assert result["unexecuted_cases"] == 1
+        assert len(result["results"]) == 1
+
+        row = result["results"][0]
+
+        assert row["transport_status"] == "ERROR"
+        assert row["verdict"] == "ERROR"
+        assert "전체 실행 시간 한도" in result["stopped_reason"]

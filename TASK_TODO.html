@@ -103,9 +103,9 @@ window.addEventListener("error", e => {
 // 항목 done:true = 실제로 실행·확인한 것만
 const GH = "https://github.com/MinsooAhn02/Haven";
 const DATA = {
-  updated: "2026-11-09 (월) 20시 30분",
+  updated: "2026-11-09 (월) 21시",
   week: "2026-11-09(월) ~ 11-13(금) · 1~4회차",
-  mainSha: "548df50 기준",
+  mainSha: "c5bf38c 기준",
   direction: [
     ["이번 주", "화 = 2회차 병합 + AWS 구축, 수 = 첫 배포·복원 연습 + 3회차 시작, 목 = 3회차(첨부·HTTPS·메일·WAF Count), 금 = 4회차(수정·WAF Block 비교·복원·전체 회귀) + 17:30 판정. 다음 주(11/16~20)는 심화 점검·시연·보고서"],
     ["확정", "AWS 운영 결정 확정: 서울 · 계정당 $100 · NAT+S3 · t3.small 2대 · 매일 밤 NAT 삭제 · AWS 작업 사전 승인(되돌릴 수 없는 삭제만 확인) — docs/AWS_운영결정.md"],
@@ -130,7 +130,7 @@ const DATA = {
   ],
   people: [
     {id: "Minsoo", name: "안민수", no: 1, role: "팀장 · 공통 환경 · CI · DB · 배포", folder: "안민수", status: "run",
-     main: [{t: "AWS 운영 결정 확정", done: true}, {t: "로컬 PostgreSQL 16 + 팀원용 dev-db-setup.ps1 (재실행·권한 분리 깨짐 감지 확인)", done: true}, {t: "요찬 앱을 민수 PC 개발 DB에서 실행: check·migrate 성공, 푸른 템플릿 붙여 64/65 (남은 1개 shared_list.html은 #26으로 추가됨)", done: true}, {t: "#25 혁민 검토 후 통합 시험 65개 통과 → 병합 (c524d05)", done: true}, {t: "AWS minsoo 로그인 · MFA 등록 · CloudShell로 SSM /haven/* 비밀값 3개 생성 (재실행 시 덮어쓰지 않음 확인)", done: true}, {t: "화: 앱 CI job 연결 (GitHub에서 앱 시험 실행 확인) · 수업 시작 때 도메인 결정"}, {t: "서버 설치·배포·되돌리기 스크립트 (Ubuntu 24.04 · Nginx · Gunicorn · systemd · DB 역할 분리 · 비밀값 SSM) — #28 병합, WSL 24.04 시험 33개 통과 (AWS 실행 전)", done: true}, {t: "DB 백업(S3) → 격리 복원 스크립트 — #30 병합, 시험 19개 통과 (AWS 실행 전)", done: true}, {t: "수: AWS 첫 배포 (db-setup → web-setup → deploy) → 재부팅 후 유지 → 백업·격리 복원 실제 연습"}, {t: "목: 첨부 포함 재배포 · SES 메일 실제 수신/실패"}, {t: "금: 수정 배포 · DB+첨부 격리 복원 · 전체 회귀 · 17:30 판정"}],
+     main: [{t: "AWS 운영 결정 확정", done: true}, {t: "로컬 PostgreSQL 16 + 팀원용 dev-db-setup.ps1 (재실행·권한 분리 깨짐 감지 확인)", done: true}, {t: "요찬 앱을 민수 PC 개발 DB에서 실행: check·migrate 성공, 푸른 템플릿 붙여 64/65 (남은 1개 shared_list.html은 #26으로 추가됨)", done: true}, {t: "#25 혁민 검토 후 통합 시험 65개 통과 → 병합 (c524d05)", done: true}, {t: "AWS minsoo 로그인 · MFA 등록 · CloudShell로 SSM /haven/* 비밀값 3개 생성 (재실행 시 덮어쓰지 않음 확인)", done: true}, {t: "앱 CI 연결 #32 — GitHub에서 Python 3.12·3.13 둘 다 65개 실행 확인 (0건이면 실패)", done: true}, {t: "3회차 배포 준비 #32: 첨부 폴더·CSRF origin · DB+첨부 묶음 백업/복원 · 수요일 배포 절차 (WSL 38·31개 통과, 요찬 2회차 합친 코드)", done: true}, {t: "화: 수업 시작 때 도메인 결정 · 요찬 2회차 통합 시험"}, {t: "서버 설치·배포·되돌리기 스크립트 (Ubuntu 24.04 · Nginx · Gunicorn · systemd · DB 역할 분리 · 비밀값 SSM) — #28 병합, WSL 24.04 시험 33개 통과 (AWS 실행 전)", done: true}, {t: "DB 백업(S3) → 격리 복원 스크립트 — #30 병합, 시험 19개 통과 (AWS 실행 전)", done: true}, {t: "수: AWS 첫 배포 (db-setup → web-setup → deploy) → 재부팅 후 유지 → 백업·격리 복원 실제 연습"}, {t: "목: 첨부 포함 재배포 · SES 메일 실제 수신/실패"}, {t: "금: 수정 배포 · DB+첨부 격리 복원 · 전체 회귀 · 17:30 판정"}],
      queue: [{t: "화: 요찬 2회차 PR 통합 시험 → 병합"}, {t: "PR 병합 · 6개 브랜치 동기화 · 저녁 기록"}],
      dep: "배포는 요찬 앱 + 민성 서버 연결 필요"},
     {id: "Yochan", name: "신요찬", no: 5, role: "Django 인증·모델·CRUD·공유·첨부", folder: "신요찬", status: "run",
@@ -177,7 +177,8 @@ const DATA = {
     ["11/09 오후", "민성 연결확인표(Minsung 816ceb1) → 가동 09~21시 · 시험용 임시 EC2 · 재부팅 시험 확정. 보람 비용표 초안(Boram 2171d06). AWS 결정 확정(매일 밤 NAT 삭제 · t3.small 2대 · 사전 승인). 민수 로컬 PostgreSQL 16 + dev-db-setup.ps1"],
     ["11/09 16시", "민성 구축 스크립트 #27 · 민수 서버 설치·배포 #28 · 백업·복원 #30 병합 (모두 AWS 실행 전). 결정: 코드는 읽기 전용 deploy key, 비밀값은 SSM Parameter Store, 백업 버킷 haven-backup-<계정ID>. 보람 IAM PR #29(초안). 혁민 #25 점검 시작. 요찬 2회차는 #25 병합 후 올리기로 대기"],
     ["11/09 저녁", "#25 요찬 1회차 병합(혁민 병합 가능 · 통합 65개) · #31 혁민 fixture·CLI 병합(157개). 민수 AWS 로그인 · MFA · SSM 비밀값 3개 생성. 보람 #29에 SSM·S3·MFA·CloudShell 권한. 요찬 2회차 push(PR 11/10) · 푸른 2회차 시안"],
-    ["11/09 밤", "이번 주 일정 배정: 화 = 2회차 병합 + AWS 구축, 수 = 첫 배포·복원 연습 + 3회차 시작, 목 = 3회차(첨부·HTTPS·메일·WAF Count), 금 = 4회차(수정·WAF Block 비교·복원·전체 회귀) + 17:30 판정 · 다음 주(11/16~20)는 심화 점검·시연·보고서 — 각자 TODO.md 맨 아래"]
+    ["11/09 밤", "이번 주 일정 배정: 화 = 2회차 병합 + AWS 구축, 수 = 첫 배포·복원 연습 + 3회차 시작, 목 = 3회차(첨부·HTTPS·메일·WAF Count), 금 = 4회차(수정·WAF Block 비교·복원·전체 회귀) + 17:30 판정 · 다음 주(11/16~20)는 심화 점검·시연·보고서 — 각자 TODO.md 맨 아래"],
+    ["11/09 21시", "#32 앱 CI(65개 × Python 2개) · 첨부 배포 준비 · DB+첨부 묶음 백업 병합. 요찬 2회차 미리 시험: 122개 중 108 통과, 14개는 푸른 2회차 템플릿 3개 대기. 보람에게 Session Manager 권한·백업 버킷 요청"]
   ]
 };
 // ===== 수정 끝 =====

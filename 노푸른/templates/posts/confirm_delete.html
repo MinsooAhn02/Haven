@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}기록 삭제 확인 | Haven 기록{% endblock %}
+{% block body %}
+<main class="page-shell">
+  <section class="panel" aria-labelledby="delete-title">
+    <h1 id="delete-title">기록 삭제 확인</h1>
+    <p>“{{ post.title }}” 기록을 삭제할까요?</p>
+    <p class="warning">삭제하면 이 기록을 목록에서 더 이상 볼 수 없습니다.</p>
+    <div class="record-summary"><h2>{{ post.title }}</h2></div>
+    <div class="actions">
+      <a class="button button-secondary" href="{% url 'posts:detail' pk=post.pk %}">취소하고 기록으로 돌아가기</a>
+      <form method="post" action="{% url 'posts:delete' pk=post.pk %}">
+        {% csrf_token %}
+        <button class="button button-danger" type="submit">삭제</button>
+      </form>
+    </div>
+  </section>
+</main>
+{% endblock %}

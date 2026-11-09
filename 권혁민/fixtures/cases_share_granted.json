@@ -5,6 +5,22 @@
   "suite_kind": "regression",
   "cases": [
     {
+      "case_id": "SH-04-A-SHARES-GET-BASELINE",
+      "phase": 2,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "정상 대조군: P1 소유자 A가 공유 관리 화면에 접근할 수 있어야 함. B 공유 관계와 P1 소유권 확인"
+    },
+    {
       "case_id": "SH-01-B-SHARED-LIST",
       "phase": 2,
       "category": "sharing",
@@ -133,6 +149,55 @@
       "max_requests": 1,
       "verification_mode": "manual_required",
       "note": "공유받은 B의 공유 생성 POST는 유효한 CSRF를 사용해도 권한 검사에서 404. 공유 관계와 P1은 변경되지 않아야 함"
+    },
+    {
+      "case_id": "SH-02-C-SHARES-GET-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1을 공유받지 않은 C가 공유 관리 화면에 접근하면 404. 공유 대상 정보 미노출"
+    },
+    {
+      "case_id": "SH-02-C-SHARES-POST-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_c",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "C의 공유 관리 POST는 CSRF가 유효하더라도 소유권 검사에서 404. P1과 PostShare 관계 미변경"
+    },
+    {
+      "case_id": "SH-07-ANON-SHARES-GET",
+      "phase": 2,
+      "category": "authentication",
+      "method": "GET",
+      "path": "/posts/1/shares/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비로그인 사용자가 P1 공유 관리 화면 접근 시 로그인으로 이동. 공유 대상 정보 미노출"
     }
   ]
 }

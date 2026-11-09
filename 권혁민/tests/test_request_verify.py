@@ -1365,3 +1365,105 @@ def test_manual_checkpoint_requires_opt_in(tmp_path):
         cli.run(args)
 
     assert not args.output_dir.exists()
+
+
+@pytest.mark.parametrize(
+    "event, expected_id",
+    [
+        (
+            {
+                "request_id": "server-id",
+                "client_request_id": "cli-id",
+            },
+            "cli-id",
+        ),
+        (
+            {
+                "request_id": "legacy-id",
+            },
+            "legacy-id",
+        ),
+        (
+            {
+                "httpRequest": {
+                    "headers": [
+                        {
+                            "name": "x-haven-request-id",
+                            "value": "waf-cli-id",
+                        }
+                    ]
+                }
+            },
+            "waf-cli-id",
+        ),
+        (
+            {
+                "request_id": "server-id",
+                "client_request_id": "",
+            },
+            "server-id",
+        ),
+        (
+            {},
+            None,
+        ),
+    ],
+)
+def test_log_request_id_compatibility(event, expected_id):
+    """앱·WAF·기존 로그 형식의 요청 ID 추출을 검증한다."""
+    assert cli.log_request_id(event) == expected_id
+
+
+def test_trace_id_format():
+    """생성한 Trace ID가 AWS Root 형식을 만족하는지 확인한다."""
+    import re
+
+    trace_id = cli.new_trace_id()
+
+    assert re.fullmatch(
+        r"Root=1-[0-9a-f]{8}-[0-9a-f]{24}",
+        trace_id,
+    )
+
+
+def test_bounded_send_trace_id_header(monkeypatch):
+    """실제 로컬 HTTP 요청에 Trace ID가 포함되는지 확인한다."""
+    observed = []
+    original_send = cli.requests.Session.send
+
+    def capture_send(session, request, **kwargs):
+        observed.append(
+            request.headers.get("X-Amzn-Trace-Id")
+        )
+        return original_send(session, request, **kwargs)
+
+    monkeypatch.setattr(
+        cli.requests.Session, "send", capture_send
+    )
+
+    with probe_server() as (port, _received):
+        target = f"http://127.0.0.1:{port}"
+        trace_id = cli.new_trace_id()
+
+        budget = cli.RequestBudget(
+            Namespace(
+                max_requests=5,
+                rate=5,
+                timeout=3,
+                max_duration=30,
+            )
+        )
+
+        with cli.new_session() as session:
+            detail, _ = cli.bounded_send(
+                session,
+                "GET",
+                target,
+                "/healthz",
+                budget,
+                "test-request-id",
+                trace_id=trace_id,
+            )
+
+        assert detail["status"] == 200
+        assert observed == [trace_id]

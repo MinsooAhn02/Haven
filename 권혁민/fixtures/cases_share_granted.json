@@ -101,6 +101,38 @@
       "max_requests": 1,
       "verification_mode": "manual_required",
       "note": "B는 읽기 권한만 보유하므로 P1의 공유 관리 화면 접근 거부"
+    },
+    {
+      "case_id": "SH-02-B-DELETE-GET-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/delete/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B는 P1을 읽을 수 있지만 삭제 확인 화면에는 접근할 수 없음. P1과 공유 관계 유지 확인"
+    },
+    {
+      "case_id": "SH-02-B-SHARES-POST-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받은 B의 공유 생성 POST는 유효한 CSRF를 사용해도 권한 검사에서 404. 공유 관계와 P1은 변경되지 않아야 함"
     }
   ]
 }

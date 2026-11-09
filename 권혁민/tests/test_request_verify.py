@@ -1039,6 +1039,10 @@ def test_phase2_share_contract(
          "member_b", "POST", "/posts/1/delete/", 404),
         ("SH-02-B-SHARES-GET-DENIED",
          "member_b", "GET", "/posts/1/shares/", 404),
+        ("SH-02-B-DELETE-GET-DENIED",
+        "member_b", "GET", "/posts/1/delete/", 404),
+        ("SH-02-B-SHARES-POST-DENIED",
+        "member_b", "POST", "/posts/1/shares/", 404),
     ],
 )
 def test_phase2_shared_readonly_fixture(
@@ -1737,3 +1741,61 @@ def test_failed_baseline_prevents_manual_checkpoint(
         event["stage"] == "manual_checkpoint"
         for event in result["preparation_events"]
     )
+
+
+@pytest.mark.parametrize(
+    "case_id, role, path, expected_status",
+    [
+        (
+            "APP-07-MEMBER-ADMIN-GET",
+            "member_a",
+            "/admin/accounts/",
+            403,
+        ),
+        (
+            "APP-07-MEMBER-EVENTS-GET",
+            "member_b",
+            "/admin/account-events/",
+            403,
+        ),
+        (
+            "APP-09-OPERATOR-ADMIN-GET",
+            "operator",
+            "/admin/accounts/",
+            200,
+        ),
+        (
+            "SH-07-OPERATOR-P1-DENIED",
+            "operator",
+            "/posts/1/",
+            404,
+        ),
+    ],
+)
+def test_phase2_admin_access_contract(
+    case_id, role, path, expected_status
+):
+    """2회차 관리자 접근 통제 fixture 계약 검증."""
+
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(
+        fixture_root / "cases_haven_template.json"
+    )
+
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        case["case_id"]: case
+        for case in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["auth_role"] == role
+    assert case["method"] == "GET"
+    assert case["path"] == path
+    assert case["input_reference"] is None
+    assert case["expected_app"]["http_status"] == expected_status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"

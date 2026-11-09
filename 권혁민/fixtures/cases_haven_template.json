@@ -148,7 +148,7 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "비로그인·CSRF 누락 POST는 403, 신규 기록 없음"
+      "note": "Origin 없음, 비로그인·CSRF 누락 POST는 403, 신규 기록 없음"
     },
     {
       "case_id": "APP-04-ANON-POST-VALID-CSRF",
@@ -421,7 +421,7 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "A의 로그인 세션이라도 CSRF 누락 POST는 403·기록 미생성"
+      "note": "Origin 없음, A의 로그인 세션이라도 CSRF 누락 POST는 403·기록 미생성"
     },
     {
       "case_id": "APP-05-OWNER-INVALID-CSRF",

@@ -1,0 +1,3 @@
+# 서버 전용. 앱 의존성은 통합 초안을 그대로 쓰고 Gunicorn만 더한다.
+-r ../앱통합_초안/requirements.txt
+gunicorn==23.0.0

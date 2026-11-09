@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# 실제 AWS 없이 서버 스크립트를 끝까지 시험한다. 서버와 같은 WSL Ubuntu-24.04에서 root로:
+#   bash test-wsl.sh <git bundle> <정상 commit> <일부러 깨뜨린 commit>
+# db-1과 web-1을 한 머신(127.0.0.1)에 둔다. aws는 가짜(파일에서 비밀값을 읽음). 일부러 실패하는 경우를 포함한다.
+# 주의: 이 머신의 PostgreSQL·Nginx·/srv/haven을 바꾼다. 시험 전용 WSL에서만 실행.
+set -uo pipefail
+BUNDLE=$1 GOOD=$2 BAD=$3
+D=$(cd "$(dirname "$0")" && pwd)
+T=/opt/haven-test
+rm -rf "$T"; mkdir -p "$T/bin" "$T/ssm/db" "$T/ssm/django"
+cat > "$T/bin/aws" <<'EOF'
+#!/usr/bin/env bash
+# 가짜 aws: ssm get-parameter --name /haven/<x> 만. /opt/haven-test/FAIL 이 있으면 권한 거부처럼 실패.
+[[ -f /opt/haven-test/FAIL ]] && { echo "AccessDeniedException (fake)" >&2; exit 254; }
+while [[ $# -gt 0 ]]; do [[ $1 == --name ]] && name=$2; shift; done
+cat "/opt/haven-test/ssm/${name#/haven/}"
+EOF
+chmod +x "$T/bin/aws"; export PATH="$T/bin:$PATH"
+for n in db/owner_password db/app_password django/secret_key; do openssl rand -hex 32 | tr -d '\n' > "$T/ssm/$n"; done
+APP_PW=$(cat "$T/ssm/db/app_password")
+
+pass=0; fail=0
+ok()  { echo "PASS $*"; pass=$((pass+1)); }
+bad() { echo "FAIL $*"; fail=$((fail+1)); }
+expect_ok()   { local d=$1; shift; if "$@" >"$T/out" 2>&1; then ok "$d"; else bad "$d"; tail -8 "$T/out"; fi; }
+expect_fail() { local d=$1; shift; if "$@" >"$T/out" 2>&1; then bad "$d (should have failed)"; else ok "$d -> $(grep -m1 -E 'FAIL:|ERROR|FATAL' "$T/out" || tail -1 "$T/out")"; fi; }
+check()       { local d=$1; shift; if "$@"; then ok "$d"; else bad "$d"; fi; }
+code() { curl -s -o /dev/null -w '%{http_code}' -H "Host: $1" "http://127.0.0.1$2"; }
+app_sql() { PGPASSWORD=$APP_PW psql -X -q -At -h 127.0.0.1 -U haven_app -d "${2:-haven}" -v ON_ERROR_STOP=1 -c "$1"; }
+
+echo "== db-setup"
+expect_fail "db-setup without WEB_IP" env -u WEB_IP bash "$D/db-setup.sh"
+touch "$T/FAIL"
+expect_fail "db-setup when SSM read is denied" env WEB_IP=127.0.0.1 bash "$D/db-setup.sh"
+rm "$T/FAIL"
+check "  ...and it changed nothing (PostgreSQL not installed)" bash -c '! command -v psql >/dev/null'
+expect_ok "db-setup run 1" env WEB_IP=127.0.0.1 LISTEN_IP=127.0.0.1 bash "$D/db-setup.sh"
+expect_ok "db-setup run 2 (same result)" env WEB_IP=127.0.0.1 LISTEN_IP=127.0.0.1 bash "$D/db-setup.sh"
+check "pg_hba has exactly one managed copy of rules" bash -c '[[ $(grep -c "^host" /etc/postgresql/16/main/pg_hba.conf) == 4 ]]'
+expect_fail "haven_app CREATE TABLE is refused" app_sql "create table t(x int)"
+expect_fail "haven_app wrong password is refused" env PGPASSWORD=wrong psql -X -h 127.0.0.1 -U haven_app -d haven -c "select 1"
+expect_fail "haven_app to another database is refused" app_sql "select 1" postgres
+expect_fail "postgres over network is refused" env PGPASSWORD=x psql -X -h 127.0.0.1 -U postgres -d postgres -c "select 1"
+
+echo "== web-setup"
+expect_fail "web-setup without DB_HOST" env -u DB_HOST ALLOWED_HOSTS=haven.test bash "$D/web-setup.sh"
+WEB_ENV=(DB_HOST=127.0.0.1 ALLOWED_HOSTS=haven.test,localhost REPO_URL="file://$T/repo.git")
+expect_ok "web-setup run 1" env "${WEB_ENV[@]}" bash "$D/web-setup.sh"
+expect_ok "web-setup run 2 (same result)" env "${WEB_ENV[@]}" bash "$D/web-setup.sh"
+git clone -q --bare "$BUNDLE" "$T/repo.git" && chown -R haven:haven "$T/repo.git"
+
+echo "== deploy"
+expect_fail "deploy with short sha" bash "$D/deploy.sh" abc123
+expect_fail "deploy with unknown commit" bash "$D/deploy.sh" "$(printf '0%.0s' {1..40})"
+touch "$T/FAIL"
+expect_fail "deploy when SSM read is denied" bash "$D/deploy.sh" "$GOOD"
+rm "$T/FAIL"
+check "  ...and nothing was switched (no current)" bash -c '[[ ! -e /srv/haven/current ]]'
+expect_ok "deploy good commit" bash "$D/deploy.sh" "$GOOD"
+check "healthz via ALB-style Host (server IP) = 200" [ "$(code 10.0.1.10 /healthz)" = 200 ]
+check "login page with allowed Host = 200" [ "$(code haven.test /accounts/login/)" = 200 ]
+check "unknown Host = 400" [ "$(code evil.example /accounts/login/)" = 400 ]
+STATIC=$(cd /srv/haven/current/노푸른/static && find . -type f | head -1 | sed 's|^\./||')
+check "static file served by nginx ($STATIC) = 200" [ "$(code haven.test "/static/$STATIC")" = 200 ]
+check "migrated tables are owned by haven_owner" [ "$(app_sql "select count(*) from pg_tables where schemaname='public' and tableowner<>'haven_owner'")" = 0 ]
+check "haven_app can read migrated tables" bash -c "PGPASSWORD=$APP_PW psql -X -q -h 127.0.0.1 -U haven_app -d haven -v ON_ERROR_STOP=1 -c 'select count(*) from auth_user' >/dev/null"
+expect_fail "haven_app still cannot DROP a migrated table" app_sql "drop table auth_user"
+check "env file is 640 root:haven" [ "$(stat -c '%a %U:%G' /etc/haven/haven.env)" = "640 root:haven" ]
+check "gunicorn runs as haven, not root" [ "$(ps -o user= -C gunicorn | sort -u)" = haven ]
+expect_ok "deploy same commit again" bash "$D/deploy.sh" "$GOOD"
+expect_fail "deploy broken commit (must roll back)" bash "$D/deploy.sh" "$BAD"
+check "  ...current points back to good commit" [ "$(basename "$(readlink -f /srv/haven/current)")" = "$GOOD" ]
+check "  ...healthz 200 after rollback" [ "$(code haven.test /healthz)" = 200 ]
+systemctl restart postgresql nginx haven
+check "after restarting all services: healthz 200" bash -c 'for i in $(seq 15); do [[ $(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/healthz) == 200 ]] && exit 0; sleep 1; done; exit 1'
+check "app DB password not in logs" bash -c "! grep -rqF '$APP_PW' /srv/haven/deploys.log /var/log/postgresql /var/log/nginx && ! journalctl -u haven -u postgresql --no-pager | grep -qF '$APP_PW'"
+
+echo "== result: $pass passed, $fail failed"
+[[ $fail == 0 ]]

@@ -1,1 +1,21 @@
 
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowPassingApprovedEC2Roles",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::${AWS_ACCOUNT_ID}:role/Haven-Web-EC2-Role",
+        "arn:aws:iam::${AWS_ACCOUNT_ID}:role/Haven-DB-EC2-Role"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ec2.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+

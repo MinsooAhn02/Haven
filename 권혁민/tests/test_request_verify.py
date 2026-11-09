@@ -1873,3 +1873,281 @@ def test_share_management_baseline_precedes_denials():
         "SH-02-C-SHARES-POST-DENIED",
     ):
         assert baseline < positions[case_id]
+
+
+@pytest.mark.parametrize(
+    "option, invalid_value",
+    [
+        ("timeout", 0),
+        ("timeout", 31),
+        ("max_requests", 0),
+        ("max_requests", 1001),
+        ("rate", 0),
+        ("rate", 6),
+        ("max_duration", 0),
+        ("max_duration", 901),
+        ("max_response_bytes", 0),
+        ("max_response_bytes", cli.MAX_RESPONSE + 1),
+    ],
+)
+def test_invalid_limits_block_before_network(
+    tmp_path, monkeypatch, option, invalid_value
+):
+    """잘못된 한도는 HTTP 전송 및 출력 폴더 생성 전 거부."""
+
+    args = inputs(tmp_path, 8765)
+    setattr(args, option, invalid_value)
+
+    def forbidden_send(*args, **kwargs):
+        pytest.fail("잘못된 제한값으로 HTTP 전송 시도")
+
+    monkeypatch.setattr(cli, "bounded_send", forbidden_send)
+
+    with pytest.raises(cli.ConfigError, match=option):
+        cli.run(args)
+
+    assert not args.output_dir.exists()
+
+
+def test_duration_limit_preserves_partial_results(
+    tmp_path, monkeypatch
+):
+    """첫 요청 후 시간 한도를 초과하면 다음 요청을 보내지 않는다."""
+
+    original_begin = cli.RequestBudget.begin
+
+    def expire_before_second_request(self):
+        if self.count == 1:
+            self.started -= self.duration + 1
+
+        return original_begin(self)
+
+    monkeypatch.setattr(
+        cli.RequestBudget,
+        "begin",
+        expire_before_second_request,
+    )
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz"] * 3,
+        )
+
+        assert cli.run(args) == 2
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        assert len(received) == 1
+        assert result["total_http_requests_including_preparation"] == 1
+        assert result["unexecuted_cases"] == 1
+        assert len(result["results"]) == 2
+
+        assert result["results"][0]["transport_status"] == "OK"
+        assert result["results"][1]["transport_status"] == "ERROR"
+        assert "전체 실행 시간 한도" in result["stopped_reason"]
+
+
+@pytest.mark.parametrize(
+    "include_content_length",
+    [True, False],
+)
+def test_response_size_limit_stops_remaining_requests(
+    tmp_path, monkeypatch, include_content_length
+):
+    """선언된 크기 또는 실제 수신 크기가 한도를 넘으면 중단."""
+
+    sent = []
+
+    def fake_send(session, request, **kwargs):
+        sent.append(request.url)
+
+        response = cli.requests.Response()
+        response.status_code = 200
+        response.url = request.url
+        response._content = b"X" * 20
+        response._content_consumed = True
+
+        if include_content_length:
+            response.headers["Content-Length"] = "20"
+
+        return response
+
+    monkeypatch.setattr(
+        cli.NoRedirectBodySession,
+        "send",
+        fake_send,
+    )
+
+    args = probe_inputs(
+        tmp_path,
+        8765,
+        ["/healthz"] * 2,
+    )
+    args.max_response_bytes = 8
+
+    assert cli.run(args) == 2
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+
+    assert len(sent) == 1
+    assert result["total_http_requests_including_preparation"] == 1
+    assert result["unexecuted_cases"] == 1
+    assert len(result["results"]) == 1
+    assert result["results"][0]["transport_status"] == "ERROR"
+    assert result["results"][0]["verdict"] == "ERROR"
+
+    error = result["results"][0]["response_summary"]["error"]
+
+    if include_content_length:
+        assert "Content-Length" in error
+    else:
+        assert "실제 응답" in error
+
+
+def test_login_preparation_respects_request_limit(
+    tmp_path, monkeypatch
+):
+    """로그인 준비 GET도 전체 요청 수에 포함한다."""
+
+    with server(tmp_path) as (port, waf, _app):
+        suite = cli.load_json(
+            ROOT / "fixtures" / "cases_local.json"
+        )
+        suite["cases"] = [
+            {
+                **suite["cases"][1],
+                "auth_role": "member_a",
+                "expected_app": {"http_status": 200},
+            }
+        ]
+
+        case_file = tmp_path / "login_limit.json"
+        case_file.write_text(
+            json.dumps(suite),
+            encoding="utf-8",
+        )
+
+        args = inputs(
+            tmp_path,
+            port,
+            max_requests=1,
+        )
+        args.cases = case_file
+
+        monkeypatch.setattr(
+            "builtins.input",
+            lambda prompt: "member_a",
+        )
+        monkeypatch.setattr(
+            cli.getpass,
+            "getpass",
+            lambda prompt: "test-secret-password",
+        )
+
+        assert cli.run(args) == 2
+
+        result_path = args.output_dir / "results.json"
+        result = cli.load_json(result_path)
+
+        assert result["total_http_requests_including_preparation"] == 1
+        assert len(result["preparation_events"]) == 1
+        assert result["preparation_events"][0]["stage"] == "login_form"
+        assert result["results"][0]["transport_status"] == "ERROR"
+        assert "요청 수 한도" in result["stopped_reason"]
+
+        assert len(waf.read_text(encoding="utf-8").splitlines()) == 1
+
+        assert "test-secret-password" not in result_path.read_text(
+            encoding="utf-8"
+        )
+
+
+def test_csrf_preparation_respects_request_limit(tmp_path):
+    """CSRF 준비 GET 이후 예산이 없으면 변경 POST를 전송하지 않는다."""
+
+    with server(tmp_path) as (port, waf, _app):
+        suite = cli.load_json(
+            ROOT / "fixtures" / "cases_local.json"
+        )
+
+        suite["cases"] = [
+            {
+                **suite["cases"][0],
+                "case_id": "LIMIT-CSRF-PREPARATION",
+                "category": "csrf",
+                "method": "POST",
+                "path": "/posts/new/",
+                "auth_role": "anonymous",
+                "input_reference": "post_valid_record.json",
+                "expected_app": {"http_status": 302},
+            }
+        ]
+
+        case_file = tmp_path / "csrf_limit.json"
+        case_file.write_text(
+            json.dumps(suite),
+            encoding="utf-8",
+        )
+
+        args = inputs(
+            tmp_path,
+            port,
+            max_requests=1,
+        )
+        args.cases = case_file
+
+        assert cli.run(args) == 2
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        assert result["total_http_requests_including_preparation"] == 1
+        assert len(result["preparation_events"]) == 1
+        assert result["preparation_events"][0]["stage"] == "csrf_form"
+        assert result["results"][0]["transport_status"] == "ERROR"
+        assert "요청 수 한도" in result["stopped_reason"]
+
+        # 실제 변경 POST는 전송되지 않아야 한다.
+        assert len(waf.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_output_write_failure_returns_exit_code_2(
+    tmp_path, monkeypatch
+):
+    """결과 기록 실패를 성공으로 처리하지 않는다."""
+
+    def fail_save(*args, **kwargs):
+        raise OSError("simulated output write failure")
+
+    monkeypatch.setattr(cli, "save_results", fail_save)
+
+    with probe_server() as (port, received):
+        args = probe_inputs(
+            tmp_path,
+            port,
+            ["/healthz"] * 2,
+        )
+
+        exit_code = cli.main([
+            "run",
+            "--target", args.target,
+            "--allowlist", str(args.allowlist),
+            "--cases", str(args.cases),
+            "--fixture-dir", str(args.fixture_dir),
+            "--output-dir", str(args.output_dir),
+            "--rate", "5",
+        ])
+
+        assert exit_code == 2
+        assert len(received) == 1
+
+        assert not (
+            args.output_dir / "results.json"
+        ).exists()

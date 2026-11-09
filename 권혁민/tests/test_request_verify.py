@@ -968,3 +968,101 @@ def test_login_prep_sends_same_origin(monkeypatch):
     assert login_post["fields"]["csrfmiddlewaretoken"] == (
         "unit-csrf-token"
     )
+
+
+@pytest.mark.parametrize(
+    "case_id, method, path, role, status",
+    [
+        (
+            "SH-01-B-SHARED-BEFORE",
+            "GET", "/posts/shared/", "member_b", 200
+        ),
+        (
+            "SH-01-C-SHARED-BEFORE",
+            "GET", "/posts/shared/", "member_c", 200
+        ),
+        (
+            "SH-01-B-DETAIL-BEFORE",
+            "GET", "/posts/1/", "member_b", 404
+        ),
+        (
+            "SH-07-ANON-SHARED-GET",
+            "GET", "/posts/shared/", "anonymous", 302
+        ),
+    ],
+)
+def test_phase2_share_contract(
+    case_id, method, path, role, status
+):
+    """2회차 공유 전 접근 통제 fixture 계약을 확인한다."""
+    fixture_root = ROOT / "fixtures"
+    suite = cli.load_json(
+        fixture_root / "cases_haven_template.json"
+    )
+
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        case["case_id"]: case
+        for case in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["method"] == method
+    assert case["path"] == path
+    assert case["auth_role"] == role
+    assert case["expected_app"]["http_status"] == status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"
+
+    if case_id == "SH-07-ANON-SHARED-GET":
+        assert case["expected_app"]["redirect_path"] == (
+            "/accounts/login/"
+        )
+
+@pytest.mark.parametrize(
+    "case_id, role, method, path, status",
+    [
+        ("SH-01-B-SHARED-LIST",
+         "member_b", "GET", "/posts/shared/", 200),
+        ("SH-01-B-DETAIL-ALLOWED",
+         "member_b", "GET", "/posts/1/", 200),
+        ("SH-01-C-DETAIL-DENIED",
+         "member_c", "GET", "/posts/1/", 404),
+        ("SH-02-B-EDIT-GET-DENIED",
+         "member_b", "GET", "/posts/1/edit/", 404),
+        ("SH-02-B-EDIT-POST-DENIED",
+         "member_b", "POST", "/posts/1/edit/", 404),
+        ("SH-02-B-DELETE-POST-DENIED",
+         "member_b", "POST", "/posts/1/delete/", 404),
+        ("SH-02-B-SHARES-GET-DENIED",
+         "member_b", "GET", "/posts/1/shares/", 404),
+    ],
+)
+def test_phase2_shared_readonly_fixture(
+    case_id, role, method, path, status
+):
+    """공유 후 읽기 허용·변경 거부 fixture를 검증한다."""
+    fixture_root = ROOT / "fixtures"
+
+    suite = cli.load_json(
+        fixture_root / "cases_share_granted.json"
+    )
+    cli.validate_suite(suite, fixture_root)
+
+    cases = {
+        item["case_id"]: item
+        for item in suite["cases"]
+    }
+
+    case = cases[case_id]
+
+    assert case["phase"] == 2
+    assert case["auth_role"] == role
+    assert case["method"] == method
+    assert case["path"] == path
+    assert case["expected_app"]["http_status"] == status
+    assert case["expected_waf"] == "NOT_APPLICABLE"
+    assert case["verification_mode"] == "manual_required"

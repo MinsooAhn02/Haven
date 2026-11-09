@@ -1,0 +1,106 @@
+
+{
+  "schema_version": 1,
+  "suite_id": "haven-share-granted-regression",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "SH-01-B-SHARED-LIST",
+      "phase": 2,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {"http_status": 200},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전조건: P1이 B에게 공유됨. 공유 목록에 P1이 표시되는지는 별도 확인"
+    },
+    {
+      "case_id": "SH-01-B-DETAIL-ALLOWED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {"http_status": 200},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B는 공유받은 P1의 본문을 읽을 수 있어야 함"
+    },
+    {
+      "case_id": "SH-01-C-DETAIL-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "C에게는 공유하지 않았으므로 P1 접근 404, 본문 미노출"
+    },
+    {
+      "case_id": "SH-02-B-EDIT-GET-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받은 B라도 수정 화면에는 접근할 수 없음"
+    },
+    {
+      "case_id": "SH-02-B-EDIT-POST-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_b",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B의 수정 POST 거부. P1 제목과 본문이 변경되지 않았는지 DB 확인"
+    },
+    {
+      "case_id": "SH-02-B-DELETE-POST-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/delete/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B의 삭제 POST 거부. P1과 기존 공유 관계가 유지되는지 DB 확인"
+    },
+    {
+      "case_id": "SH-02-B-SHARES-GET-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B는 읽기 권한만 보유하므로 P1의 공유 관리 화면 접근 거부"
+    }
+  ]
+}

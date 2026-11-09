@@ -218,6 +218,25 @@ python request_verify.py run --target https://YOUR-APP-HOST --allowlist allowlis
 
 AWS WAF의 원본 JSONL은 `httpRequest.headers`의 `X-Haven-Request-ID`, `timestamp`(밀리초), `action`, `terminatingRuleId`, `nonTerminatingMatchingRules`를 읽는다. 실환경에서는 로깅 설정/RedactedFields로 상관 ID가 **실제로 제공되는지** 먼저 확인해야 한다. Django 앱 구조화 로그에도 해당 ID·시간·처리 상태의 기록이 필요하므로 신요찬 담당자와 협의해야 한다. 타임스탬프는 요청 시각 기준 ±120초 범위만 연결하고 원본 결과는 덮어쓰지 않는다.
 
+### AWS Trace ID 기반 실제 로그 상관분석
+
+실제 Django 및 AWS WAF 로그는 `X-Amzn-Trace-Id`의
+`Root` 값을 기준으로 연결한다.
+
+- CLI는 각 시험 요청에 고유한 Trace Root를 생성한다.
+- ALB가 `Self`를 추가하더라도 `Root`만 추출하여 비교한다.
+- Django 로그는 `request_id`, `ts`, `status` 필드를 사용한다.
+- AWS WAF 로그는 `httpRequest.headers`의
+  `X-Amzn-Trace-Id`, `timestamp`, `action`을 사용한다.
+- 로그가 누락되거나 중복되거나 식별자가 일치하지 않으면
+  `UNKNOWN`으로 남긴다.
+- 기존 `X-Haven-Request-ID` 비교는 과거 결과 및
+  `synthetic_fixture=true` 로컬 mock과의 호환성에 사용한다.
+
+실제 Django·AWS WAF 로그를 연결하려면 각 시스템에서
+Trace ID가 정상 전달되고 로깅되는지 확인해야 한다.
+로그의 Root 일치만으로 보안 시험 PASS가 확정되는 것은 아니다.
+
 ## 5. 아직 추가 구현·통합이 필요한 점
 
 - **팀 확인:** 공통 `scripts/request_verify.py` 경로로 통합하는 작업은 1번 안민수와 협의. 1회차에는 개인 폴더에서 개발.

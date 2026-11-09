@@ -868,9 +868,107 @@ def log_request_id(event: dict) -> str | None:
     return None
 
 
+TRACE_ROOT_RE = re.compile(
+    r"1-[0-9a-f]{8}-[0-9a-f]{24}",
+    re.IGNORECASE,
+)
+
+
+def extract_trace_root(value: object) -> str | None:
+    """AWS Trace ID에서 Root 값만 정규화해 추출한다."""
+    if not isinstance(value, str):
+        return None
+
+    parts = [part.strip() for part in value.split(";")]
+    roots = []
+
+    for part in parts:
+        if "=" in part:
+            name, candidate = part.split("=", 1)
+
+            if name.strip().lower() == "root":
+                candidate = candidate.strip()
+
+                if not TRACE_ROOT_RE.fullmatch(candidate):
+                    return None
+
+                roots.append(candidate.lower())
+
+        elif len(parts) == 1 and TRACE_ROOT_RE.fullmatch(part):
+            roots.append(part.lower())
+
+    # Root가 없거나 여러 개면 임의로 선택하지 않는다.
+    return roots[0] if len(roots) == 1 else None
+
+
+def log_trace_root(event: dict) -> str | None:
+    """Django 앱 로그 또는 AWS WAF 로그에서 Trace Root를 추출한다."""
+    roots = []
+
+    # Django 앱: request_id에 Trace ID가 기록될 수 있다.
+    for field in ("trace_id", "request_id"):
+        root = extract_trace_root(event.get(field))
+        if root is not None:
+            roots.append(root)
+
+    # AWS WAF: httpRequest.headers에서 원본 요청 헤더를 찾는다.
+    request = event.get("httpRequest", {})
+    if isinstance(request, dict):
+        headers = request.get("headers", [])
+
+        if isinstance(headers, list):
+            for header in headers:
+                if not isinstance(header, dict):
+                    continue
+
+                if str(header.get("name", "")).lower() != "x-amzn-trace-id":
+                    continue
+
+                root = extract_trace_root(header.get("value"))
+                if root is None:
+                    return None
+
+                roots.append(root)
+
+    if not roots or len(set(roots)) != 1:
+        return None
+
+    return roots[0]
+
+
+def event_matches_run(event: dict, row: dict) -> bool:
+    """로그와 CLI 결과의 요청 식별자가 일치하는지 확인한다."""
+
+    # 과거 결과 파일: trace_id 필드 자체가 없었던 버전.
+    if "trace_id" not in row:
+        return log_request_id(event) == row.get("request_id")
+
+    expected_root = extract_trace_root(row["trace_id"])
+
+    # Trace ID가 잘못된 실행 결과는 기존 ID로 대체하지 않는다.
+    if expected_root is None:
+        return False
+
+    actual_root = log_trace_root(event)
+
+    if actual_root is not None:
+        return actual_root == expected_root
+
+    # 기존 로컬 mock 로그만 레거시 ID 비교를 허용한다.
+    if event.get("synthetic_fixture") is True:
+        return log_request_id(event) == row.get("request_id")
+
+    # 실제 로그에 Trace Root가 없으면 연결하지 않는다.
+    return False
+
+
 def log_timestamp(event: dict) -> datetime | None:
     """ISO UTC 또는 AWS 밀리초 epoch를 UTC datetime으로 정규화."""
-    val = event.get("timestamp_utc", event.get("timestamp"))
+    val = event.get("timestamp_utc")
+    if val is None:
+        val = event.get("ts")
+    if val is None:
+        val = event.get("timestamp")
     if isinstance(val, (float, int)):
         if val > 10**11:  # AWS WAF epoch millis
             val /= 1000
@@ -898,7 +996,7 @@ def plausible_event(event: dict, row: dict, origin: str) -> bool:
 
 
 def correlate(args) -> int:
-    """run 결과와 로그를 request_id 기준으로 조합하고 판정 증거를 평가."""
+    """실행 결과와 WAF·앱 로그를 Trace Root 기준으로 연결하고 검증한다."""
     state = load_json(args.run_json)
     if not isinstance(state, dict) or not isinstance(state.get("results"), list) or not state.get("run_id"):
         raise ConfigError("올바른 run results JSON이 아닙니다")
@@ -918,8 +1016,8 @@ def correlate(args) -> int:
             records.append(row)
             continue
         # request_id가 일치해도 시각·run_id가 충돌하면 신뢰할 수 없다.
-        waf_events = [e for e in waf if log_request_id(e) == row["request_id"]]
-        app_events = [e for e in app if log_request_id(e) == row["request_id"]]
+        waf_events = [event for event in waf if event_matches_run(event, row)]
+        app_events = [event for event in app if event_matches_run(event, row)]
         valid_waf = len(waf_events) == 1 and plausible_event(waf_events[0], row, origin)
         valid_app = len(app_events) == 1 and plausible_event(app_events[0], row, origin)
         needs_waf = row["expected_waf"] != "NOT_APPLICABLE"

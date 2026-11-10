@@ -103,7 +103,7 @@ window.addEventListener("error", e => {
 // 항목 done:true = 실제로 실행·확인한 것만
 const GH = "https://github.com/MinsooAhn02/Haven";
 const DATA = {
-  updated: "2026-11-10 (화) 15시 40분",
+  updated: "2026-11-10 (화) 15시 50분",
   week: "2026-11-09(월) ~ 11-13(금) · 1~4회차",
   mainSha: "fc5462b 기준",
   direction: [
@@ -146,11 +146,11 @@ const DATA = {
      queue: [{t: "request_id 로그 대조 도구"}],
      dep: "실제 시험은 요찬 코드 필요"},
     {id: "Boram", name: "김보람", no: 4, role: "계정 · IAM · 접근 · 비용", folder: "김보람", status: "run",
-     main: [{t: "#8 · #11 점검 기록 병합", done: true}, {t: "비용표 초안 (24시간·12시간 비교, $100으로 23~27일 — NAT·ALB·WAF 24시간 최악 기준)", done: true}, {t: "비용표 재계산: 이번 주 평일 $1.70 · 다음 주 $2.97 → 12/02까지 약 $53 (#24 병합)", done: true}, {t: "예산 경보 $50/$80/$95 실제 설정 + 이메일 인증 (예산 $100, 11/09~12/03)", done: true}, {t: "IAM 설계·정책 JSON 초안 PR #29 (PassRole은 haven-ec2-ssm-role·ec2만)", done: true}, {t: "EC2 Role haven-ec2-ssm-role / 프로파일 haven-ec2-ssm-profile 생성 (PR #29 본인 기록, 민수 미확인)", done: true}, {t: "#29에 SSM 읽기·민수 SSM·백업 S3 Get/Put·MFA·CloudShell 반영, minsoo 정책 연결 (민수 실제 동작 확인)", done: true}, {t: "#29 병합: minsoo Session Manager 정책 · 백업 버킷 haven-backup-777171525040 생성 (서울 · 퍼블릭 차단 · SSE-S3) · 민성 EC2 시작/중지 확인 + SSM 조회 추가 (시뮬레이터 확인, 실제 시험은 민수·민성 대기)", done: true}, {t: "#39 병합: 민성 구축 권한 정책 12번 (민성 스크립트와 대조해 빠진 권한 없음 확인). AWS 콘솔의 Haven-Minsung-Infra-Policy에 실제 적용 필요", done: true}, {t: "화 오전: #29 마무리·병합 + 민성 권한 허용/거부 실제 시험 (구축 전)"}, {t: "수: WAF · 로그 · SES 메일 · 백업 버킷 권한"}, {t: "목~금: IAM 수정·재시험 · 종료 시 지울 자원 목록 · 새 계정 절차"}],
+     main: [{t: "#8 · #11 점검 기록 병합", done: true}, {t: "비용표 초안 (24시간·12시간 비교, $100으로 23~27일 — NAT·ALB·WAF 24시간 최악 기준)", done: true}, {t: "비용표 재계산: 이번 주 평일 $1.70 · 다음 주 $2.97 → 12/02까지 약 $53 (#24 병합)", done: true}, {t: "예산 경보 $50/$80/$95 실제 설정 + 이메일 인증 (예산 $100, 11/09~12/03)", done: true}, {t: "IAM 설계·정책 JSON 초안 PR #29 (PassRole은 haven-ec2-ssm-role·ec2만)", done: true}, {t: "EC2 Role haven-ec2-ssm-role / 프로파일 haven-ec2-ssm-profile 생성 (PR #29 본인 기록, 민수 미확인)", done: true}, {t: "#29에 SSM 읽기·민수 SSM·백업 S3 Get/Put·MFA·CloudShell 반영, minsoo 정책 연결 (민수 실제 동작 확인)", done: true}, {t: "#29 병합: minsoo Session Manager 정책 · 백업 버킷 haven-backup-777171525040 생성 (서울 · 퍼블릭 차단 · SSE-S3) · 민성 EC2 시작/중지 확인 + SSM 조회 추가 (시뮬레이터 확인, 실제 시험은 민수·민성 대기)", done: true}, {t: "#39 병합: 민성 구축 권한 정책 12번 (민성 스크립트와 대조해 빠진 권한 없음 확인). AWS 콘솔 Haven-Minsung-Infra-Policy에 적용 완료 (15:50 보람 보고)", done: true}, {t: "화 오전: #29 마무리·병합 + 민성 권한 허용/거부 실제 시험 (구축 전)"}, {t: "수: WAF · 로그 · SES 메일 · 백업 버킷 권한"}, {t: "목~금: IAM 수정·재시험 · 종료 시 지울 자원 목록 · 새 계정 절차"}],
      queue: [{t: "일별 비용 조회 스크립트 → 매일 보고에 금액"}, {t: "다른 리전 점검"}],
      dep: ""},
     {id: "Minsung", name: "이민성", no: 6, role: "VPC · EC2 · SSM · ALB/HTTPS · SG CLI", folder: "이민성", status: "run",
-     main: [{t: "SG 문서 보완 (#18 병합)", done: true}, {t: "연결확인표 (기대값까지, RST-02 포함) + 결정 5번 확인 + SG outbound 80 + 서버 설정 5.4 (#23 병합)", done: true}, {t: "구축 · nat-up / nat-down · 전체 삭제(목록만 기본) 스크립트 — #27 병합 (DRY_RUN·가짜 aws 시험, AWS 실행 전)", done: true}, {t: "#34 EC2 중지·시작 + night/morning 병합 (가짜 aws 시험 20개, 민수 재실행 통과)", done: true}, {t: "화: 구축 시도 → 1/8 ec2:CreateVpc 권한 거부 (보람 정책 수정 #39 → 콘솔 적용 후 재시도)"}, {t: "화 오전: EC2 중지·시작 스크립트"}, {t: "화 오후: AWS 구축 (보람 권한 시험 후) → SSM · Web→DB · 직접 접근 거부 증거 → 민수에게 web-1/db-1 IP 전달"}, {t: "수: ALB · ACM(도메인) · HTTPS"}, {t: "목: 실제 SG 읽기 수집 → AUD fixture 대조"}, {t: "금: 네트워크/SG 수정·재시험 · 최종 구성 정리"}],
+     main: [{t: "SG 문서 보완 (#18 병합)", done: true}, {t: "연결확인표 (기대값까지, RST-02 포함) + 결정 5번 확인 + SG outbound 80 + 서버 설정 5.4 (#23 병합)", done: true}, {t: "구축 · nat-up / nat-down · 전체 삭제(목록만 기본) 스크립트 — #27 병합 (DRY_RUN·가짜 aws 시험, AWS 실행 전)", done: true}, {t: "#34 EC2 중지·시작 + night/morning 병합 (가짜 aws 시험 20개, 민수 재실행 통과)", done: true}, {t: "화: 구축 시도 → 1/8 ec2:CreateVpc 권한 거부 → 보람 정책 적용 완료(15:50), build.sh 재시도"}, {t: "화 오전: EC2 중지·시작 스크립트"}, {t: "화 오후: AWS 구축 (보람 권한 시험 후) → SSM · Web→DB · 직접 접근 거부 증거 → 민수에게 web-1/db-1 IP 전달"}, {t: "수: ALB · ACM(도메인) · HTTPS"}, {t: "목: 실제 SG 읽기 수집 → AUD fixture 대조"}, {t: "금: 네트워크/SG 수정·재시험 · 최종 구성 정리"}],
      queue: [{t: "매일 21시 nat-down + EC2 중지, 09시 nat-up"}],
      dep: "구축은 보람 IAM 적용 후"}
   ],

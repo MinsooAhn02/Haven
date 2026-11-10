@@ -45,22 +45,46 @@
 
 ## 결과 기록
 
-| 회차 | 상태 | 환경·실행 명령·기대/실제 결과 | PR·가림 증거 | 다음 담당자에게 전달할 것 |
+| 회차 | 상태 | 실제 진행·검증 결과 | 관련 문서·PR | 다음 작업·인계 |
 |---|---|---|---|---|
-| 1 | 진행 중 | 시험용 IAM 사용자 MFA 확인, 서울 리전에서 자원 조회, 크레딧·요금 확인, 비용 알림 설정, IAM 권한 시험 | 1회차파일참고 | AWS 사용 예산 및 초과 시 대응 방법 , 팀원별 AWS 접근 권한 , NAT 및 ALB 생성·삭제 시점 , 자원별 생성·삭제 담당자 , 프로젝트 종료 후 백업 보관 여부 |
-
-
-
-
-
-&nbsp;
-
-
-| 2 | 미착수 | 미확인 | — | — |
-| 3 | 미착수 | 미확인 | — | — |
-| 4 | 미착수 | 미확인 | — | — |
+| 1 | 부분 완료 | 루트·시험용 IAM 사용자 MFA 확인, 서울 리전 자원 조회, 크레딧·비용 알림 확인, 일부 허용·거부 시험 | [1회차](1회차.md), [결정현황](민수_인계_결정현황.md), PR #8(병합) | 남은 계정 복구/타 리전 확인 및 운영 결정 반영 |
+| 2 | 권한·버킷 구성 완료 / 실환경 검증 대기 | 11/09 IAM·예산 설정, 11/10 민성 EC2 시작/중지 기존 권한 확인·SSM 조회 추가, IAM 허용/거부 시뮬레이터 4건 확인, minsoo Session Manager 정책 연결, 서울 S3 백업 버킷 생성. 실제 EC2 구축/SSM 접속/백업 복원 시험은 담당자 대기 | [2회차 작업 기록](2회차.md), [IAM 파일](IAM/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 민성: CLI/MFA·EC2 시작/중지 실제 시험 / 민수: Session Manager 접속·S3 백업 복원 시험 / 보람: 결과 반영·권한 재점검 |
+| 3 | 미착수 | 미확인 | — | 3회차 권한·WAF·로그 보완 |
+| 4 | 미착수 | 미확인 | — | 최종 권한/비용·자원 종료 검토 |
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
+
+## 2026-11-09 오늘 작업 체크 및 다음 일정
+
+### 완료
+- [x] AWS 운영 비용 추정과 크레딧 $120 중 운영 예산 $100 / 비상 예비비 $20 정리
+- [x] AWS Budgets 비용 예산 $100 및 실제 사용 비용 경보 $50·$80·$95 설정
+- [x] EC2 공통 역할 `haven-ec2-ssm-role` 및 프로파일 `haven-ec2-ssm-profile` 생성·연결 확인
+- [x] `minsung` IAM 사용자 생성, 제한된 `iam:PassRole` 정책 연결(EC2 서비스에 `haven-ec2-ssm-role`만 전달)
+- [x] `Haven-Minsung-Infra-Policy` 생성 및 `minsung`에게 연결 확인 (11/09 IAM 화면)
+- [x] EC2 Role에 `ssm:GetParameter`(서울 리전 `/haven/*`) 인라인 읽기 권한 생성·연결
+- [x] IAM 설계·정책 JSON 초안 제출([PR #29](https://github.com/MinsooAhn02/Haven/pull/29))
+- [x] [2회차 상세 작업 기록](2회차.md) 작성 및 오늘 상태 반영
+
+### 미완료·다음에 진행
+- [x] AWS `minsung` 사용자에 `Haven-Minsung-Infra-Policy` 연결 확인 (4개 정책 화면)
+- [ ] 이민성 구축 스크립트의 EC2/VPC 권한·태그 조건 확인 및 실제 허용·거부 시험
+- [x] `minsung` 사용자에 본인 MFA 등록용 인라인 정책 `Haven-Minsung-Self-MFA-Policy` 연결 확인(11/09 사용자 제공 IAM 화면)
+- [ ] 민성님 실제 MFA 등록·최초 로그인·IAM 허용/거부 시험 기록
+- [x] IAM 사용자 `minsoo` 생성 및 `Haven-Minsoo-SSM-Policy` 인라인 정책 연결(서울 `/haven/*` 읽기·쓰기, 사용자 작업 완료 보고)
+- [x] [08_Minsoo_SSM_Parameters_Policy.json](IAM/08_Minsoo_SSM_Parameters_Policy.json) GitHub 정책 템플릿 기록
+- [x] 민수님 최초 IAM 콘솔 로그인 성공 보고 (MFA 등록 및 CloudShell 권한 부족 확인)
+- [x] [09_IAM_Self_MFA_Password_Policy.json](IAM/09_IAM_Self_MFA_Password_Policy.json) 본인 MFA/비밀번호 정책 초안 작성 및 [10_Minsoo_CloudShell_권한안내.md](IAM/10_Minsoo_CloudShell_권한안내.md) 추가
+- [x] AWS `minsoo` 사용자에 `Haven-IAM-Self-MFA-Password-Policy`, `AWSCloudShellFullAccess`, `Haven-Minsoo-SSM-Policy`, `IAMUserChangePassword` 총 4개 정책 연결 확인 (11/09 사용자 제공 IAM 화면)
+- [ ] 민수님 본인 MFA 등록·비밀번호 변경·CloudShell 서울 리전 생성 및 SSM 허용/거부 시험
+- [x] [06_DB_S3_Backup_Policy.json](IAM/06_DB_S3_Backup_Policy.json)에 `s3:PutObject`·`s3:GetObject` 초안 반영, 확정 버킷 이름 규칙 `haven-backup-${AWS_ACCOUNT_ID}` 반영
+- [x] AWS 공통 EC2 Role에 `Haven-EC2-S3-Backup-Restore` 인라인 정책 연결(권한 정책 생성·연결 화면 확인)
+- [ ] 실제 S3 버킷 생성 여부, 백업·복원 동작 및 Web/DB 공통 Role의 접근 범위 검증
+- [x] AWS에 적용한 EC2 SSM 읽기 인라인 정책을 [07_EC2_SSM_Parameter_Read_Policy.json](IAM/07_EC2_SSM_Parameter_Read_Policy.json) 템플릿으로 기록해 PR #29 반영 (계정 ID 변수는 실제 적용 전 치환)
+- [ ] 민성님에게 서버 Role/프로파일 및 적용·검증 상태 인계
+- [ ] 서버 구축 후 실제 허용·거부 시험, 다른 리전/잔여 과금 자원 확인
+
+**상태 구분:** IAM 정책 *생성*은 실제 사용자 *권한 연결* 및 *정상 작동 검증*과 다름. 완료되지 않은 작업은 완료 표시하지 않음. 11/09 Discord 일일 보고 시 위 현황과 [2회차 상세 기록](2회차.md)을 참조.
 
 ## 민수's comment · 2026-11-06
 
@@ -147,3 +171,33 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - 표 5번 "NAT 삭제는 담당자와 협의 후"는 결정 11번으로 사전 승인됐습니다(민성 스크립트로 매일 실행).
 - 민성님 IAM 요청 4개(SSM Role 이름·PassRole 범위, SSM 허가/일반 계정, 로그·S3 Endpoint 정책, 적용 시각)는 `이민성/network/연결확인표.md` 맨 아래에 있어요. 수요일 구축 전에 필요합니다.
 - 섹션 앞 `&nbsp;`는 지워 주세요(지난번 표 깨짐 원인).
+
+## 민수's comment · 2026-11-09 밤 · 이번 주 할 일 (11/10~13)
+
+이번 주: 화 = 2회차 병합·AWS 구축, 수 = 첫 배포·3회차 시작, 목 = 3회차, 금 = 4회차·17:30 판정. 다음 주는 심화 점검·시연·보고서. 작업 전 항상 `git pull`. 전체는 `TASK_TODO.html`.
+
+- **화 오전 (구축 전, 제일 먼저):** #29 마무리 → 민수 병합. 민성 계정으로 구축에 필요한 권한 허용/거부 실제 시험(MFA 로그인 포함) → 결과를 민성에게. 이게 끝나야 민성이 오후에 구축합니다
+- **수:** WAF · 로그(CloudWatch) · SES 메일 · 백업 버킷(`haven-backup-<계정ID>`) 생성 권한 확인·추가
+- **목~금:** IAM 수정·재시험 · 종료 시 지울 자원 목록 · 새 계정 절차
+- **매일:** 비용은 일별 보고에 금액만(재계산은 필요할 때만)
+
+
+## 2026-11-10 화요일 추가 확인
+
+### 보람 IAM·S3 구성 완료(사용자 제공 AWS 화면·JSON 근거)
+- [x] `minsung` EC2 시작/중지 정책 포함 확인 (서울·Project=Haven·Owner=minsung)
+- [x] `minsung`에 `ssm:DescribeInstanceInformation` 권한 추가·저장
+- [x] `minsung` CLI v2.39.6 확인, `SignInLocalDevelopmentAccess` 연결 확인 (장기 액세스 키 미발급)
+- [x] `ec2:DescribeInstances` 서울 허용/타 리전 거부 **시뮬레이터** 시험
+- [x] `iam:PassRole` 지정 EC2 Role 전달 허용/Lambda 전달 거부 **시뮬레이터** 시험
+- [x] `minsoo` Session Manager 인라인 정책 생성·연결, GitHub 정책 기록
+- [x] `haven-backup-ACCOUNT_ID_MASKED` S3 버킷 생성 (서울·퍼블릭 차단·SSE-S3)
+- [x] EC2 공통 Role S3 `db-backups/*`, SSM 파라미터 및 minsoo 파라미터 계정 범위 확인
+
+### 담당자 실제 시험·인계 대기(보람이 대신 실행하지 않음)
+- [ ] 민성: Git Bash `aws login`, MFA·STS 계정 확인, #34 EC2 시작·중지 및 구축 실제 허용/거부 결과
+- [ ] 민수: Haven 태그 EC2 SSM 세션 접속 및 타 대상 거부, 본인 세션 종료/재개 검증
+- [ ] 민수: S3 백업/복원 실제 시험 및 경로·권한 오류 결과 공유
+- [ ] 보람: 시험 결과를 받아 IAM 정책 보완·필요시 재시험 및 프로젝트 종료 자원 목록 정리
+
+세부 내용은 [2회차 11/10 추가 기록](2회차.md) 참조. **구성 성공과 실제 서비스 접속 시험 성공을 혼동하지 않는다.**

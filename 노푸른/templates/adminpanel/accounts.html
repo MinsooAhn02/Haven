@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}계정 관리 | Haven 기록{% endblock %}
+
+{% block body %}
+<main class="page-shell">
+  <header class="page-heading">
+    <p class="intro">현재 위치: 관리자 &gt; 계정 관리</p>
+    <h1>계정 관리</h1>
+    <p class="intro">일반 회원 계정의 활성 상태를 확인하고 변경합니다.</p>
+  </header>
+
+  {% if accounts %}
+    <section class="panel" aria-labelledby="accounts-heading">
+      <h2 id="accounts-heading">계정 목록</h2>
+      <div tabindex="0" role="region" aria-label="계정 목록 표, 가로로 이동 가능" style="overflow-x: auto;">
+        <table style="width: 100%; min-width: 42rem; border-collapse: collapse; text-align: left;">
+          <caption style="padding: .5rem 0; text-align: left;">일반 회원 계정 목록과 상태 변경 작업</caption>
+          <thead>
+            <tr>
+              <th scope="col" style="padding: .75rem;">아이디</th>
+              <th scope="col" style="padding: .75rem;">상태</th>
+              <th scope="col" style="padding: .75rem;">가입일</th>
+              <th scope="col" style="padding: .75rem;">최근 로그인</th>
+              <th scope="col" style="padding: .75rem;">상태 변경</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for account in accounts %}
+              <tr>
+                <th scope="row" style="padding: .75rem; border-top: 1px solid #e5ece6; overflow-wrap: anywhere;">{{ account.username }}</th>
+                <td style="padding: .75rem; border-top: 1px solid #e5ece6;">
+                  {% if account.is_active %}활성{% else %}비활성{% endif %}
+                </td>
+                <td style="padding: .75rem; border-top: 1px solid #e5ece6;">
+                  <time datetime="{{ account.date_joined|date:'c' }}">{{ account.date_joined|date:"Y년 n월 j일 H:i" }}</time>
+                </td>
+                <td style="padding: .75rem; border-top: 1px solid #e5ece6;">
+                  {% if account.last_login %}
+                    <time datetime="{{ account.last_login|date:'c' }}">{{ account.last_login|date:"Y년 n월 j일 H:i" }}</time>
+                  {% else %}
+                    로그인 기록 없음
+                  {% endif %}
+                </td>
+                <td style="padding: .75rem; border-top: 1px solid #e5ece6;">
+                  {% if account.is_active %}
+                    <form method="post" action="{% url 'adminpanel:account_status' pk=account.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="is_active" value="false">
+                      <button class="button button-danger" type="submit">{{ account.username }} 계정 비활성화</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{% url 'adminpanel:account_status' pk=account.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="is_active" value="true">
+                      <button class="button button-primary" type="submit">{{ account.username }} 계정 활성화</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <nav class="pagination" aria-label="계정 목록 페이지 이동">
+        {% if page_obj.has_previous %}
+          <a class="page-link" href="?page={{ page_obj.previous_page_number }}">이전 페이지</a>
+        {% else %}
+          <span class="page-link" aria-disabled="true">이전 페이지</span>
+        {% endif %}
+        <span aria-current="page">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 페이지</span>
+        {% if page_obj.has_next %}
+          <a class="page-link" href="?page={{ page_obj.next_page_number }}">다음 페이지</a>
+        {% else %}
+          <span class="page-link" aria-disabled="true">다음 페이지</span>
+        {% endif %}
+      </nav>
+    </section>
+  {% else %}
+    <section class="panel empty-state" aria-live="polite">
+      <h2>표시할 계정이 없습니다</h2>
+      <p>계정 목록이 비어 있습니다.</p>
+    </section>
+    <nav class="pagination" aria-label="계정 목록 페이지 이동">
+      <span class="page-link" aria-disabled="true">이전 페이지</span>
+      <span aria-current="page">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 페이지</span>
+      <span class="page-link" aria-disabled="true">다음 페이지</span>
+    </nav>
+  {% endif %}
+</main>
+{% endblock %}

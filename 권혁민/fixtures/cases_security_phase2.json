@@ -232,7 +232,7 @@
       "phase": 2,
       "category": "authorization",
       "method": "POST",
-      "path": "/posts/1/shares/1/revoke/",
+      "path": "/posts/1/shares/{share_id}/revoke/",
       "auth_role": "member_b",
       "input_reference": "post_empty_valid.json",
       "expected_app": {
@@ -241,7 +241,12 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "seed_demo --share 가 생성한 P1->B share_id=1을 B가 해제하려는 시도: 404, 관계 유지 확인"
+      "note": "P1→B의 실제 공유 ID를 소유자 화면에서 조회한 뒤 B가 해제를 시도. 404 및 관계 유지 확인",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a"
+      }
     },
     {
       "case_id": "SEC-42",
@@ -328,7 +333,7 @@
       "phase": 2,
       "category": "csrf",
       "method": "POST",
-      "path": "/posts/1/shares/1/revoke/",
+      "path": "/posts/1/shares/{share_id}/revoke/",
       "auth_role": "member_a",
       "input_reference": "post_without_csrf.json",
       "expected_app": {
@@ -337,7 +342,12 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "P1->B 공유 해제 시 CSRF 누락 403. share_id=1 관계 보존 별도 확인"
+      "note": "P1→B의 실제 공유 ID로 CSRF 없는 해제 POST. 403 및 관계 보존을 별도 확인",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a"
+      }
     },
     {
       "case_id": "SEC-48",

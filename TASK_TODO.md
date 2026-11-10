@@ -173,7 +173,7 @@ flowchart LR
 | 노푸른 | #36·#37 병합. #43 3회차 첨부 화면 병합(#38과 합쳐 확인: 작성자만 업로드·삭제, 공유받은 사람은 다운로드만, 파일명 이스케이프). 실제 브라우저 확인은 아직 | 실제 앱 브라우저 흐름 확인 → HTTPS 흐름 | #36·#37·#43 |
 | 권혁민 | #35 병합(1회차 로컬 34건 일치). #33 보안 점검 "병합 가능" | 요찬 #38 보안 점검(첨부 인가·요청 로그 형식) → fixture 확장(798385e) PR → 저장형 XSS 실제 시험 → AWS 배포 후 fixture 재실행 | #35, #33 리뷰 |
 | 김보람 | #29·#39·#42 병합. #42: 13번 EC2 삭제는 Name=haven-test* 만(web-1·db-1 불가), 14번 민성 Session Manager, 15번 Haven SG 삭제. 콘솔엔 13+15 합친 정책 적용 | 15번을 시험용 SG(haven-sg-test)로 좁히기, 14번 실제 접속 확인 | #29·#39·#42 |
-| 이민성 | #41 병합: AWS 실제 구축 완료(VPC·서브넷 4·NAT·S3 Endpoint·SG 3·EC2 2대, 공인 IP 없음, SSM 2대 Online). 연결확인표 1차 ✅16·🔶3·⚠️1·⏳13. Windows `aws.exe` `` 오탐 수정, `build-ec2.sh` 추가. #44 `test-ec2.sh` 병합(시험용 EC2만 만들고 지움, 실제 생성·삭제 성공) | 21시 `night.sh`(EC2 중지 + NAT 삭제, 서버 삭제 아님) → 수 `test-ec2.sh`로 NET-04 → ALB·ACM | #41·#44 |
+| 이민성 | #41 병합: AWS 실제 구축 완료(VPC·서브넷 4·NAT·S3 Endpoint·SG 3·EC2 2대, 공인 IP 없음, SSM 2대 Online). 연결확인표 1차 ✅16·🔶3·⚠️1·⏳13. Windows `aws.exe` `` 오탐 수정, `build-ec2.sh` 추가. #44 `test-ec2.sh` 병합(시험용 EC2만 만들고 지움, 실제 생성·삭제 성공) . 21시 `night.sh` 첫 실행 정상(EC2 중지·NAT 삭제·EIP 해제, RST-03 통과) | 수 `morning.sh` → `test-ec2.sh`로 NET-04 → ALB·ACM | #41·#44 |
 
 PR #3은 화면 시안, PR #2는 설계·fixture 단계로 merge commit 병합했다. 두 PR의 GitGuardian 검사도 통과했다. Django 연결·live AWS 수집·실제 AWS 구축/연결은 후속 작업이며, 위 병합으로 회차 전체를 완료 처리하지 않는다.
 

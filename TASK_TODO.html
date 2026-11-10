@@ -103,7 +103,7 @@ window.addEventListener("error", e => {
 // 항목 done:true = 실제로 실행·확인한 것만
 const GH = "https://github.com/MinsooAhn02/Haven";
 const DATA = {
-  updated: "2026-11-10 (화) 20시 50분",
+  updated: "2026-11-10 (화) 21시 05분",
   week: "2026-11-09(월) ~ 11-13(금) · 1~4회차",
   mainSha: "b784909 기준",
   direction: [
@@ -150,7 +150,7 @@ const DATA = {
      queue: [{t: "일별 비용 조회 스크립트 → 매일 보고에 금액"}, {t: "다른 리전 점검"}],
      dep: ""},
     {id: "Minsung", name: "이민성", no: 6, role: "VPC · EC2 · SSM · ALB/HTTPS · SG CLI", folder: "이민성", status: "run",
-     main: [{t: "SG 문서 보완 (#18 병합)", done: true}, {t: "연결확인표 (기대값까지, RST-02 포함) + 결정 5번 확인 + SG outbound 80 + 서버 설정 5.4 (#23 병합)", done: true}, {t: "구축 · nat-up / nat-down · 전체 삭제(목록만 기본) 스크립트 — #27 병합 (DRY_RUN·가짜 aws 시험, AWS 실행 전)", done: true}, {t: "#34 EC2 중지·시작 + night/morning 병합 (가짜 aws 시험 20개, 민수 재실행 통과)", done: true}, {t: "AWS 실제 구축 #41 병합: VPC·서브넷 4·NAT·S3 Endpoint·SG 3·EC2 2대(공인 IP 없음), SSM 2대 Online, 연결확인표 1차(✅16 · 🔶3 · ⚠️1 · ⏳13). Windows aws.exe \r 버그 수정 + build-ec2.sh(8단계 재개)", done: true}, {t: "#44 test-ec2.sh 병합: 시험용 EC2 haven-test-<용도> 만들기·지우기 (17:17~17:32 실제 생성·삭제 성공, 민수 가짜 aws 확인)", done: true}, {t: "21시 night.sh = EC2 중지 + NAT 삭제 (서버 삭제 아님)"}, {t: "수: test-ec2.sh로 NET-04 · 04-b · 02-d → 같은 날 delete"}, {t: "화 오전: EC2 중지·시작 스크립트"}, {t: "화 오후: AWS 구축 (보람 권한 시험 후) → SSM · Web→DB · 직접 접근 거부 증거 → 민수에게 web-1/db-1 IP 전달"}, {t: "수: ALB · ACM(도메인) · HTTPS"}, {t: "목: 실제 SG 읽기 수집 → AUD fixture 대조"}, {t: "금: 네트워크/SG 수정·재시험 · 최종 구성 정리"}],
+     main: [{t: "SG 문서 보완 (#18 병합)", done: true}, {t: "연결확인표 (기대값까지, RST-02 포함) + 결정 5번 확인 + SG outbound 80 + 서버 설정 5.4 (#23 병합)", done: true}, {t: "구축 · nat-up / nat-down · 전체 삭제(목록만 기본) 스크립트 — #27 병합 (DRY_RUN·가짜 aws 시험, AWS 실행 전)", done: true}, {t: "#34 EC2 중지·시작 + night/morning 병합 (가짜 aws 시험 20개, 민수 재실행 통과)", done: true}, {t: "AWS 실제 구축 #41 병합: VPC·서브넷 4·NAT·S3 Endpoint·SG 3·EC2 2대(공인 IP 없음), SSM 2대 Online, 연결확인표 1차(✅16 · 🔶3 · ⚠️1 · ⏳13). Windows aws.exe \r 버그 수정 + build-ec2.sh(8단계 재개)", done: true}, {t: "#44 test-ec2.sh 병합: 시험용 EC2 haven-test-<용도> 만들기·지우기 (17:17~17:32 실제 생성·삭제 성공, 민수 가짜 aws 확인)", done: true}, {t: "21시 night.sh 첫 실행: web-1 · db-1 중지, NAT 삭제, EIP 해제, RST-03 태그된 NAT·EIP 없음 (21:00~21:02)", done: true}, {t: "수: test-ec2.sh로 NET-04 · 04-b · 02-d → 같은 날 delete"}, {t: "화 오전: EC2 중지·시작 스크립트"}, {t: "화 오후: AWS 구축 (보람 권한 시험 후) → SSM · Web→DB · 직접 접근 거부 증거 → 민수에게 web-1/db-1 IP 전달"}, {t: "수: ALB · ACM(도메인) · HTTPS"}, {t: "목: 실제 SG 읽기 수집 → AUD fixture 대조"}, {t: "금: 네트워크/SG 수정·재시험 · 최종 구성 정리"}],
      queue: [{t: "매일 21시 nat-down + EC2 중지, 09시 nat-up"}],
      dep: "구축은 보람 IAM 적용 후"}
   ],
@@ -184,7 +184,8 @@ const DATA = {
     ["11/10 14시", "푸른 관리자 템플릿 #37 병합 → 요찬 2회차 #33 병합. 민수 통합 시험 126개 전부 통과(check · makemigrations --check 포함), CI Python 3.12·3.13 둘 다 126개. 2회차 앱 끝, 다음은 민성 구축 → 수 첫 배포"],
     ["11/10 15시 40분", "민성 구축이 1/8 CreateVpc 권한 거부로 멈춤 → 보람 #39 정책 수정 병합(민수 대조: 스크립트 권한 모두 포함), 콘솔 적용 대기. 요찬 3회차 #38 올림(176개). 민수 #40 병합(pypdf · Nginx 경로별 한도 · 첨부 정리 타이머, WSL 46개 통과) → #38 CI 176개 통과. #38 혁민 점검 대기"],
     ["11/10 17시", "보람 정책 콘솔 적용(15:50) → 민성 실제 구축 성공(#41 병합): 7단계에서 Windows \r 오탐으로 멈춤 → NAT·EIP 정리 후 수정, nat-up · build-ec2.sh로 EC2 2대. 민수 Session Manager로 web-1 · db-1 연결 확인 전부 정상. 보람 #42(민성 SSM 접속 + EC2 삭제 권한)는 삭제 권한 범위를 시험용 서버로 좁혀 달라고 보류"],
-    ["11/10 20시 50분", "#44 민성 test-ec2.sh(시험용 EC2만 만들고 지움, 민수 가짜 aws로 web-1 섞임·이름 불일치 거부 확인) · #43 푸른 첨부 화면(#38과 합쳐 176개 통과, 화면 권한·이스케이프 확인) · #42 보람 IAM(13번 haven-test* 서버만 삭제, 14번 SSM, 15번 SG) 병합. 남은 것: #38 혁민 점검, 15번 범위 좁히기, 혁민 fixture PR, 도메인(GitHub 학생 혜택 승인 대기)"]
+    ["11/10 20시 50분", "#44 민성 test-ec2.sh(시험용 EC2만 만들고 지움, 민수 가짜 aws로 web-1 섞임·이름 불일치 거부 확인) · #43 푸른 첨부 화면(#38과 합쳐 176개 통과, 화면 권한·이스케이프 확인) · #42 보람 IAM(13번 haven-test* 서버만 삭제, 14번 SSM, 15번 SG) 병합. 남은 것: #38 혁민 점검, 15번 범위 좁히기, 혁민 fixture PR, 도메인(GitHub 학생 혜택 승인 대기)"],
+    ["11/10 21시", "민성 night.sh 첫 실행 정상: EC2 2대 중지 → NAT 삭제 → EIP 해제, RST-03 통과 (태그된 NAT·EIP 없음)"]
   ]
 };
 // ===== 수정 끝 =====

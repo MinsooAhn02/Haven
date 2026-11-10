@@ -66,17 +66,58 @@ ReadWritePaths=$H/uploads
 [Install]
 WantedBy=multi-user.target
 EOF
+# 첨부 정리(앱계약 E4): 끊긴 업로드 예약·삭제 대기·남은 임시 파일을 하루 한 번 정리. 실패가 남으면 명령이 1을 내서 journal에 남는다.
+cat > /etc/systemd/system/haven-cleanup.service <<EOF
+[Unit]
+Description=Haven attachment cleanup
+ConditionPathExists=$H/current
+
+[Service]
+Type=oneshot
+User=haven
+Group=haven
+WorkingDirectory=$H/current/$APP_SUBDIR
+EnvironmentFile=/etc/haven/haven.env
+ExecStart=$H/venv/bin/python manage.py cleanup_attachments
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=$H/uploads
+EOF
+cat > /etc/systemd/system/haven-cleanup.timer <<EOF
+[Unit]
+Description=Run Haven attachment cleanup daily
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
 systemctl daemon-reload
 systemctl enable haven >/dev/null   # 시작은 첫 deploy 때
+systemctl enable --now haven-cleanup.timer >/dev/null
 
+# 본문 한도(앱계약 E3): 정확한 한도는 앱이 건다(글 8,192 / 첨부 업로드 2,162,688바이트 → 413 + 요청 로그).
+# Nginx는 그보다 조금 크게 잡아 경계값 요청은 앱까지 보내고(혁민 APP-11 시험·로그 대조), 훨씬 큰 요청만 앱 앞에서 끊는다.
 cat > /etc/nginx/sites-available/haven <<EOF
 server {
     listen 80 default_server;
     server_name _;
     server_tokens off;
-    client_max_body_size 10m;
+    client_max_body_size 16k;
 
     location /static/ { alias $H/current/$STATIC_SUBDIR/; }
+
+    location ~ ^/posts/[0-9]+/attachments/\$ {
+        client_max_body_size 3m;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
+    }
 
     location = /healthz {
         proxy_pass http://127.0.0.1:8000;

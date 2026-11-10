@@ -45,7 +45,7 @@
 | 회차 | 상태 | 환경·실행 명령·기대/실제 결과 | PR·가림 증거 | 다음 담당자에게 전달할 것 |
 |---|---|---|---|---|
 | 1 | 완료 | 설계: `network/설계.md`(VPC·서브넷·라우팅·SG·출구/비용, 리전·D6는 김보람 권장, 팀장 승인 대기). SG CLI: Windows·Python 3.13.2, `sg_audit`에서 `python network_audit.py fixture --fixture fixtures\<이름>.json --baseline baseline.json --output-dir out\<이름>` 실행. 기대/실제 종료 코드 일치: pass 0(AUD-01), fail_public_db 1(AUD-02, SG-01), unknown_role 3(AUD-09, SG-06), error_access_denied 2(AUD-08). 덮어쓰기·없는 파일 시 ERROR(2) 확인 | PR 링크(https://github.com/MinsooAhn02/Haven/pull/2). 결과 요약 `sg_audit/README.md` 시험 결과. fixture는 가상 데이터라 가림 대상 없음. 리뷰 보완(팀장): 기대 자산 누락 UNKNOWN, 입력·출력 오류 ERROR(2), 부분 수집 결과 보존, unittest 5개 통과 | 김보람: 리전·D6 승인, 생성 자원·NAT 운영 기간(설계.md 5·6장). 권혁민: 기대 접근표(설계.md 4.3). 안민수: 메일 방식 회신 요청, EC2 OS(AMI) 후보 합의(이민성 제안). 미완료: live 모드·AUD-03~07·10·11(3회차 이후) |
-| 2 | 진행 중 | **준비 완료, AWS 실행 전.** 환경: Windows Git Bash, aws-cli 2.39.6. 구축 스크립트 `infra/`(build·nat-up·nat-down·destroy) 작성. `bash -n` 6개 OK, `DRY_RUN=1 bash build.sh` → 1/8~8/8·nat-up 1/4~4/4 종료 0, nat-down·destroy(목록·--delete) 미리보기 종료 0. 거부 시험: 프로파일 빈 값 → VPC 생성 전 중단(1), DRY_RUN=2 → 중단(1), destroy --yes → 거절(1). SG 규칙 10줄 설계 4절과 양방향 대조 일치(`infra/SG수작업비교.md`). 연결 확인표 기대값 작성(`network/연결확인표.md`), 실제값은 수요일 구축 후 | PR 링크((https://github.com/MinsooAhn02/Haven/pull/27)). AWS 호출 없음(DRY_RUN만)이라 가릴 값 없음. 수요일 실행 결과는 계정 번호·인스턴스 ID·IP 가려서 기록 | 김보람: IAM 적용(Role `haven-ec2-ssm-role`·프로파일 `haven-ec2-ssm-profile`, 민성 `iam:PassRole`은 이 Role만, `ssm:GetParameter`), 팀 계정 번호, 짝 리뷰. 안민수: 수요일 구축 직후 재부팅 시험(NET-06), pg_hba·`haven_app`/`postgres` 계정(NET-03), destroy 실행 시 사전 확인. 미완료: 실제 구축·연결 시험, EC2 중지·시작 스크립트 |
+| 2 | 진행 중 | **준비 완료, AWS 실행 전.** 환경: Windows Git Bash, aws-cli 2.39.6. 구축 스크립트 `infra/`(build·nat-up·nat-down·destroy) 작성. `bash -n` 6개 OK, `DRY_RUN=1 bash build.sh` → 1/8–8/8, nat-up 1/4–4/4 종료 0, nat-down·destroy(목록·--delete) 미리보기 종료 0. 거부 시험: 프로파일 빈 값 → VPC 생성 전 중단(1), DRY_RUN=2 → 중단(1), destroy --yes → 거절(1). SG 규칙 10줄 설계 4절과 양방향 대조 일치(`infra/SG수작업비교.md`). 연결 확인표 기대값 작성(`network/연결확인표.md`), 실제값은 구축 후.<br>**11/10 EC2 중지·시작(결정 4번):** `ec2-stop.sh`(web→db), `ec2-start.sh`(db→web, 공인 IP·SSM 확인), `night.sh`(ec2-stop + nat-down), `morning.sh`(nat-up + ec2-start, 평일 09~21시만). `DRY_RUN=1` 4개 종료 0. 가짜 aws 시험 `bash test/ec2-fake-test.sh` → **PASS 20 / FAIL 0**(일부러 실패: 서버 0대·2대·ID 불일치·중지 시간 초과·공인 IP·nat-up 실패·시간 밖 → 모두 멈춤(1)). 설명 `infra/EC2시작중지설명.md`, `infra/test/faketest설명.md` | PR 링크([#27](…)). AWS 호출 없음(DRY_RUN만)이라 가릴 값 없음.<br>PR 링크([#NN](…)). 가짜 aws·임시 폴더로만 실행, 실제 계정·state 파일 사용 안 함. 시험 코드는 AI 보조 작성, 실행은 직접. 구축 후 실행 결과는 계정 번호·인스턴스 ID·IP 가려서 기록 | 김보람: IAM 적용(Role `haven-ec2-ssm-role`·프로파일 `haven-ec2-ssm-profile`, 민성 `iam:PassRole`은 이 Role만, `ssm:GetParameter`), **추가 요청 `ec2:StopInstances`·`ec2:StartInstances`(Project=Haven 태그 한정), 선택 `ssm:DescribeInstanceInformation`**, CLI 인증 방식(액세스 키/SSO) 확인, 짝 리뷰. 안민수: 구축 직후 재부팅 시험(NET-06), pg_hba·`haven_app`/`postgres` 계정(NET-03), destroy 실행 시 사전 확인, web-1/db-1 사설 IP 전달 예정(중지·시작해도 안 바뀜). 미완료: 실제 구축·연결 시험(11/10 오후), 첫 `night.sh`(11/10 21시) |
 | 3 | 미착수 | 미확인 | — | — |
 | 4 | 미착수 | 미확인 | — | — |
 
@@ -134,3 +134,13 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - 표 머리말 "AWS 쓰기 작업은 승인 전 보류"는 결정 11번(사전 승인)으로 바뀌었으니 고쳐 주세요. 되돌릴 수 없는 삭제만 민수 확인입니다.
 - `nat-up` 다음 확인 줄 하나 추가 부탁드려요(예: RST-02 — 기본 경로가 새 NAT를 가리키는지, SSM-01이 다시 Online인지). 매일 하는 일이라 여기서 조용히 실패하기 쉬워요.
 - 연결확인표·설계 보완은 독립 문서라 PR 보내 주시면 먼저 병합할게요.
+
+## 민수's comment · 2026-11-09 밤 · 이번 주 할 일 (11/10~13)
+
+이번 주: 화 = 2회차 병합·AWS 구축, 수 = 첫 배포·3회차 시작, 목 = 3회차, 금 = 4회차·17:30 판정. 다음 주는 심화 점검·시연·보고서. 작업 전 항상 `git pull`. 전체는 `TASK_TODO.html`.
+
+- **화 오전:** EC2 중지·시작 스크립트(결정 4번). 보람 권한 시험 결과 확인
+- **화 오후:** AWS 실제 구축(`build.sh`, 사전 승인) → SSM 접속 · Web→DB 5432 · 직접 접근 거부 증거(연결확인표) → 민수에게 web-1/db-1 사설 IP 전달. 21시 `nat-down` + EC2 중지
+- **수:** ALB · ACM(도메인은 화 수업 시작 때 민수가 정함) · HTTPS
+- **목:** 실제 SG 읽기 수집 → AUD fixture 대조
+- **금:** 네트워크/SG 수정·재시험 · 최종 구성 정리

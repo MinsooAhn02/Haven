@@ -89,8 +89,12 @@ class AnonymousAccessTests(TestCase):
         res = self.client.get("/healthz")
         self.assertEqual((res.status_code, res.content), (200, b"ok"))
 
-    def test_django_admin_site_not_mounted(self):
-        self.assertEqual(self.client.get("/admin/").status_code, 404)
+    def test_admin_root_goes_to_limited_account_admin_not_django_admin(self):
+        # /admin/ 은 제한된 계정 관리로 연결된다. Django 기본 관리자 사이트의 화면은 없다(명세 2.2).
+        self.assertRedirects(self.client.get("/admin/"), "/admin/accounts/", fetch_redirect_response=False)
+        for path in ("/admin/login/", "/admin/auth/user/", "/admin/auth/user/1/password/"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 404)
 
 
 class MethodNotAllowedTests(TestCase):

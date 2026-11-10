@@ -5,6 +5,7 @@
 DB 비밀번호는 DB_PASSWORD 또는 pgpass 파일 중 하나로 공급한다.
 """
 import os
+import sys
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -75,6 +76,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # 요청 단위 구조화 로그(D5). 가장 바깥에 두어 413·CSRF 403·500을 포함한 최종 응답을 남긴다.
+    "config.request_log.RequestLogMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -154,3 +157,29 @@ STATICFILES_DIRS = [STATIC_SOURCE_DIR] if STATIC_SOURCE_DIR.is_dir() else []
 
 # 1회차에는 메일 기능이 없다. 로컬·CI에서 실제로 보내지 않는다. 메일 설정은 3회차에 정한다.
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# 첨부 (3회차, 명세 3.4). 서버는 /srv/haven/uploads(안민수 web-setup.sh, systemd ReadWritePaths).
+# static·코드 밖, 공개 URL 없음. 다운로드는 앱이 권한을 확인한 뒤 직접 보낸다.
+HAVEN_UPLOAD_DIR = Path(env_optional("HAVEN_UPLOAD_DIR", "/srv/haven/uploads"))
+# 업로드 임시 파일은 최종 위치와 같은 파일시스템(HAVEN_UPLOAD_DIR/.incoming)에 받는다(posts/upload_handlers.py).
+# 서버 프로세스가 쓸 수 있는 곳이 uploads 하나뿐이고(ReadWritePaths), 같은 파일시스템이라 원자적 link가 된다.
+FILE_UPLOAD_HANDLERS = ["posts.upload_handlers.IncomingFileUploadHandler"]
+DATA_UPLOAD_MAX_NUMBER_FILES = 1  # 업로드 한 요청에 파일 하나(명세 3.4). 2개 이상이면 400
+
+# CSRF 실패 화면은 Django 기본(403_csrf.html) 그대로이고, 요청 로그에 csrf_failure로 표시만 한다.
+CSRF_FAILURE_VIEW = "config.request_log.csrf_failure"
+
+# 로그 (명세 3.1, 앱계약.md 7장). 요청 로그는 JSON 한 줄씩 표준 출력으로 → 서버에서는 journald(haven.service).
+# 시험 실행 중에는 출력을 끈다(시험은 assertLogs로 직접 확인한다).
+_TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"raw": {"format": "%(message)s"}},
+    "handlers": {
+        "stdout": {"class": "logging.StreamHandler", "stream": "ext://sys.stdout", "formatter": "raw"},
+    },
+    "loggers": {
+        "haven.request": {"handlers": ["stdout"], "level": "WARNING" if _TESTING else "INFO", "propagate": False},
+    },
+}

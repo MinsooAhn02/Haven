@@ -103,9 +103,9 @@ window.addEventListener("error", e => {
 // 항목 done:true = 실제로 실행·확인한 것만
 const GH = "https://github.com/MinsooAhn02/Haven";
 const DATA = {
-  updated: "2026-11-10 (화) 15시 50분",
+  updated: "2026-11-10 (화) 17시 20분",
   week: "2026-11-09(월) ~ 11-13(금) · 1~4회차",
-  mainSha: "fc5462b 기준",
+  mainSha: "f22eab8 기준",
   direction: [
     ["이번 주", "화 = 2회차 병합 + AWS 구축, 수 = 첫 배포·복원 연습 + 3회차 시작, 목 = 3회차(첨부·HTTPS·메일·WAF Count), 금 = 4회차(수정·WAF Block 비교·복원·전체 회귀) + 17:30 판정. 다음 주(11/16~20)는 심화 점검·시연·보고서"],
     ["확정", "AWS 운영 결정 확정: 서울 · 계정당 $100 · NAT+S3 · t3.small 2대 · 매일 밤 NAT 삭제 · AWS 작업 사전 승인(되돌릴 수 없는 삭제만 확인) — docs/AWS_운영결정.md"],
@@ -116,7 +116,7 @@ const DATA = {
     {name: "AWS 운영 결정 확정 (docs/AWS_운영결정.md)", done: true},
     {name: "인증·소유자 CRUD + 404/403 시험 + 앱 CI 통과", done: false},
     {name: "읽기 공유·해제 + 화면 + 시험 (2회차)", done: true},
-    {name: "IAM 적용 + VPC/EC2/SSM 구축 + 연결·직접 접근 거부 증거", done: false},
+    {name: "IAM 적용 + VPC/EC2/SSM 구축 + 연결·직접 접근 거부 증거", done: true},
     {name: "AWS 첫 배포 + 재시작 후 유지", done: false},
     {name: "백업 → 격리 복원 연습", done: false},
     {name: "첨부·HTTPS·메일 + WAF Count 관찰 (3회차, 수~목)", done: false},
@@ -130,7 +130,7 @@ const DATA = {
   ],
   people: [
     {id: "Minsoo", name: "안민수", no: 1, role: "팀장 · 공통 환경 · CI · DB · 배포", folder: "안민수", status: "run",
-     main: [{t: "AWS 운영 결정 확정", done: true}, {t: "로컬 PostgreSQL 16 + 팀원용 dev-db-setup.ps1 (재실행·권한 분리 깨짐 감지 확인)", done: true}, {t: "요찬 앱을 민수 PC 개발 DB에서 실행: check·migrate 성공, 푸른 템플릿 붙여 64/65 (남은 1개 shared_list.html은 #26으로 추가됨)", done: true}, {t: "#25 혁민 검토 후 통합 시험 65개 통과 → 병합 (c524d05)", done: true}, {t: "AWS minsoo 로그인 · MFA 등록 · CloudShell로 SSM /haven/* 비밀값 3개 생성 (재실행 시 덮어쓰지 않음 확인)", done: true}, {t: "앱 CI 연결 #32 — GitHub에서 Python 3.12·3.13 둘 다 65개 실행 확인 (0건이면 실패)", done: true}, {t: "3회차 배포 준비 #32: 첨부 폴더·CSRF origin · DB+첨부 묶음 백업/복원 · 수요일 배포 절차 (WSL 38·31개 통과, 요찬 2회차 합친 코드)", done: true}, {t: "#34 · #29 · #35 · #36 · #37 · #33 병합 (2회차 앱 완료: 통합 시험 126개 통과), 6개 브랜치 동기화. 요찬 #33 + 푸른 공유 템플릿 합쳐 시험: 126개 중 120 통과 (남은 6개 = 관리자 템플릿 2개)", done: true}, {t: "#40 병합: pypdf 의존성 · Nginx 경로별 본문 한도(전체 16k, 업로드 3m) · 첨부 정리 타이머(매일 04시). WSL 새 서버 시험 46개 통과(#38 합본 배포). 요찬 결정 요청 E1·E3·E4 반영, D2·D3은 요찬 기본값으로 확정", done: true}, {t: "서버 생기면: Session Manager 접속 · 다른 서버 거부 · 본인 세션 종료 시험, 백업 실제 시험 → 보람에게 결과"}, {t: "화: 수업 시작 때 도메인 결정 · 요찬 2회차 통합 시험"}, {t: "서버 설치·배포·되돌리기 스크립트 (Ubuntu 24.04 · Nginx · Gunicorn · systemd · DB 역할 분리 · 비밀값 SSM) — #28 병합, WSL 24.04 시험 33개 통과 (AWS 실행 전)", done: true}, {t: "DB 백업(S3) → 격리 복원 스크립트 — #30 병합, 시험 19개 통과 (AWS 실행 전)", done: true}, {t: "수: AWS 첫 배포 (db-setup → web-setup → deploy) → 재부팅 후 유지 → 백업·격리 복원 실제 연습"}, {t: "목: 첨부 포함 재배포 · SES 메일 실제 수신/실패"}, {t: "금: 수정 배포 · DB+첨부 격리 복원 · 전체 회귀 · 17:30 판정"}],
+     main: [{t: "AWS 운영 결정 확정", done: true}, {t: "로컬 PostgreSQL 16 + 팀원용 dev-db-setup.ps1 (재실행·권한 분리 깨짐 감지 확인)", done: true}, {t: "요찬 앱을 민수 PC 개발 DB에서 실행: check·migrate 성공, 푸른 템플릿 붙여 64/65 (남은 1개 shared_list.html은 #26으로 추가됨)", done: true}, {t: "#25 혁민 검토 후 통합 시험 65개 통과 → 병합 (c524d05)", done: true}, {t: "AWS minsoo 로그인 · MFA 등록 · CloudShell로 SSM /haven/* 비밀값 3개 생성 (재실행 시 덮어쓰지 않음 확인)", done: true}, {t: "앱 CI 연결 #32 — GitHub에서 Python 3.12·3.13 둘 다 65개 실행 확인 (0건이면 실패)", done: true}, {t: "3회차 배포 준비 #32: 첨부 폴더·CSRF origin · DB+첨부 묶음 백업/복원 · 수요일 배포 절차 (WSL 38·31개 통과, 요찬 2회차 합친 코드)", done: true}, {t: "#34 · #29 · #35 · #36 · #37 · #33 병합 (2회차 앱 완료: 통합 시험 126개 통과), 6개 브랜치 동기화. 요찬 #33 + 푸른 공유 템플릿 합쳐 시험: 126개 중 120 통과 (남은 6개 = 관리자 템플릿 2개)", done: true}, {t: "#40 병합: pypdf 의존성 · Nginx 경로별 본문 한도(전체 16k, 업로드 3m) · 첨부 정리 타이머(매일 04시). WSL 새 서버 시험 46개 통과(#38 합본 배포). 요찬 결정 요청 E1·E3·E4 반영, D2·D3은 요찬 기본값으로 확정", done: true}, {t: "Session Manager 실제 접속 (web-1 · db-1 둘 다 ssm-user) + 민성 연결 확인 대신 실행: NET-03 SG 통과 · OUT-01~09 · OUT-07 · db→web:80 막힘. 태그 없는 서버 거부는 대상 없어 미시험", done: true}, {t: "수: 첫 배포 (db-setup → web-setup → deploy key → deploy → 재부팅 → 백업·격리 복원)"}, {t: "화: 수업 시작 때 도메인 결정 · 요찬 2회차 통합 시험"}, {t: "서버 설치·배포·되돌리기 스크립트 (Ubuntu 24.04 · Nginx · Gunicorn · systemd · DB 역할 분리 · 비밀값 SSM) — #28 병합, WSL 24.04 시험 33개 통과 (AWS 실행 전)", done: true}, {t: "DB 백업(S3) → 격리 복원 스크립트 — #30 병합, 시험 19개 통과 (AWS 실행 전)", done: true}, {t: "수: AWS 첫 배포 (db-setup → web-setup → deploy) → 재부팅 후 유지 → 백업·격리 복원 실제 연습"}, {t: "목: 첨부 포함 재배포 · SES 메일 실제 수신/실패"}, {t: "금: 수정 배포 · DB+첨부 격리 복원 · 전체 회귀 · 17:30 판정"}],
      queue: [{t: "화: 요찬 2회차 PR 통합 시험 → 병합"}, {t: "PR 병합 · 6개 브랜치 동기화 · 저녁 기록"}],
      dep: "배포는 요찬 앱 + 민성 서버 연결 필요"},
     {id: "Yochan", name: "신요찬", no: 5, role: "Django 인증·모델·CRUD·공유·첨부", folder: "신요찬", status: "run",
@@ -150,7 +150,7 @@ const DATA = {
      queue: [{t: "일별 비용 조회 스크립트 → 매일 보고에 금액"}, {t: "다른 리전 점검"}],
      dep: ""},
     {id: "Minsung", name: "이민성", no: 6, role: "VPC · EC2 · SSM · ALB/HTTPS · SG CLI", folder: "이민성", status: "run",
-     main: [{t: "SG 문서 보완 (#18 병합)", done: true}, {t: "연결확인표 (기대값까지, RST-02 포함) + 결정 5번 확인 + SG outbound 80 + 서버 설정 5.4 (#23 병합)", done: true}, {t: "구축 · nat-up / nat-down · 전체 삭제(목록만 기본) 스크립트 — #27 병합 (DRY_RUN·가짜 aws 시험, AWS 실행 전)", done: true}, {t: "#34 EC2 중지·시작 + night/morning 병합 (가짜 aws 시험 20개, 민수 재실행 통과)", done: true}, {t: "화: 구축 시도 → 1/8 ec2:CreateVpc 권한 거부 → 보람 정책 적용 완료(15:50), build.sh 재시도"}, {t: "화 오전: EC2 중지·시작 스크립트"}, {t: "화 오후: AWS 구축 (보람 권한 시험 후) → SSM · Web→DB · 직접 접근 거부 증거 → 민수에게 web-1/db-1 IP 전달"}, {t: "수: ALB · ACM(도메인) · HTTPS"}, {t: "목: 실제 SG 읽기 수집 → AUD fixture 대조"}, {t: "금: 네트워크/SG 수정·재시험 · 최종 구성 정리"}],
+     main: [{t: "SG 문서 보완 (#18 병합)", done: true}, {t: "연결확인표 (기대값까지, RST-02 포함) + 결정 5번 확인 + SG outbound 80 + 서버 설정 5.4 (#23 병합)", done: true}, {t: "구축 · nat-up / nat-down · 전체 삭제(목록만 기본) 스크립트 — #27 병합 (DRY_RUN·가짜 aws 시험, AWS 실행 전)", done: true}, {t: "#34 EC2 중지·시작 + night/morning 병합 (가짜 aws 시험 20개, 민수 재실행 통과)", done: true}, {t: "AWS 실제 구축 #41 병합: VPC·서브넷 4·NAT·S3 Endpoint·SG 3·EC2 2대(공인 IP 없음), SSM 2대 Online, 연결확인표 1차(✅16 · 🔶3 · ⚠️1 · ⏳13). Windows aws.exe \r 버그 수정 + build-ec2.sh(8단계 재개)", done: true}, {t: "21시 night.sh = EC2 중지 + NAT 삭제 (서버 삭제 아님)"}, {t: "화 오전: EC2 중지·시작 스크립트"}, {t: "화 오후: AWS 구축 (보람 권한 시험 후) → SSM · Web→DB · 직접 접근 거부 증거 → 민수에게 web-1/db-1 IP 전달"}, {t: "수: ALB · ACM(도메인) · HTTPS"}, {t: "목: 실제 SG 읽기 수집 → AUD fixture 대조"}, {t: "금: 네트워크/SG 수정·재시험 · 최종 구성 정리"}],
      queue: [{t: "매일 21시 nat-down + EC2 중지, 09시 nat-up"}],
      dep: "구축은 보람 IAM 적용 후"}
   ],
@@ -182,7 +182,8 @@ const DATA = {
     ["11/10 오전", "#34 민성 EC2 중지·시작 · #29 보람 IAM(민수 Session Manager · 백업 버킷 생성) · #35 혁민 1회차 로컬 시험(34건 기대값 일치) · #36 푸른 공유 템플릿 병합, 6개 브랜치 동기화. 요찬 #33 올림 → 푸른 공유 템플릿과 합쳐 126개 중 120 통과, 남은 6개는 관리자 템플릿 2개 대기. #33 혁민 보안 점검 대기"],
     ["11/10 13시", "혁민 #33 보안 점검 완료(병합 가능, 정적 분석). #33 CI 실패 6개는 모두 관리자 템플릿 2개 없음(adminpanel/accounts.html · account_events.html) → 푸른 PR 오면 통합 시험 후 병합"],
     ["11/10 14시", "푸른 관리자 템플릿 #37 병합 → 요찬 2회차 #33 병합. 민수 통합 시험 126개 전부 통과(check · makemigrations --check 포함), CI Python 3.12·3.13 둘 다 126개. 2회차 앱 끝, 다음은 민성 구축 → 수 첫 배포"],
-    ["11/10 15시 40분", "민성 구축이 1/8 CreateVpc 권한 거부로 멈춤 → 보람 #39 정책 수정 병합(민수 대조: 스크립트 권한 모두 포함), 콘솔 적용 대기. 요찬 3회차 #38 올림(176개). 민수 #40 병합(pypdf · Nginx 경로별 한도 · 첨부 정리 타이머, WSL 46개 통과) → #38 CI 176개 통과. #38 혁민 점검 대기"]
+    ["11/10 15시 40분", "민성 구축이 1/8 CreateVpc 권한 거부로 멈춤 → 보람 #39 정책 수정 병합(민수 대조: 스크립트 권한 모두 포함), 콘솔 적용 대기. 요찬 3회차 #38 올림(176개). 민수 #40 병합(pypdf · Nginx 경로별 한도 · 첨부 정리 타이머, WSL 46개 통과) → #38 CI 176개 통과. #38 혁민 점검 대기"],
+    ["11/10 17시", "보람 정책 콘솔 적용(15:50) → 민성 실제 구축 성공(#41 병합): 7단계에서 Windows \r 오탐으로 멈춤 → NAT·EIP 정리 후 수정, nat-up · build-ec2.sh로 EC2 2대. 민수 Session Manager로 web-1 · db-1 연결 확인 전부 정상. 보람 #42(민성 SSM 접속 + EC2 삭제 권한)는 삭제 권한 범위를 시험용 서버로 좁혀 달라고 보류"]
   ]
 };
 // ===== 수정 끝 =====

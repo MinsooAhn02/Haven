@@ -103,7 +103,7 @@ window.addEventListener("error", e => {
 // 항목 done:true = 실제로 실행·확인한 것만
 const GH = "https://github.com/MinsooAhn02/Haven";
 const DATA = {
-  updated: "2026-11-10 (화) 12시",
+  updated: "2026-11-10 (화) 13시",
   week: "2026-11-09(월) ~ 11-13(금) · 1~4회차",
   mainSha: "ac0e86f 기준",
   direction: [
@@ -142,7 +142,7 @@ const DATA = {
      queue: [{t: "짝 리뷰: 요찬이 템플릿 context 대조"}],
      dep: "연결 확인은 요찬 코드 필요 (템플릿 작성은 지금)"},
     {id: "Hyeokmin", name: "권혁민", no: 3, role: "레드팀 · 요청 CLI · WAF · 로그", folder: "권혁민", status: "run",
-     main: [{t: "#7 요청 CLI 병합 (51 passed)", done: true}, {t: "1회차 fixture 계약 맞추기 + 느린 302 제한 + 2회차 공유·해제·비활성 fixture + trace ID 대조 (시험 100개, 민수 재실행 통과, PR 전)", done: true}, {t: "요찬 PR #25 보안 검토 → 병합 가능 · 결정 #9~11 답변", done: true}, {t: "PR #31 fixture 확장 · CLI 개선 · Origin 없음 명시 (157개 통과, 병합)", done: true}, {t: "#35 병합: 1회차 로컬 Django 시험 34건 HTTP 기대값 일치 (로그 대조 전이라 최종 UNKNOWN) · 로컬 시험 계정 자동 로그인 (HAVEN_SEED_PASSWORD, 127.0.0.1:8000만)", done: true}, {t: "요찬 #33 보안 점검"}, {t: "화: fixture를 실제 앱(로컬)에 실행 + 저장형 XSS 실제 시험 → 요찬 2회차 PR 보안 점검"}, {t: "수: AWS 배포 후 fixture 재실행"}, {t: "목: WAF Count 관찰 · 요청/WAF/앱 로그 대조 · 오탐 확인"}, {t: "금: 결함 재검증 · WAF Block 전후 같은 조건 비교"}],
+     main: [{t: "#7 요청 CLI 병합 (51 passed)", done: true}, {t: "1회차 fixture 계약 맞추기 + 느린 302 제한 + 2회차 공유·해제·비활성 fixture + trace ID 대조 (시험 100개, 민수 재실행 통과, PR 전)", done: true}, {t: "요찬 PR #25 보안 검토 → 병합 가능 · 결정 #9~11 답변", done: true}, {t: "PR #31 fixture 확장 · CLI 개선 · Origin 없음 명시 (157개 통과, 병합)", done: true}, {t: "#35 병합: 1회차 로컬 Django 시험 34건 HTTP 기대값 일치 (로그 대조 전이라 최종 UNKNOWN) · 로컬 시험 계정 자동 로그인 (HAVEN_SEED_PASSWORD, 127.0.0.1:8000만)", done: true}, {t: "요찬 #33 보안 점검 → 병합 가능 (정적 분석: 공유 우회·IDOR·관리자 권한 상승·CSRF 문제 없음. 남은 것: APP-08 요청별 로그, 실제 HTTP 시험)", done: true}, {t: "화: fixture를 실제 앱(로컬)에 실행 + 저장형 XSS 실제 시험 → 요찬 2회차 PR 보안 점검"}, {t: "수: AWS 배포 후 fixture 재실행"}, {t: "목: WAF Count 관찰 · 요청/WAF/앱 로그 대조 · 오탐 확인"}, {t: "금: 결함 재검증 · WAF Block 전후 같은 조건 비교"}],
      queue: [{t: "request_id 로그 대조 도구"}],
      dep: "실제 시험은 요찬 코드 필요"},
     {id: "Boram", name: "김보람", no: 4, role: "계정 · IAM · 접근 · 비용", folder: "김보람", status: "run",
@@ -179,7 +179,8 @@ const DATA = {
     ["11/09 저녁", "#25 요찬 1회차 병합(혁민 병합 가능 · 통합 65개) · #31 혁민 fixture·CLI 병합(157개). 민수 AWS 로그인 · MFA · SSM 비밀값 3개 생성. 보람 #29에 SSM·S3·MFA·CloudShell 권한. 요찬 2회차 push(PR 11/10) · 푸른 2회차 시안"],
     ["11/09 밤", "이번 주 일정 배정: 화 = 2회차 병합 + AWS 구축, 수 = 첫 배포·복원 연습 + 3회차 시작, 목 = 3회차(첨부·HTTPS·메일·WAF Count), 금 = 4회차(수정·WAF Block 비교·복원·전체 회귀) + 17:30 판정 · 다음 주(11/16~20)는 심화 점검·시연·보고서 — 각자 TODO.md 맨 아래"],
     ["11/09 21시", "#32 앱 CI(65개 × Python 2개) · 첨부 배포 준비 · DB+첨부 묶음 백업 병합. 요찬 2회차 미리 시험: 122개 중 108 통과, 14개는 푸른 2회차 템플릿 3개 대기. 보람에게 Session Manager 권한·백업 버킷 요청"],
-    ["11/10 오전", "#34 민성 EC2 중지·시작 · #29 보람 IAM(민수 Session Manager · 백업 버킷 생성) · #35 혁민 1회차 로컬 시험(34건 기대값 일치) · #36 푸른 공유 템플릿 병합, 6개 브랜치 동기화. 요찬 #33 올림 → 푸른 공유 템플릿과 합쳐 126개 중 120 통과, 남은 6개는 관리자 템플릿 2개 대기. #33 혁민 보안 점검 대기"]
+    ["11/10 오전", "#34 민성 EC2 중지·시작 · #29 보람 IAM(민수 Session Manager · 백업 버킷 생성) · #35 혁민 1회차 로컬 시험(34건 기대값 일치) · #36 푸른 공유 템플릿 병합, 6개 브랜치 동기화. 요찬 #33 올림 → 푸른 공유 템플릿과 합쳐 126개 중 120 통과, 남은 6개는 관리자 템플릿 2개 대기. #33 혁민 보안 점검 대기"],
+    ["11/10 13시", "혁민 #33 보안 점검 완료(병합 가능, 정적 분석). #33 CI 실패 6개는 모두 관리자 템플릿 2개 없음(adminpanel/accounts.html · account_events.html) → 푸른 PR 오면 통합 시험 후 병합"]
   ]
 };
 // ===== 수정 끝 =====

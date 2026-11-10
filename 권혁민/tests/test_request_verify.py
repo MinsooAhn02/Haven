@@ -3015,6 +3015,7 @@ def test_multi_payload_http_execution(tmp_path, monkeypatch):
     )
 
     observed = []
+    observed_cookies = []
     original_send = cli.requests.Session.send
 
     def capture_send(session, prepared, **kwargs):
@@ -3028,6 +3029,7 @@ def test_multi_payload_http_execution(tmp_path, monkeypatch):
 
             fields = parse_qs(body)
             observed.append(fields["username"][0])
+            observed_cookies.append(prepared.headers.get("Cookie", ""))
 
         return original_send(session, prepared, **kwargs)
 
@@ -3055,6 +3057,15 @@ def test_multi_payload_http_execution(tmp_path, monkeypatch):
             "' OR '1'='1' -- "
         ]
 
+        # 이전 로그인 시도에서 발급된 세션 쿠키가
+        # 다음 로그인 페이로드에 전달되면 안 된다.
+        assert len(observed_cookies) == 2
+
+        assert all(
+            "sessionid=fixture-session" not in cookie
+            for cookie in observed_cookies
+        )
+
         assert len(records) == 2
         assert [r["case_id"] for r in records] == [
             "SEC-01-P01",
@@ -3078,8 +3089,8 @@ def test_multi_payload_http_execution(tmp_path, monkeypatch):
         assert result["execution_cases"] == 2
         assert result["unexecuted_cases"] == 0
 
-        # CSRF 준비 GET 1건 + POST 2건
-        assert result["total_http_requests_including_preparation"] == 3
+        # 익명 로그인 variant별 CSRF 준비 GET 2건 + POST 2건
+        assert result["total_http_requests_including_preparation"] == 4
 
         # 결과 파일에 원본 payload와 비밀번호를 저장하지 않는다.
         raw = result_path.read_text(encoding="utf-8")
@@ -3118,3 +3129,647 @@ def test_multi_payload_http_execution(tmp_path, monkeypatch):
             r["verdict"] == "UNKNOWN"
             for r in correlated
         )
+
+
+@pytest.mark.parametrize(
+    "suite_path",
+    sorted((ROOT / "fixtures").glob("cases_*.json")),
+    ids=lambda path: path.name
+)
+def test_all_case_fixtures_validate(suite_path):
+    """모든 시험 suite의 형식과 다중 payload 확장을 검증한다."""
+
+    fixture_root = ROOT / "fixtures"
+
+    # 1. JSON 파일 로드
+    suite = cli.load_json(suite_path)
+
+    # 2. Suite 및 참조 payload 유효성 검사
+    cli.validate_suite(suite, fixture_root)
+
+    # 3. 다중 payload 확장 검사
+    expanded = cli.expand_suite_variants(
+        suite,
+        fixture_root
+    )
+
+    original_cases = suite["cases"]
+    expanded_cases = expanded["cases"]
+
+    # 4. 확장 후 케이스가 누락되지 않았는지 확인
+    assert len(expanded_cases) >= len(original_cases)
+
+    # 5. 모든 실행 case_id가 고유해야 한다.
+    case_ids = [case["case_id"] for case in expanded_cases]
+
+    assert len(case_ids) == len(set(case_ids))
+
+    # 6. 다중 payload의 식별 정보 확인
+    for case in expanded_cases:
+        if "parent_case_id" in case:
+            assert case["payload_id"].startswith("P")
+            assert case["max_requests"] == 1
+            assert "_variant_payload" in case
+
+# Phase-two orchestration checks use in-memory transports only.
+
+def phase2_make_case(case_id="SH-TEST", *, method="GET", path="/posts/1/",
+              role="member_a", status=200, **extra):
+    case = {
+        "case_id": case_id,
+        "phase": 2,
+        "category": "sharing",
+        "method": method,
+        "path": path,
+        "auth_role": role,
+        "input_reference": "post_empty_valid.json" if method == "POST" else None,
+        "expected_app": {"http_status": status},
+        "expected_waf": "NOT_APPLICABLE",
+        "max_requests": 1,
+        "verification_mode": "manual_required",
+        "note": "Synthetic orchestration test; not a Django integration result",
+    }
+    case.update(extra)
+    return case
+
+
+def phase2_make_suite(cases, **extra):
+    return {
+        "schema_version": 1,
+        "suite_id": "phase2-synthetic-orchestration",
+        "suite_kind": "regression",
+        "cases": cases,
+        **extra,
+    }
+
+
+def phase2_make_args(tmp_path, suite, *, maximum=100):
+    allowlist = tmp_path / "allowlist.json"
+    allowlist.write_text(
+        json.dumps({"approved_origins": ["http://127.0.0.1:8765"]}),
+        encoding="utf-8",
+    )
+    suite_file = tmp_path / "suite.json"
+    suite_file.write_text(json.dumps(suite), encoding="utf-8")
+    return Namespace(
+        target="http://127.0.0.1:8765", allowlist=allowlist,
+        cases=suite_file, fixture_dir=ROOT / "fixtures",
+        output_dir=tmp_path / "results", phase=2,
+        timeout=3, max_requests=maximum, rate=5,
+        max_duration=60, max_response_bytes=cli.MAX_RESPONSE,
+        manual_checkpoints=False,
+    )
+
+
+def phase2_detail(status=200, location=None):
+    return {
+        "status": status, "location": location, "elapsed_ms": 0.1,
+        "body_bytes": 0, "sha256": None, "headers": {},
+        "request_body_bytes": None,
+    }
+
+
+def phase2_share_row(post_id=1, share_id=81, recipient="member_b", *, action=None):
+    action = action if action is not None else f"/posts/{post_id}/shares/{share_id}/revoke/"
+    return (
+        '<li class="record-row"><div>'
+        f'<h3 class="record-title">{recipient}</h3>'
+        '</div><form method="post" '
+        f'action="{action}"><button>Revoke</button></form></li>'
+    )
+
+
+def phase2_share_html(*rows):
+    return (
+        '<html><section aria-labelledby="share-list-heading">'
+        '<h2 id="share-list-heading">Current shares</h2>'
+        '<ul class="record-list">' + "".join(rows) + '</ul></section></html>'
+    ).encode()
+
+
+def phase2_reference(post_id=1, recipient="member_b", **extra):
+    return {
+        "post_id": post_id,
+        "recipient": recipient,
+        "lookup_role": "member_a",
+        **extra,
+    }
+
+
+class Phase2MemoryResponse:
+    """Minimal requests response; no sockets, server threads, or DB access."""
+
+    status_code = 200
+    headers = {}
+
+    def __init__(self, body):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def iter_content(self, chunk_size):
+        for index in range(0, len(self.body), 8):
+            yield self.body[index:index + 8]
+
+
+def phase2_command_arguments(args):
+    return [
+        "run", "--target", args.target,
+        "--allowlist", str(args.allowlist), "--cases", str(args.cases),
+        "--phase", "2", "--fixture-dir", str(args.fixture_dir),
+        "--output-dir", str(args.output_dir),
+        "--max-requests", str(args.max_requests),
+        "--max-duration", str(args.max_duration), "--rate", str(args.rate),
+        "--timeout", str(args.timeout),
+    ]
+
+
+def phase2_local_auth_args(tmp_path, *, roles=("member_a", "member_b", "member_c", "operator")):
+    cases = [phase2_make_case(f"LOCAL-{role.upper()}", role=role) for role in roles]
+    args = phase2_make_args(tmp_path, phase2_make_suite(cases))
+    args.target = "http://127.0.0.1:8000"
+    args.allowlist.write_text(json.dumps({"approved_origins": [args.target]}), encoding="utf-8")
+    return args
+
+
+class TestPhase2Integration:
+    """Keep network blocking local to these tests; legacy fake servers still work."""
+
+    @pytest.fixture(autouse=True)
+    def prohibit_real_requests(self, monkeypatch):
+        def prohibited(*args, **kwargs):
+            raise AssertionError("This test must not send a real HTTP request")
+
+        monkeypatch.setattr(cli.requests.Session, "send", prohibited)
+        monkeypatch.setattr(cli.time, "sleep", lambda seconds: None)
+
+    @pytest.mark.parametrize("role", ["member_a", "member_b", "member_c", "operator"])
+    def test_local_seed_authentication_covers_all_four_roles(self, monkeypatch, capsys, role):
+        """The common local password avoids prompts without mixing role sessions."""
+        secret = "synthetic-secret-not-a-real-password"
+        monkeypatch.setenv("HAVEN_SEED_PASSWORD", secret)
+        monkeypatch.setattr("builtins.input", lambda prompt: pytest.fail("Unexpected username prompt"))
+        monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: pytest.fail("Unexpected password prompt"))
+        login_fields = []
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            assert target == "http://127.0.0.1:8000"
+            if method == "GET":
+                session.cookies.set("csrftoken", "test-csrf")
+                return phase2_detail(), b'<input name="csrfmiddlewaretoken" value="test-csrf">'
+            login_fields.append(kwargs["fields"])
+            session.cookies.set("sessionid", "synthetic-session")
+            return phase2_detail(302, "/posts/"), None
+
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        budget = cli.RequestBudget(Namespace(max_requests=10, rate=5, timeout=3, max_duration=60))
+        events = []
+        with cli.new_session() as session:
+            cli.prep_login(session, "http://127.0.0.1:8000", budget, role, "unit-run", events, cli.MAX_RESPONSE)
+        assert login_fields[0]["username"] == role
+        assert login_fields[0]["password"] == secret
+        assert secret not in json.dumps(events)
+        assert secret not in capsys.readouterr().out
+
+    @pytest.mark.parametrize("target", ["http://localhost:8000", "http://127.0.0.1:8765", "https://haven.example:443"])
+    def test_seed_password_does_not_expand_to_other_origins(self, monkeypatch, target):
+        monkeypatch.setenv("HAVEN_SEED_PASSWORD", "must-not-be-used")
+        prompts = []
+        monkeypatch.setattr("builtins.input", lambda prompt: prompts.append("username") or "member_a")
+        monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: prompts.append("password") or "interactive-test-secret")
+        fields_seen = []
+
+        def fake_send(session, method, origin, path, budget, request_id, **kwargs):
+            if method == "GET":
+                return phase2_detail(), b'<input name="csrfmiddlewaretoken" value="test-csrf">'
+            fields_seen.append(kwargs["fields"])
+            session.cookies.set("sessionid", "synthetic-session")
+            return phase2_detail(302, "/posts/"), None
+
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        budget = cli.RequestBudget(Namespace(max_requests=10, rate=5, timeout=3, max_duration=60))
+        with cli.new_session() as session:
+            cli.prep_login(session, target, budget, "member_a", "unit-run", [], cli.MAX_RESPONSE)
+        assert prompts == ["username", "password"]
+        assert fields_seen[0]["password"] == "interactive-test-secret"
+
+    def test_share_id_is_matched_to_exact_recipient_in_the_same_row(self):
+        html = phase2_share_html(
+            phase2_share_row(1, 17, "member_b_extra"),
+            phase2_share_row(1, 23, "member_c"),
+            phase2_share_row(1, 81, "member_b"),
+        )
+        assert cli.parse_share_id(html, 1, "member_b") == 81
+        assert cli.parse_share_id(html, 1, "not-present") is None
+
+    def test_ambiguous_share_rows_are_rejected(self):
+        html = phase2_share_html(phase2_share_row(1, 81), phase2_share_row(1, 82))
+        with pytest.raises(cli.ConfigError):
+            cli.parse_share_id(html, 1, "member_b")
+
+    @pytest.mark.parametrize("html", [
+        b'<h2 id="share-list-heading">Current shares</h2>',
+        b'<section aria-labelledby="share-list-heading"></section>',
+    ])
+    def test_missing_share_is_confirmed_only_in_a_recognized_share_list(self, html):
+        assert cli.parse_share_id(html, 1, "member_b") is None
+
+    @pytest.mark.parametrize("html", [
+        b"",
+        b"<html><body>Unrelated page</body></html>",
+        b'<html><form action="/accounts/login/">Login</form></html>',
+        b'<html><ul class="record-list"></ul></html>',
+    ])
+    def test_arbitrary_success_html_cannot_prove_that_a_share_is_absent(self, html):
+        with pytest.raises(cli.ConfigError):
+            cli.parse_share_id(html, 1, "member_b")
+
+    def test_matching_share_row_remains_usable_without_the_empty_list_marker(self):
+        assert cli.parse_share_id(phase2_share_row(1, 81).encode(), 1, "member_b") == 81
+
+    @pytest.mark.parametrize("share_id", ["9" * 20, str(2**63), "9" * 5000])
+    def test_share_ids_outside_bigint_range_are_rejected_without_large_int_conversion(self, share_id):
+        with pytest.raises(cli.ConfigError):
+            cli.parse_share_id(phase2_share_html(phase2_share_row(1, share_id)), 1, "member_b")
+
+    def test_largest_valid_bigint_share_id_is_supported(self):
+        largest = 2**63 - 1
+        assert cli.parse_share_id(phase2_share_html(phase2_share_row(1, largest)), 1, "member_b") == largest
+
+    @pytest.mark.parametrize("action", [
+        "https://outside.invalid/posts/1/shares/81/revoke/",
+        "//outside.invalid/posts/1/shares/81/revoke/",
+        "/posts/2/shares/81/revoke/",
+        "/posts/1/shares/0/revoke/",
+        "/posts/1/shares/81/revoke/?unexpected=1",
+        "/posts/1/shares/81/revoke/#fragment",
+    ])
+    def test_share_parser_rejects_untrusted_or_wrong_post_actions(self, action):
+        with pytest.raises(cli.ConfigError):
+            cli.parse_share_id(phase2_share_html(phase2_share_row(action=action)), 1, "member_b")
+
+    @pytest.mark.parametrize("change", [
+        {"post_id": 0}, {"post_id": True}, {"post_id": "1"},
+        {"recipient": "anonymous"}, {"lookup_role": "anonymous"},
+        {"allow_missing": "yes"}, {"unexpected": "field"},
+    ])
+    def test_invalid_share_metadata_fails_before_execution(self, change):
+        case = phase2_make_case(method="POST", path="/posts/1/shares/{share_id}/revoke/", status=302,
+                         share_reference=phase2_reference(**change))
+        with pytest.raises(cli.ConfigError):
+            cli.validate_suite(phase2_make_suite([case]), ROOT / "fixtures")
+
+    def test_share_placeholder_requires_a_lookup_specification(self):
+        case = phase2_make_case(method="POST", path="/posts/1/shares/{share_id}/revoke/", status=302)
+        with pytest.raises(cli.ConfigError):
+            cli.validate_suite(phase2_make_suite([case]), ROOT / "fixtures")
+
+    def test_share_lookup_uses_owner_session_and_counts_preparation(self, monkeypatch):
+        case = phase2_make_case(method="POST", path="/posts/1/shares/{share_id}/revoke/", role="member_b", status=404,
+                         share_reference=phase2_reference())
+        sessions, prepped, events, seen = {}, {}, [], []
+        budget = cli.RequestBudget(Namespace(max_requests=10, rate=5, timeout=3, max_duration=60))
+
+        def fake_login(session, target, budget, role, *args):
+            assert role == "member_a"
+            budget.begin()
+            budget.begin()
+            session.cookies.set("role", role)
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            budget.begin()
+            seen.append((session.cookies.get("role"), method, path, kwargs))
+            return phase2_detail(), phase2_share_html(phase2_share_row(1, 81))
+
+        monkeypatch.setattr(cli, "prep_login", fake_login)
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        try:
+            assert cli.resolve_share_id(case, sessions, prepped, "http://127.0.0.1:8765", budget, "unit-run", events, cli.MAX_RESPONSE) == 81
+        finally:
+            for session in sessions.values():
+                session.close()
+        assert seen[0][:3] == ("member_a", "GET", "/posts/1/shares/")
+        assert seen[0][3]["capture_html"] is True
+        assert budget.count == 3
+        assert prepped["member_a"] is True
+        assert any(event["stage"] == "share_lookup" for event in events)
+
+    @pytest.mark.parametrize("status", [302, 403, 404, 500])
+    def test_failed_share_lookup_never_treats_a_redirect_or_error_as_a_match(self, monkeypatch, status):
+        case = phase2_make_case(method="POST", path="/posts/1/shares/{share_id}/revoke/", status=302,
+                         share_reference=phase2_reference())
+        owner = cli.new_session()
+        monkeypatch.setattr(cli, "bounded_send", lambda *args, **kwargs: (phase2_detail(status), phase2_share_html(phase2_share_row())))
+        budget = cli.RequestBudget(Namespace(max_requests=10, rate=5, timeout=3, max_duration=60))
+        try:
+            with pytest.raises(cli.ExecutionError):
+                cli.resolve_share_id(case, {"member_a": owner}, {"member_a": True}, "http://127.0.0.1:8765", budget, "unit-run", [], cli.MAX_RESPONSE)
+        finally:
+            owner.close()
+
+    def test_share_discovery_html_is_returned_without_a_login_route(self, monkeypatch):
+        body = phase2_share_html(phase2_share_row())
+        monkeypatch.setattr(cli.requests.Session, "send", lambda *args, **kwargs: Phase2MemoryResponse(body))
+        budget = cli.RequestBudget(Namespace(max_requests=10, rate=5, timeout=3, max_duration=60))
+        with cli.new_session() as session:
+            observed, html = cli.bounded_send(
+                session, "GET", "http://127.0.0.1:8765", "/posts/1/shares/", budget,
+                "unit-request", capture_html=True, max_response_bytes=4096,
+            )
+        assert html == body
+        assert observed["body_bytes"] == len(body)
+        assert budget.count == 1
+
+    def test_chunked_share_discovery_still_obeys_response_limit(self, monkeypatch):
+        monkeypatch.setattr(cli.requests.Session, "send", lambda *args, **kwargs: Phase2MemoryResponse(b"X" * 33))
+        budget = cli.RequestBudget(Namespace(max_requests=10, rate=5, timeout=3, max_duration=60))
+        with cli.new_session() as session:
+            with pytest.raises(cli.TooLargeResponse):
+                cli.bounded_send(
+                    session, "GET", "http://127.0.0.1:8765", "/posts/1/shares/", budget,
+                    "unit-request", capture_html=True, max_response_bytes=32,
+                )
+        assert budget.count == 1
+
+    def test_missing_share_stops_before_sending_a_revoke(self, tmp_path, monkeypatch):
+        case = phase2_make_case(method="POST", path="/posts/1/shares/{share_id}/revoke/", status=302,
+                         share_reference=phase2_reference())
+        args = phase2_make_args(tmp_path, phase2_make_suite([case]))
+        seen = []
+        monkeypatch.setattr(cli, "prep_login", lambda *args: None)
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            budget.begin()
+            seen.append((method, path))
+            assert method == "GET"
+            return phase2_detail(), phase2_share_html()
+
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        assert cli.run(args) == 2
+        result = cli.load_json(args.output_dir / "results.json")
+        assert seen == [("GET", "/posts/1/shares/")]
+        assert result["results"][0]["transport_status"] == "ERROR"
+        assert result["results"][0]["http_status"] is None
+
+    def test_dynamic_revoke_uses_actual_id_not_sequence_one(self, tmp_path, monkeypatch):
+        case = phase2_make_case(method="POST", path="/posts/1/shares/{share_id}/revoke/", status=302,
+                         share_reference=phase2_reference())
+        args = phase2_make_args(tmp_path, phase2_make_suite([case]))
+        seen = []
+
+        def fake_login(session, *args):
+            session.cookies.set("csrftoken", "synthetic-csrf")
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            budget.begin()
+            seen.append((method, path))
+            if method == "GET":
+                return phase2_detail(), phase2_share_html(phase2_share_row(1, 81))
+            assert path == "/posts/1/shares/81/revoke/"
+            return phase2_detail(302, "/posts/1/shares/"), None
+
+        monkeypatch.setattr(cli, "prep_login", fake_login)
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        assert cli.run(args) == 3
+        result = cli.load_json(args.output_dir / "results.json")
+        assert seen == [("GET", "/posts/1/shares/"), ("POST", "/posts/1/shares/81/revoke/")]
+        assert result["results"][0]["path"] == "/posts/1/shares/81/revoke/"
+        assert result["results"][0]["http_expectation_match"] is True
+        assert result["total_http_requests_including_preparation"] == 2
+
+    def test_cross_post_check_uses_the_other_posts_existing_share(self, tmp_path, monkeypatch):
+        case = phase2_make_case(method="POST", path="/posts/1/shares/{share_id}/revoke/", status=404,
+                         share_reference=phase2_reference(2, "member_c"))
+        args = phase2_make_args(tmp_path, phase2_make_suite([case]))
+        seen = []
+        monkeypatch.setattr(cli, "prep_login", lambda session, *args: session.cookies.set("csrftoken", "synthetic-csrf"))
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            budget.begin()
+            seen.append((method, path))
+            if method == "GET":
+                assert path == "/posts/2/shares/"
+                return phase2_detail(), phase2_share_html(phase2_share_row(2, 92, "member_c"))
+            assert path == "/posts/1/shares/92/revoke/"
+            return phase2_detail(404), None
+
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        assert cli.run(args) == 3
+        assert seen == [("GET", "/posts/2/shares/"), ("POST", "/posts/1/shares/92/revoke/")]
+
+    def test_critical_mismatch_stops_dependants_but_attempts_registered_cleanup(self, tmp_path, monkeypatch):
+        mutation = phase2_make_case("DISABLE-B", method="POST", path="/admin/accounts/2/status/", role="operator", status=302, critical=True)
+        mutation["input_reference"] = "basic_status_disable.json"
+        dependent = phase2_make_case("B-INACTIVE", role="member_b", status=302)
+        restore = phase2_make_case("RESTORE-B", method="POST", path="/admin/accounts/2/status/", role="operator", status=302, after_case="DISABLE-B")
+        restore["input_reference"] = "basic_status_enable.json"
+        args = phase2_make_args(tmp_path, phase2_make_suite([mutation, dependent], cleanup_cases=[restore]))
+        sent_states = []
+        monkeypatch.setattr(cli, "prep_login", lambda session, *args: session.cookies.set("csrftoken", "synthetic-csrf"))
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            budget.begin()
+            sent_states.append(kwargs["fields"]["is_active"])
+            return phase2_detail(500 if len(sent_states) == 1 else 302), None
+
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        assert cli.run(args) == 2
+        result = cli.load_json(args.output_dir / "results.json")
+        assert sent_states == ["false", "true"]
+        assert result["unexecuted_cases"] == 1
+        assert result["results"][0]["http_status"] == 500
+        assert result["results"][0]["transport_status"] == "OK"
+        assert result["results"][0]["http_expectation_match"] is False
+        assert result["cleanup_complete"] is True
+        assert len(result["cleanup_results"]) == 1
+        assert result["cleanup_http_requests"] == 1
+        assert result["total_http_requests_including_preparation"] == 2
+
+    def test_cleanup_for_unattempted_mutations_is_not_sent(self, tmp_path, monkeypatch):
+        prerequisite = phase2_make_case("PREREQUISITE", critical=True)
+        mutation = phase2_make_case("DISABLE-B", method="POST", path="/admin/accounts/2/status/", role="operator", status=302)
+        mutation["input_reference"] = "basic_status_disable.json"
+        restore = phase2_make_case("RESTORE-B", method="POST", path="/admin/accounts/2/status/", role="operator", status=302, after_case="DISABLE-B")
+        restore["input_reference"] = "basic_status_enable.json"
+        args = phase2_make_args(tmp_path, phase2_make_suite([prerequisite, mutation], cleanup_cases=[restore]))
+        seen = []
+        monkeypatch.setattr(cli, "prep_login", lambda *args: None)
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            budget.begin()
+            seen.append((method, path))
+            return phase2_detail(404), None
+
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        assert cli.run(args) == 2
+        assert seen == [("GET", "/posts/1/")]
+        result = cli.load_json(args.output_dir / "results.json")
+        assert result["cleanup_http_requests"] == 0
+        assert result["cleanup_complete"] is True
+
+    def test_budget_exhaustion_does_not_hide_unfinished_cleanup(self, tmp_path, monkeypatch):
+        mutation = phase2_make_case("DISABLE-B", method="POST", path="/admin/accounts/2/status/", role="operator", status=302)
+        mutation["input_reference"] = "basic_status_disable.json"
+        restore = phase2_make_case("RESTORE-B", method="POST", path="/admin/accounts/2/status/", role="operator", status=302, after_case="DISABLE-B")
+        restore["input_reference"] = "basic_status_enable.json"
+        args = phase2_make_args(tmp_path, phase2_make_suite([mutation], cleanup_cases=[restore]), maximum=1)
+        seen = []
+        monkeypatch.setattr(cli, "prep_login", lambda session, *args: session.cookies.set("csrftoken", "synthetic-csrf"))
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            budget.begin()
+            seen.append(path)
+            return phase2_detail(302), None
+
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        assert cli.run(args) == 2
+        result = cli.load_json(args.output_dir / "results.json")
+        assert seen == ["/admin/accounts/2/status/"]
+        assert result["total_http_requests_including_preparation"] == 1
+        assert result["cleanup_complete"] is False
+        assert result["cleanup_results"][0]["transport_status"] == "ERROR"
+
+    def test_absent_share_cleanup_is_explicitly_skipped_without_a_post(self, tmp_path, monkeypatch):
+        mutation = phase2_make_case("GRANT-B", method="POST", path="/posts/1/shares/", status=302)
+        mutation["input_reference"] = "basic_share_grant.json"
+        cleanup = phase2_make_case("CLEANUP-B", method="POST", path="/posts/1/shares/{share_id}/revoke/", status=302,
+                            after_case="GRANT-B", share_reference=phase2_reference(allow_missing=True))
+        args = phase2_make_args(tmp_path, phase2_make_suite([mutation], cleanup_cases=[cleanup]))
+        seen = []
+        monkeypatch.setattr(cli, "prep_login", lambda session, *args: session.cookies.set("csrftoken", "synthetic-csrf"))
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            budget.begin()
+            seen.append((method, path))
+            return (phase2_detail(302), None) if method == "POST" else (phase2_detail(), phase2_share_html())
+
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        assert cli.run(args) == 3
+        result = cli.load_json(args.output_dir / "results.json")
+        assert seen == [("POST", "/posts/1/shares/"), ("GET", "/posts/1/shares/")]
+        assert result["cleanup_complete"] is True
+        assert result["cleanup_results"][0]["transport_status"] == "SKIPPED"
+        assert result["cleanup_http_requests"] == 1
+
+    @pytest.mark.parametrize("unexpected_html", [b"", b"<html><body>Login page, HTTP 200</body></html>"])
+    def test_unrecognized_cleanup_html_is_incomplete_instead_of_successfully_skipped(self, tmp_path, monkeypatch, unexpected_html):
+        mutation = phase2_make_case("GRANT-B", method="POST", path="/posts/1/shares/", status=302)
+        mutation["input_reference"] = "basic_share_grant.json"
+        cleanup = phase2_make_case("CLEANUP-B", method="POST", path="/posts/1/shares/{share_id}/revoke/", status=302,
+                            after_case="GRANT-B", share_reference=phase2_reference(allow_missing=True))
+        args = phase2_make_args(tmp_path, phase2_make_suite([mutation], cleanup_cases=[cleanup]))
+        seen = []
+        monkeypatch.setattr(cli, "prep_login", lambda session, *args: session.cookies.set("csrftoken", "synthetic-csrf"))
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            budget.begin()
+            seen.append((method, path))
+            return (phase2_detail(302), None) if method == "POST" else (phase2_detail(), unexpected_html)
+
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        assert cli.run(args) == 2
+        result = cli.load_json(args.output_dir / "results.json")
+        assert seen == [("POST", "/posts/1/shares/"), ("GET", "/posts/1/shares/")]
+        assert result["cleanup_complete"] is False
+        assert result["cleanup_results"][0]["transport_status"] == "ERROR"
+        assert result["cleanup_results"][0].get("skip_reason") != "share_not_present"
+        assert result["cleanup_http_requests"] == 1
+
+    def test_phase2_command_dry_run_never_prompts_sends_or_creates_output(self, tmp_path, monkeypatch, capsys):
+        output_dir = tmp_path / "not-created"
+        monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: pytest.fail("Dry run requested a password"))
+        monkeypatch.setattr(cli, "prep_login", lambda *args: pytest.fail("Dry run attempted login preparation"))
+        args = Namespace(
+            target="http://127.0.0.1:8000",
+            allowlist=ROOT / "fixtures" / "allowlist_local.json",
+            cases=ROOT / "fixtures" / "cases_haven_template.json",
+            fixture_dir=ROOT / "fixtures", output_dir=output_dir,
+            max_requests=300, max_duration=600, rate=1, timeout=10,
+        )
+        assert cli.main(phase2_command_arguments(args) + ["--dry-run", "--prompt-seed-password"]) == 0
+        assert not output_dir.exists()
+        output = capsys.readouterr().out
+        assert '"selected_phase": 2' in output
+        assert "DRY RUN" in output
+
+    @pytest.mark.parametrize("previous", [None, "", "inherited-synthetic-password"])
+    def test_phase2_command_reuses_or_masks_password_and_restores_environment(self, tmp_path, monkeypatch, capsys, previous):
+        if previous is None:
+            monkeypatch.delenv("HAVEN_SEED_PASSWORD", raising=False)
+        else:
+            monkeypatch.setenv("HAVEN_SEED_PASSWORD", previous)
+        entered = "new-synthetic-password"
+        prompted = []
+        monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: prompted.append(prompt) or entered)
+        args = phase2_local_auth_args(tmp_path)
+        seen = []
+
+        def fake_login(session, target, budget, role, *remaining):
+            seen.append((role, cli.os.environ.get("HAVEN_SEED_PASSWORD")))
+            session.cookies.set("csrftoken", "synthetic-csrf")
+
+        def fake_send(session, method, target, path, budget, request_id, **kwargs):
+            budget.begin()
+            if kwargs.get("on_send"):
+                kwargs["on_send"](cli.utc_now())
+            return phase2_detail(), None
+
+        monkeypatch.setattr(cli, "prep_login", fake_login)
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+        assert cli.main(phase2_command_arguments(args) + ["--prompt-seed-password"]) == 3
+        assert seen == [(role, previous or entered) for role in ("member_a", "member_b", "member_c", "operator")]
+        assert bool(prompted) is (not bool(previous))
+        assert cli.os.environ.get("HAVEN_SEED_PASSWORD") == previous
+        raw_result = (args.output_dir / "results.json").read_text(encoding="utf-8")
+        assert entered not in raw_result
+        assert "inherited-synthetic-password" not in raw_result
+        result = json.loads(raw_result)
+        assert result["execution_cases"] == 4
+        assert result["unexecuted_cases"] == 0
+        output = capsys.readouterr().out
+        assert entered not in output
+        assert "inherited-synthetic-password" not in output
+
+    @pytest.mark.parametrize("error", [cli.ExecutionError("synthetic failure"), KeyboardInterrupt()])
+    def test_phase2_command_restores_password_even_when_execution_fails(self, tmp_path, monkeypatch, error):
+        monkeypatch.delenv("HAVEN_SEED_PASSWORD", raising=False)
+        monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: "synthetic-only-password")
+        args = phase2_local_auth_args(tmp_path, roles=("member_a",))
+
+        def fake_login(*arguments):
+            assert cli.os.environ["HAVEN_SEED_PASSWORD"] == "synthetic-only-password"
+            raise error
+
+        monkeypatch.setattr(cli, "prep_login", fake_login)
+        assert cli.main(phase2_command_arguments(args) + ["--prompt-seed-password"]) == 2
+        assert "HAVEN_SEED_PASSWORD" not in cli.os.environ
+
+    def test_phase2_command_refuses_an_echoing_password_fallback(self, tmp_path, monkeypatch):
+        import warnings
+
+        monkeypatch.delenv("HAVEN_SEED_PASSWORD", raising=False)
+        args = phase2_local_auth_args(tmp_path, roles=("member_a",))
+        monkeypatch.setattr(cli, "prep_login", lambda *args: pytest.fail("An unmasked password must not start login preparation"))
+
+        def echoing_prompt(prompt):
+            warnings.warn("Synthetic terminal cannot mask input", cli.getpass.GetPassWarning)
+            pytest.fail("The echoing fallback was allowed to continue")
+
+        monkeypatch.setattr(cli.getpass, "getpass", echoing_prompt)
+        assert cli.main(phase2_command_arguments(args) + ["--prompt-seed-password"]) == 2
+        assert "HAVEN_SEED_PASSWORD" not in cli.os.environ
+        assert not args.output_dir.exists()
+
+    @pytest.mark.parametrize("target", ["http://localhost:8000", "http://127.0.0.1:8765"])
+    def test_common_password_prompt_is_rejected_for_other_origins(self, tmp_path, monkeypatch, target):
+        args = phase2_local_auth_args(tmp_path, roles=("member_a",))
+        args.target = target
+        args.allowlist.write_text(json.dumps({"approved_origins": [target]}), encoding="utf-8")
+        monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: pytest.fail("Unexpected password prompt"))
+        monkeypatch.setattr(cli, "prep_login", lambda *args: pytest.fail("Unexpected login preparation"))
+        assert cli.main(phase2_command_arguments(args) + ["--prompt-seed-password"]) == 2
+        assert not args.output_dir.exists()

@@ -2785,3 +2785,336 @@ def test_stalled_body_deadline_preempts_read_timeout(tmp_path):
         assert row["transport_status"] == "ERROR"
         assert row["verdict"] == "ERROR"
         assert "전체 실행 시간 한도" in result["stopped_reason"]
+
+
+def test_multi_payload_validation(tmp_path):
+    valid = {
+        "variants": [
+            {
+                "id": "P01",
+                "payload": {
+                    "csrf_mode": "valid",
+                    "fields": {
+                        "username": "'",
+                        "password": "dummy-only-not-real"
+                    }
+                }
+            },
+            {
+                "id": "P02",
+                "payload": {
+                    "csrf_mode": "valid",
+                    "fields": {
+                        "username": "' OR '1'='1' -- ",
+                        "password": "dummy-only-not-real"
+                    }
+                }
+            }
+        ]
+    }
+
+    # 정상적인 다중 페이로드
+    cli.validate_payload(valid, tmp_path)
+
+    invalid_samples = [
+        {"variants": []},
+        {
+            "variants": [
+                {"id": "P01", "payload": {}},
+                {"id": "P01", "payload": {}}
+            ]
+        },
+        {
+            "variants": [
+                {"id": "P01", "payload": {"fields": {"username": 123}}}
+            ]
+        },
+        {
+            "variants": [
+                {"id": "P01", "payload": {"variants": []}}
+            ]
+        }
+    ]
+
+    for sample in invalid_samples:
+        with pytest.raises(cli.ConfigError):
+            cli.validate_payload(sample, tmp_path)
+
+
+
+def test_multi_payload_expansion(tmp_path):
+    payload = {
+        "variants": [
+            {
+                "id": "P01",
+                "payload": {
+                    "csrf_mode": "valid",
+                    "fields": {
+                        "username": "'",
+                        "password": "dummy"
+                    }
+                }
+            },
+            {
+                "id": "P02",
+                "payload": {
+                    "csrf_mode": "valid",
+                    "fields": {
+                        "username": "' OR '1'='1' -- ",
+                        "password": "dummy"
+                    }
+                }
+            }
+        ]
+    }
+
+    (tmp_path / "variants.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+
+    case = {
+        "case_id": "SEC-01",
+        "phase": 2,
+        "category": "injection",
+        "method": "POST",
+        "path": "/accounts/login/",
+        "auth_role": "anonymous",
+        "input_reference": "variants.json",
+        "expected_app": {"http_status": 400},
+        "expected_waf": "NOT_APPLICABLE",
+        "max_requests": 2,
+        "note": "다중 SQLi 테스트"
+    }
+
+    legacy = {
+        **case,
+        "case_id": "APP-04-ANON-GET",
+        "method": "GET",
+        "path": "/posts/",
+        "input_reference": None,
+        "max_requests": 1
+    }
+
+    suite = {
+        "schema_version": 1,
+        "suite_id": "multi-payload-test",
+        "suite_kind": "regression",
+        "cases": [case, legacy]
+    }
+
+    cli.validate_suite(suite, tmp_path)
+
+    expanded = cli.expand_suite_variants(suite, tmp_path)
+
+    assert len(expanded["cases"]) == 3
+
+    assert [
+        c["case_id"] for c in expanded["cases"]
+    ] == [
+        "SEC-01-P01",
+        "SEC-01-P02",
+        "APP-04-ANON-GET"
+    ]
+
+    first, second, unchanged = expanded["cases"]
+
+    assert first["parent_case_id"] == "SEC-01"
+    assert first["payload_id"] == "P01"
+    assert second["payload_id"] == "P02"
+
+    assert first["_variant_payload"]["fields"]["username"] == "'"
+    assert second["_variant_payload"]["fields"]["username"] == "' OR '1'='1' -- "
+
+    assert first["max_requests"] == 1
+    assert second["max_requests"] == 1
+
+    # 기존 단일 케이스는 변경하지 않는다.
+    assert unchanged == legacy
+
+    # 원본 suite 역시 변경되지 않는다.
+    assert len(suite["cases"]) == 2
+    assert suite["cases"][0]["case_id"] == "SEC-01"
+    assert "_variant_payload" not in suite["cases"][0]
+
+    # 확장 ID가 기존 case_id와 충돌하면 거부한다.
+    collision_suite = {
+        **suite,
+        "cases": [
+            case,
+            {**legacy, "case_id": "SEC-01-P01"}
+        ]
+    }
+
+    with pytest.raises(cli.ConfigError):
+        cli.expand_suite_variants(collision_suite, tmp_path)
+
+
+def test_multi_payload_http_execution(tmp_path, monkeypatch):
+    from urllib.parse import parse_qs
+
+    fixture_dir = tmp_path / "fixtures"
+    fixture_dir.mkdir()
+
+    variants = {
+        "variants": [
+            {
+                "id": "P01",
+                "payload": {
+                    "csrf_mode": "valid",
+                    "fields": {
+                        "username": "'",
+                        "password": "dummy-test-only"
+                    }
+                }
+            },
+            {
+                "id": "P02",
+                "payload": {
+                    "csrf_mode": "valid",
+                    "fields": {
+                        "username": "' OR '1'='1' -- ",
+                        "password": "dummy-test-only"
+                    }
+                }
+            }
+        ]
+    }
+
+    (fixture_dir / "variants.json").write_text(
+        json.dumps(variants),
+        encoding="utf-8"
+    )
+
+    suite = {
+        "schema_version": 1,
+        "suite_id": "multi-payload-http-test",
+        "suite_kind": "regression",
+        "cases": [
+            {
+                "case_id": "SEC-01",
+                "phase": 2,
+                "category": "injection",
+                "method": "POST",
+                "path": "/accounts/login/",
+                "auth_role": "anonymous",
+                "input_reference": "variants.json",
+                # Mock 서버는 유효 CSRF 로그인 POST에 302를 반환한다.
+                "expected_app": {"http_status": 302},
+                "expected_waf": "NOT_APPLICABLE",
+                "max_requests": 2,
+                "verification_mode": "manual_required",
+                "note": "다중 payload 전송 기능 시험"
+            }
+        ]
+    }
+
+    suite_file = tmp_path / "suite.json"
+    suite_file.write_text(
+        json.dumps(suite),
+        encoding="utf-8"
+    )
+
+    observed = []
+    original_send = cli.requests.Session.send
+
+    def capture_send(session, prepared, **kwargs):
+        if (
+            prepared.method == "POST"
+            and prepared.path_url == "/accounts/login/"
+        ):
+            body = prepared.body
+            if isinstance(body, bytes):
+                body = body.decode("utf-8")
+
+            fields = parse_qs(body)
+            observed.append(fields["username"][0])
+
+        return original_send(session, prepared, **kwargs)
+
+    monkeypatch.setattr(
+        cli.requests.Session,
+        "send",
+        capture_send
+    )
+
+    with server(tmp_path) as (port, waf, app):
+        args = inputs(tmp_path, port)
+        args.cases = suite_file
+        args.fixture_dir = fixture_dir
+
+        # 로그 검증 전이므로 UNKNOWN(3)이 정상이다.
+        assert cli.run(args) == 3
+
+        result_path = args.output_dir / "results.json"
+        result = cli.load_json(result_path)
+        records = result["results"]
+
+        # 두 페이로드가 실제로 각각 전송됐는지 확인한다.
+        assert observed == [
+            "'",
+            "' OR '1'='1' -- "
+        ]
+
+        assert len(records) == 2
+        assert [r["case_id"] for r in records] == [
+            "SEC-01-P01",
+            "SEC-01-P02"
+        ]
+
+        assert [r["payload_id"] for r in records] == [
+            "P01", "P02"
+        ]
+
+        assert all(
+            r["parent_case_id"] == "SEC-01"
+            for r in records
+        )
+
+        # 두 요청의 식별자는 서로 달라야 한다.
+        assert len({r["request_id"] for r in records}) == 2
+        assert len({r["trace_id"] for r in records}) == 2
+
+        assert result["selected_cases"] == 1
+        assert result["execution_cases"] == 2
+        assert result["unexecuted_cases"] == 0
+
+        # CSRF 준비 GET 1건 + POST 2건
+        assert result["total_http_requests_including_preparation"] == 3
+
+        # 결과 파일에 원본 payload와 비밀번호를 저장하지 않는다.
+        raw = result_path.read_text(encoding="utf-8")
+        assert "_variant_payload" not in raw
+        assert "dummy-test-only" not in raw
+
+        # CSV에도 페이로드 식별자가 있어야 한다.
+        csv_header = (
+            args.output_dir / "summary.csv"
+        ).read_text(encoding="utf-8-sig").splitlines()[0]
+
+        assert "parent_case_id" in csv_header
+        assert "payload_id" in csv_header
+
+        # 로그 상관분석에서 확장 요청을 개별적으로 연결한다.
+        corr_args = Namespace(
+            run_json=result_path,
+            waf_log=waf,
+            app_log=app,
+            output_dir=tmp_path / "correlated"
+        )
+
+        # manual_required이므로 로그 연결 후에도 최종 판정은 UNKNOWN.
+        assert cli.correlate(corr_args) == 3
+
+        correlated = cli.load_json(
+            corr_args.output_dir / "correlated_results.json"
+        )["results"]
+
+        assert len(correlated) == 2
+        assert all(
+            r["correlation_status"] == "MATCHED"
+            for r in correlated
+        )
+        assert all(
+            r["verdict"] == "UNKNOWN"
+            for r in correlated
+        )

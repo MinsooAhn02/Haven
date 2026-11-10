@@ -3,19 +3,47 @@
 {% block body %}
 <main class="page-shell">
   <header class="page-heading">
+    <p class="intro">현재 위치: 공유받은 기록</p>
+    <p class="nav-link">공유받은 기록 · 읽기 전용</p>
     <h1>공유받은 기록</h1>
     <p class="intro">다른 사람이 나와 공유한 기록을 확인할 수 있습니다.</p>
   </header>
+
   {% if posts %}
-    <section class="panel" aria-label="공유받은 기록 목록">
-      <ul class="record-list">
+    <section class="panel" aria-labelledby="shared-records-heading">
+      <h2 id="shared-records-heading">최근 공유받은 기록</h2>
+      <p class="intro">기록 제목과 작성자를 확인할 수 있습니다. 공유받은 기록은 읽기 전용입니다.</p>
+      <ul class="record-list" aria-label="공유받은 기록 목록">
         {% for post in posts %}
           <li class="record-row">
-            <h2 class="record-title">{{ post.title }}</h2>
-            <a class="record-link" href="{% url 'posts:detail' pk=post.pk %}">기록 열기</a>
+            <div>
+              <h3 class="record-title">{{ post.title }}</h3>
+              <p class="record-meta">
+                <span>작성자: <strong>{{ post.owner.username }}</strong></span>
+                <span>작성: <time datetime="{{ post.created_at|date:'c' }}">{{ post.created_at|date:"Y년 n월 j일 H:i" }}</time></span>
+                <span>수정: <time datetime="{{ post.updated_at|date:'c' }}">{{ post.updated_at|date:"Y년 n월 j일 H:i" }}</time></span>
+              </p>
+            </div>
+            <a class="button button-secondary" href="{% url 'posts:detail' pk=post.pk %}">기록 상세 보기</a>
           </li>
         {% endfor %}
       </ul>
+
+      {% if page_obj %}
+        <nav class="pagination" aria-label="공유받은 기록 페이지 이동">
+          {% if page_obj.has_previous %}
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">이전 페이지</a>
+          {% else %}
+            <span class="page-link" aria-disabled="true">이전 페이지</span>
+          {% endif %}
+          <span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 페이지</span>
+          {% if page_obj.has_next %}
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}">다음 페이지</a>
+          {% else %}
+            <span class="page-link" aria-disabled="true">다음 페이지</span>
+          {% endif %}
+        </nav>
+      {% endif %}
     </section>
   {% else %}
     <section class="panel empty-state" aria-live="polite">

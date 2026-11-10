@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>공유받은 기록 목록 시안 | Haven 기록</title>
+  <link rel="stylesheet" href="../static/css/haven.css">
+  <style>
+    .page-shell { width: calc(100% - 2rem); max-width: 52rem; }
+    .page-heading { margin-bottom: 1.5rem; }
+    .access-label {
+      display: inline-block;
+      margin: 0 0 .75rem;
+      padding: .4rem .75rem;
+      border-radius: 999px;
+      color: #245b42;
+      background: #eaf3ec;
+      font-size: .9rem;
+      font-weight: 700;
+    }
+    .list-panel { width: 100%; max-width: 52rem; margin: 1.5rem auto; padding: 1.5rem 2rem; }
+    .list-caption, .preview-note { color: #5d6d63; font-size: .9rem; line-height: 1.65; }
+    .list-caption { margin: 0 0 1rem; }
+    .shared-record-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+    .shared-record-row { min-width: 0; padding: 1.25rem 0; border-bottom: 1px solid #e5ece6; }
+    .shared-record-row:first-child { padding-top: .5rem; }
+    .shared-record-row:last-child { border-bottom: 0; }
+    .record-title-preview { display: inline-block; max-width: 100%; margin: 0 0 .65rem; color: #286349; font-size: 1.2rem; font-weight: 700; overflow-wrap: anywhere; }
+    .detail-cue { margin-left: .5rem; color: #5d6d63; font-size: .85rem; font-weight: 400; }
+    .record-meta { margin: 0; }
+    .record-meta span { overflow-wrap: anywhere; }
+    .record-meta strong { color: #35483e; }
+    .empty-state { margin: 1.5rem 0 0; padding: 1.25rem; border: 1px dashed #aebeb1; border-radius: .65rem; background: #f8faf8; }
+    .empty-state h2 { margin: 0 0 .5rem; font-size: 1.05rem; }
+    .empty-state p { margin: 0; color: #5d6d63; line-height: 1.65; }
+    .pagination { justify-content: center; margin-top: 1.5rem; }
+    .page-link { display: inline-block; min-width: 2.5rem; text-align: center; }
+    .current-page { border: 1px solid #286349; background: #fff; font-weight: 700; }
+    .preview-note { margin: 1.25rem 0 0; }
+    .preview-note:last-child { margin-bottom: 1rem; }
+    @media (max-width: 36rem) {
+      .page-shell { width: calc(100% - 2rem); margin: 1rem auto; }
+      .list-panel { width: 100%; margin: 1rem auto; padding: 1.25rem; }
+      .nav-list { flex-wrap: wrap; gap: .4rem .75rem; }
+      .record-title-preview { font-size: 1.1rem; }
+      .detail-cue { display: block; margin: .3rem 0 0; }
+      .pagination { gap: .5rem; }
+      .page-link { padding: .5rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <span class="brand">Haven 기록</span>
+      <nav aria-label="주요 메뉴">
+        <ul class="nav-list">
+          <li><span class="nav-link">내 기록</span></li>
+          <li><span class="nav-link" aria-current="page">공유받은 기록</span></li>
+          <li><button class="logout-button" type="button" disabled>로그아웃 (미리보기)</button></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <p class="intro">현재 위치: 공유받은 기록</p>
+
+    <header class="page-heading">
+      <p class="access-label">공유받은 기록 · 읽기 전용</p>
+      <h1>공유받은 기록</h1>
+      <p class="intro">다른 사람이 나와 공유한 기록을 확인할 수 있습니다.</p>
+    </header>
+
+    <section class="panel list-panel" aria-labelledby="records-heading">
+      <h2 id="records-heading">최근 공유받은 기록</h2>
+      <p class="list-caption">기록 제목과 작성자를 확인하세요. 제목별 상세 보기는 화면 확인용 표시입니다.</p>
+
+      <ul class="shared-record-list" aria-label="공유받은 기록 예시 목록">
+        <li class="shared-record-row">
+          <span class="record-title-preview" aria-disabled="true">이번 주 프로젝트 회의 메모<span class="detail-cue">상세 보기 (미리보기)</span></span>
+          <p class="record-meta">
+            <span>작성자: <strong>owner-demo-a</strong> (예시 계정)</span>
+            <span>작성 시각: <time datetime="2026-11-09T10:30:00+09:00">2026년 11월 9일 10:30</time></span>
+            <span>수정 시각: <time datetime="2026-11-09T11:15:00+09:00">2026년 11월 9일 11:15</time></span>
+          </p>
+        </li>
+        <li class="shared-record-row">
+          <span class="record-title-preview" aria-disabled="true">서비스 화면 검토 내용<span class="detail-cue">상세 보기 (미리보기)</span></span>
+          <p class="record-meta">
+            <span>작성자: <strong>owner-demo-b</strong> (예시 계정)</span>
+            <span>작성 시각: <time datetime="2026-11-08T16:20:00+09:00">2026년 11월 8일 16:20</time></span>
+            <span>수정 시각: <time datetime="2026-11-08T16:20:00+09:00">2026년 11월 8일 16:20</time></span>
+          </p>
+        </li>
+      </ul>
+
+      <nav class="pagination" aria-label="페이지 이동 미리보기">
+        <span class="page-link" aria-disabled="true">이전</span>
+        <span class="page-link current-page" aria-current="page">1</span>
+        <span class="page-link" aria-disabled="true">2</span>
+        <span class="page-link" aria-disabled="true">다음</span>
+      </nav>
+      <p class="preview-note">페이지 이동은 정적 미리보기이며 동작하지 않습니다. 한 페이지에 최대 20개 기록을 표시하는 구조의 예시입니다.</p>
+
+      <section class="empty-state" aria-labelledby="empty-heading">
+        <h2 id="empty-heading">빈 목록 상태 예시</h2>
+        <p>아직 공유받은 기록이 없습니다.</p>
+        <p class="preview-note">공유받은 기록이 없을 때 위의 목록을 대신해 표시하는 화면 상태입니다.</p>
+      </section>
+    </section>
+
+    <p class="preview-note">정적 디자인 시안입니다. 기록 제목·작성자·시각은 화면 확인용 가상 데이터입니다. 상세 보기와 페이지 이동은 연결되지 않았으며, 실제 URL이나 데이터 조회를 구현하지 않습니다.</p>
+  </main>
+</body>
+</html>

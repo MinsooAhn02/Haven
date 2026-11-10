@@ -48,7 +48,7 @@
 | 회차 | 상태 | 실제 진행·검증 결과 | 관련 문서·PR | 다음 작업·인계 |
 |---|---|---|---|---|
 | 1 | 부분 완료 | 루트·시험용 IAM 사용자 MFA 확인, 서울 리전 자원 조회, 크레딧·비용 알림 확인, 일부 허용·거부 시험 | [1회차](1회차.md), [결정현황](민수_인계_결정현황.md), PR #8(병합) | 남은 계정 복구/타 리전 확인 및 운영 결정 반영 |
-| 2 | 진행 중 | 11/09: $100 예산·$50/$80/$95 경보 설정, 공통 EC2 SSM Role·프로파일 생성, minsung 계정·제한된 PassRole 연결, 인프라 정책 생성·사용자 연결 확인, EC2 Role SSM 읽기 인라인 정책 및 S3 백업·복원 인라인 정책 연결. 실제 인프라 권한 허용·거부 시험은 미실시 | [2회차 작업 기록](2회차.md), [IAM 파일](IAM/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 인프라 권한 허용·거부 검증, minsoo MFA·SSM 검증, S3 버킷 생성·백업/복원 시험, 팀원별 허용·거부 시험 |
+| 2 | 권한·버킷 구성 완료 / 실환경 검증 대기 | 11/09 IAM·예산 설정, 11/10 민성 EC2 시작/중지 기존 권한 확인·SSM 조회 추가, IAM 허용/거부 시뮬레이터 4건 확인, minsoo Session Manager 정책 연결, 서울 S3 백업 버킷 생성. 실제 EC2 구축/SSM 접속/백업 복원 시험은 담당자 대기 | [2회차 작업 기록](2회차.md), [IAM 파일](IAM/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 민성: CLI/MFA·EC2 시작/중지 실제 시험 / 민수: Session Manager 접속·S3 백업 복원 시험 / 보람: 결과 반영·권한 재점검 |
 | 3 | 미착수 | 미확인 | — | 3회차 권한·WAF·로그 보완 |
 | 4 | 미착수 | 미확인 | — | 최종 권한/비용·자원 종료 검토 |
 
@@ -180,3 +180,24 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - **수:** WAF · 로그(CloudWatch) · SES 메일 · 백업 버킷(`haven-backup-<계정ID>`) 생성 권한 확인·추가
 - **목~금:** IAM 수정·재시험 · 종료 시 지울 자원 목록 · 새 계정 절차
 - **매일:** 비용은 일별 보고에 금액만(재계산은 필요할 때만)
+
+
+## 2026-11-10 화요일 추가 확인
+
+### 보람 IAM·S3 구성 완료(사용자 제공 AWS 화면·JSON 근거)
+- [x] `minsung` EC2 시작/중지 정책 포함 확인 (서울·Project=Haven·Owner=minsung)
+- [x] `minsung`에 `ssm:DescribeInstanceInformation` 권한 추가·저장
+- [x] `minsung` CLI v2.39.6 확인, `SignInLocalDevelopmentAccess` 연결 확인 (장기 액세스 키 미발급)
+- [x] `ec2:DescribeInstances` 서울 허용/타 리전 거부 **시뮬레이터** 시험
+- [x] `iam:PassRole` 지정 EC2 Role 전달 허용/Lambda 전달 거부 **시뮬레이터** 시험
+- [x] `minsoo` Session Manager 인라인 정책 생성·연결, GitHub 정책 기록
+- [x] `haven-backup-ACCOUNT_ID_MASKED` S3 버킷 생성 (서울·퍼블릭 차단·SSE-S3)
+- [x] EC2 공통 Role S3 `db-backups/*`, SSM 파라미터 및 minsoo 파라미터 계정 범위 확인
+
+### 담당자 실제 시험·인계 대기(보람이 대신 실행하지 않음)
+- [ ] 민성: Git Bash `aws login`, MFA·STS 계정 확인, #34 EC2 시작·중지 및 구축 실제 허용/거부 결과
+- [ ] 민수: Haven 태그 EC2 SSM 세션 접속 및 타 대상 거부, 본인 세션 종료/재개 검증
+- [ ] 민수: S3 백업/복원 실제 시험 및 경로·권한 오류 결과 공유
+- [ ] 보람: 시험 결과를 받아 IAM 정책 보완·필요시 재시험 및 프로젝트 종료 자원 목록 정리
+
+세부 내용은 [2회차 11/10 추가 기록](2회차.md) 참조. **구성 성공과 실제 서비스 접속 시험 성공을 혼동하지 않는다.**

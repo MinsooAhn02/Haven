@@ -2,7 +2,7 @@
 
 A = 소유자, B = 공유 대상, C = 공유하지 않은 회원, operator = 제한된 운영 관리자.
 """
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.test import Client, TestCase
 
 from posts.forms import SHARE_TARGET_ERROR
@@ -15,7 +15,8 @@ class SharingBase(TestCase):
         cls.a = User.objects.create_user("member_a")
         cls.b = User.objects.create_user("member_b")
         cls.c = User.objects.create_user("member_c")
-        cls.op = User.objects.create_user("operator", is_staff=True)
+        cls.op = User.objects.create_user("operator")  # 전용 권한을 가진 운영 관리자 (is_staff 아님)
+        cls.op.user_permissions.add(*Permission.objects.filter(content_type__app_label="adminpanel"))
         cls.p1 = Post.objects.create(owner=cls.a, title="A의 공유 기록", body="A의 공유 본문")
         cls.p2 = Post.objects.create(owner=cls.a, title="A의 다른 기록", body="다른 본문")
 
@@ -56,7 +57,8 @@ class OwnerShareManagementTests(SharingBase):
         User.objects.create_user("inactive_member", is_active=False)
         User.objects.create_superuser("root_admin")
         client = self.as_user(self.a)
-        for username in ("no_such_member", "member_a", "inactive_member", "operator", "root_admin"):
+        User.objects.create_user("staff_only", is_staff=True)
+        for username in ("no_such_member", "member_a", "inactive_member", "operator", "staff_only", "root_admin"):
             with self.subTest(username=username):
                 res = client.post(f"/posts/{self.p1.pk}/shares/", {"username": username})
                 self.assertEqual(res.status_code, 400)

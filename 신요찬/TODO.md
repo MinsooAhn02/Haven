@@ -45,7 +45,7 @@
 | 회차 | 상태 | 환경·실행 명령·기대/실제 결과 | PR·가림 증거 | 다음 담당자에게 전달할 것 |
 |---|---|---|---|---|
 | 1 | 완료 | Windows 3.13.17·Linux 3.11~3.13, PostgreSQL 16. `python manage.py test accounts posts` → Ran 65, OK. 결함 15개 주입 중 동작을 바꾸는 14개 FAILED로 잡음. 권혁민 정적 보안 검토: 인증·인가·IDOR·CSRF 취약점 없음 | PR #25 (`c524d05` 병합), `신요찬/1회차_앱_검증기록.md` | 안민수: 앱 CI 연결 시 `APP_DIR=신요찬/app`. 권혁민: fixture 실제 앱 시험 |
-| 2 | 완료 (PR 제출) | Windows 3.13.17·Linux 3.12/3.13. `python manage.py test accounts posts adminpanel` → Ran 122, OK. 결함 35개 주입 중 동작을 바꾸는 32개 FAILED. `haven_app` 실제 서버 41개 항목·Windows 브라우저 12개 흐름 확인. APP-11은 권혁민 CLI로 302/302/413 | 2회차 PR, `신요찬/2회차_앱_검증기록.md`, `신요찬/앱계약.md` v1.1 | 노푸른: 2회차 템플릿 3개. 안민수: D1~D5 결정(`앱계약.md` v1.1 8장), CI에 `adminpanel` 포함, Nginx 글 경로 8,192바이트. 권혁민: 2회차 fixture 실제 앱 시험 |
+| 2 | 완료 (PR #33, 검토 중) | Windows 3.13.17·Linux 3.12/3.13 `python manage.py test accounts posts adminpanel` → Ran 126, OK. 결함 50개 주입 중 동작을 바꾸는 46개 FAILED. `haven_app` 실제 서버 41개 항목·Windows 브라우저 12개 흐름 확인. APP-11은 권혁민 CLI로 302/302/413. 11/10 운영자 판정을 명세 3.2(전용 권한)대로 수정 | PR #33, `신요찬/2회차_앱_검증기록.md`, `신요찬/앱계약.md` v1.2 | 노푸른: 2회차 템플릿 3개, 메뉴 조건 변경(`앱계약.md` 5장). 안민수: D2·D3·D5 결정(`앱계약.md` 8장), Nginx 글 경로 8,192바이트. 권혁민: #33 보안 점검, 2회차 fixture 실제 앱 시험 |
 | 3 | 미착수 | 미확인 | — | — |
 | 4 | 미착수 | 미확인 | — | — |
 

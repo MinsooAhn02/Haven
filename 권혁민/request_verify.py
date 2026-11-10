@@ -21,7 +21,7 @@ from urllib.parse import urlsplit, urlunsplit
 import uuid
 import socket
 import threading
-
+import os
 import requests
 
 ROLES = {"anonymous", "member_a", "member_b", "member_c", "operator"}
@@ -570,19 +570,38 @@ def get_csrf_token(s: requests.Session) -> str | None:
 def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: str,
                run_id: str, prep_events: list, max_response_bytes: int) -> None:
     """역할별 시험 계정으로 로그인한다. 비밀번호는 대화형 입력하고 기록 금지."""
-    print(f"[인증 준비] {role}: 가상 시험 계정 정보를 대화형으로 입력하세요", file=sys.stderr)
-    try:
-        username = input(f"  {role} 사용자 이름: ").strip()
-    except EOFError as exc:
-        raise ExecutionError("사용자 이름 입력을 받을 수 없습니다") from exc
-    if not username:
-        raise ExecutionError("사용자 이름이 비어 있습니다")
-    try:
-        password = getpass.getpass(f"  {role} 비밀번호(화면 미표시): ")
-    except EOFError as exc:
-        raise ExecutionError("비밀번호 입력을 받을 수 없습니다") from exc
-    if not password:
-        raise ExecutionError("비밀번호가 비어 있습니다")
+    local_test_account = (
+        target == "http://127.0.0.1:8000"
+        and role in {"member_a", "member_b", "member_c"}
+    )
+    seed_password = (
+        os.environ.get("HAVEN_SEED_PASSWORD")
+        if local_test_account else None
+    )
+
+    if seed_password:
+        username = role
+        password = seed_password
+        print(f"[인증 준비] {role}: 로컬 시험 계정 자동 로그인")
+    else:
+        print(f"[인증 준비] {role}: 계정 정보를 입력하세요")
+
+        try:
+            username = input(f"  {role} 사용자 이름: ").strip()
+        except EOFError as exc:
+            raise ExecutionError("사용자 이름 입력을 받을 수 없습니다") from exc
+
+        if not username:
+            raise ExecutionError("사용자 이름이 비어 있습니다")
+
+        try:
+            password = getpass.getpass(f"  {role} 비밀번호: ")
+        except EOFError as exc:
+            raise ExecutionError("비밀번호 입력을 받을 수 없습니다") from exc
+
+        if not password:
+            raise ExecutionError("비밀번호가 비어 있습니다")
+
     rid = str(uuid.uuid4())
     detail, html = bounded_send(s, "GET", target, "/accounts/login/", budget, rid,
                                 headers={RUN_ID_HEADER: run_id}, max_response_bytes=min(max_response_bytes, 65536))

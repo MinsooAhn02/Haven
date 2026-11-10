@@ -1,0 +1,49 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StartHavenSession",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": "arn:aws:ec2:ap-northeast-2:777171525040:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "ssm:resourceTag/Project": "Haven",
+          "ssm:resourceTag/Owner": "minsung"
+        }
+      }
+    },
+    {
+      "Sid": "UseSessionDocument",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": "arn:aws:ssm:ap-northeast-2:777171525040:document/SSM-SessionManagerRunShell"
+    },
+    {
+      "Sid": "ManageOwnSession",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:TerminateSession",
+        "ssm:ResumeSession",
+        "ssmmessages:OpenDataChannel"
+      ],
+      "Resource": "arn:aws:ssm:ap-northeast-2:777171525040:session/${aws:userid}-*"
+    },
+    {
+      "Sid": "ViewSessionStatus",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:DescribeSessions",
+        "ssm:GetConnectionStatus",
+        "ssm:DescribeInstanceInformation",
+        "ssm:DescribeInstanceProperties"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2"
+        }
+      }
+    }
+  ]
+}

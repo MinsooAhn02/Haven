@@ -1,4 +1,3 @@
-
 {
   "schema_version": 1,
   "suite_id": "haven-basic-share-flow",
@@ -12,11 +11,14 @@
       "path": "/posts/1/",
       "auth_role": "member_b",
       "input_reference": null,
-      "expected_app": {"http_status": 404},
+      "expected_app": {
+        "http_status": 404
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "공유 전 B는 P1 조회 불가"
+      "note": "공유 전 B는 P1 조회 불가",
+      "critical": true
     },
     {
       "case_id": "SH-01-A-GRANT",
@@ -26,11 +28,14 @@
       "path": "/posts/1/shares/",
       "auth_role": "member_a",
       "input_reference": "basic_share_grant.json",
-      "expected_app": {"http_status": 302},
+      "expected_app": {
+        "http_status": 302
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "A가 B에게 P1 읽기 공유 생성"
+      "note": "A가 B에게 P1 읽기 공유 생성",
+      "critical": true
     },
     {
       "case_id": "SH-01-B-AFTER",
@@ -40,11 +45,14 @@
       "path": "/posts/1/",
       "auth_role": "member_b",
       "input_reference": null,
-      "expected_app": {"http_status": 200},
+      "expected_app": {
+        "http_status": 200
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "공유 후 B는 P1 조회 가능"
+      "note": "공유 후 B는 P1 조회 가능",
+      "critical": true
     },
     {
       "case_id": "SH-01-C-DENIED",
@@ -54,7 +62,9 @@
       "path": "/posts/1/",
       "auth_role": "member_c",
       "input_reference": null,
-      "expected_app": {"http_status": 404},
+      "expected_app": {
+        "http_status": 404
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
@@ -68,7 +78,9 @@
       "path": "/posts/1/edit/",
       "auth_role": "member_b",
       "input_reference": "post_valid_record.json",
-      "expected_app": {"http_status": 404},
+      "expected_app": {
+        "http_status": 404
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
@@ -82,7 +94,9 @@
       "path": "/posts/1/shares/",
       "auth_role": "member_a",
       "input_reference": "basic_share_grant.json",
-      "expected_app": {"http_status": 302},
+      "expected_app": {
+        "http_status": 302
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
@@ -96,7 +110,9 @@
       "path": "/posts/1/shares/",
       "auth_role": "member_a",
       "input_reference": "basic_share_invalid_variants.json",
-      "expected_app": {"http_status": 400},
+      "expected_app": {
+        "http_status": 400
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 4,
       "verification_mode": "manual_required",
@@ -107,42 +123,64 @@
       "phase": 2,
       "category": "authorization",
       "method": "POST",
-      "path": "/posts/1/shares/1/revoke/",
+      "path": "/posts/1/shares/{share_id}/revoke/",
       "auth_role": "member_b",
       "input_reference": "post_empty_valid.json",
-      "expected_app": {"http_status": 404},
+      "expected_app": {
+        "http_status": 404
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "B는 자신이 공유받은 관계도 해제할 수 없음"
+      "note": "B는 자신이 공유받은 관계도 해제할 수 없음",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a"
+      }
     },
     {
       "case_id": "SH-05-C-REVOKE-DENIED",
       "phase": 2,
       "category": "authorization",
       "method": "POST",
-      "path": "/posts/1/shares/1/revoke/",
+      "path": "/posts/1/shares/{share_id}/revoke/",
       "auth_role": "member_c",
       "input_reference": "post_empty_valid.json",
-      "expected_app": {"http_status": 404},
+      "expected_app": {
+        "http_status": 404
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "공유받지 않은 C의 공유 해제 거부"
+      "note": "공유받지 않은 C의 공유 해제 거부",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a"
+      }
     },
     {
       "case_id": "SH-03-A-REVOKE",
       "phase": 2,
       "category": "sharing",
       "method": "POST",
-      "path": "/posts/1/shares/1/revoke/",
+      "path": "/posts/1/shares/{share_id}/revoke/",
       "auth_role": "member_a",
       "input_reference": "post_empty_valid.json",
-      "expected_app": {"http_status": 302},
+      "expected_app": {
+        "http_status": 302
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "소유자 A가 B의 P1 공유 해제"
+      "note": "소유자 A가 B의 P1 공유 해제",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a"
+      },
+      "critical": true
     },
     {
       "case_id": "SH-03-B-AFTER-REVOKE",
@@ -152,11 +190,39 @@
       "path": "/posts/1/",
       "auth_role": "member_b",
       "input_reference": null,
-      "expected_app": {"http_status": 404},
+      "expected_app": {
+        "http_status": 404
+      },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "공유 해제 직후 B의 P1 재접근 거부"
+      "note": "공유 해제 직후 B의 P1 재접근 거부",
+      "critical": true
+    }
+  ],
+  "cleanup_cases": [
+    {
+      "case_id": "CLEANUP-FLOW-P1-B",
+      "phase": 2,
+      "category": "cleanup",
+      "method": "POST",
+      "path": "/posts/1/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "SH-01-A-GRANT",
+      "note": "공유 생성 요청을 시도했다면 P1→B를 정리. 이미 해제됐으면 POST 없이 건너뜀",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a",
+        "allow_missing": true
+      }
     }
   ]
 }

@@ -585,11 +585,23 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
         print(f"[인증 준비] {role}: 로컬 시험 계정 자동 로그인")
     else:
         print(f"[인증 준비] {role}: 계정 정보를 입력하세요")
-        username = input(f"  {role} 사용자 이름: ").strip()
-        password = getpass.getpass(f"  {role} 비밀번호: ")
 
-        if not username or not password:
-            raise ExecutionError("사용자 이름 또는 비밀번호가 비어 있습니다")
+        try:
+            username = input(f"  {role} 사용자 이름: ").strip()
+        except EOFError as exc:
+            raise ExecutionError("사용자 이름 입력을 받을 수 없습니다") from exc
+
+        if not username:
+            raise ExecutionError("사용자 이름이 비어 있습니다")
+
+        try:
+            password = getpass.getpass(f"  {role} 비밀번호: ")
+        except EOFError as exc:
+            raise ExecutionError("비밀번호 입력을 받을 수 없습니다") from exc
+
+        if not password:
+            raise ExecutionError("비밀번호가 비어 있습니다")
+
     rid = str(uuid.uuid4())
     detail, html = bounded_send(s, "GET", target, "/accounts/login/", budget, rid,
                                 headers={RUN_ID_HEADER: run_id}, max_response_bytes=min(max_response_bytes, 65536))

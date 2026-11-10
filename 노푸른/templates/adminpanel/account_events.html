@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}계정 상태 변경 이력 | Haven 기록{% endblock %}
+
+{% block body %}
+<main class="page-shell">
+  <header class="page-heading">
+    <p class="intro">현재 위치: 관리자 &gt; 계정 상태 변경 이력</p>
+    <h1>계정 상태 변경 이력</h1>
+    <p class="intro">관리자가 수행한 계정 활성 상태 변경 기록입니다.</p>
+  </header>
+
+  {% if events %}
+    <section class="panel" aria-labelledby="account-events-heading">
+      <h2 id="account-events-heading">변경 이력</h2>
+      <div tabindex="0" role="region" aria-label="계정 상태 변경 이력 표, 가로로 이동 가능" style="overflow-x: auto;">
+        <table style="width: 100%; min-width: 38rem; border-collapse: collapse; text-align: left;">
+          <caption style="padding: .5rem 0; text-align: left;">계정 상태 변경 시각, 수행 관리자, 대상 및 변경 전후 상태</caption>
+          <thead>
+            <tr>
+              <th scope="col" style="padding: .75rem;">변경 시각</th>
+              <th scope="col" style="padding: .75rem;">수행 관리자</th>
+              <th scope="col" style="padding: .75rem;">변경 대상</th>
+              <th scope="col" style="padding: .75rem;">변경 전</th>
+              <th scope="col" style="padding: .75rem;">변경 후</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in events %}
+              <tr>
+                <td style="padding: .75rem; border-top: 1px solid #e5ece6;">
+                  <time datetime="{{ event.action_time|date:'c' }}">{{ event.action_time|date:"Y년 n월 j일 H:i" }}</time>
+                </td>
+                <td style="padding: .75rem; border-top: 1px solid #e5ece6; overflow-wrap: anywhere;">{{ event.actor_username }}</td>
+                <td style="padding: .75rem; border-top: 1px solid #e5ece6; overflow-wrap: anywhere;">{{ event.target_username }}</td>
+                <td style="padding: .75rem; border-top: 1px solid #e5ece6;">{{ event.before }}</td>
+                <td style="padding: .75rem; border-top: 1px solid #e5ece6;">{{ event.after }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <nav class="pagination" aria-label="계정 상태 변경 이력 페이지 이동">
+        {% if page_obj.has_previous %}
+          <a class="page-link" href="?page={{ page_obj.previous_page_number }}">이전 페이지</a>
+        {% else %}
+          <span class="page-link" aria-disabled="true">이전 페이지</span>
+        {% endif %}
+        <span aria-current="page">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 페이지</span>
+        {% if page_obj.has_next %}
+          <a class="page-link" href="?page={{ page_obj.next_page_number }}">다음 페이지</a>
+        {% else %}
+          <span class="page-link" aria-disabled="true">다음 페이지</span>
+        {% endif %}
+      </nav>
+    </section>
+  {% else %}
+    <section class="panel empty-state" aria-live="polite">
+      <h2>계정 상태 변경 이력이 없습니다</h2>
+      <p>계정 상태 변경이 기록되면 이곳에 표시됩니다.</p>
+    </section>
+    <nav class="pagination" aria-label="계정 상태 변경 이력 페이지 이동">
+      <span class="page-link" aria-disabled="true">이전 페이지</span>
+      <span aria-current="page">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 페이지</span>
+      <span class="page-link" aria-disabled="true">다음 페이지</span>
+    </nav>
+  {% endif %}
+</main>
+{% endblock %}

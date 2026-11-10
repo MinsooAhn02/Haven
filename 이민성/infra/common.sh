@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 모든 스크립트가 공유하는 함수 (build.sh, nat-up.sh, nat-down.sh, destroy.sh)
+# 모든 스크립트가 공유하는 함수 (build.sh, nat-up.sh, nat-down.sh, destroy.sh, ec2-stop.sh, ec2-start.sh, night.sh, morning.sh)
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=config.sh
 source "$HERE/config.sh"
@@ -80,4 +80,31 @@ check_account() {
   [[ $acct == "$EXPECTED_ACCOUNT_ID" ]] \
     || die "허용한 팀 계정이 아님 (현재 ${acct:0:4}********, 기대 ${EXPECTED_ACCOUNT_ID:0:4}********). 개인 계정 비용 방지"
   log "계정 확인 OK: ${arn##*/} (계정 ${acct:0:4}********)"
+}
+
+# ── EC2 중지·시작용 (ec2-stop.sh, ec2-start.sh) ─────────
+
+# 이름(web-1/db-1)으로 서버 ID 찾기. 정확히 1대여야 하고, state 파일 ID와도 같아야 한다. 
+# 즉, web 1대 , db 1대 총 2대 각각 한대여야한다는 뜻
+#   사용: WEB_ID=$(find_server web-1 WEB_ID)
+find_server() {
+  local name=$1 var=$2 ids n
+  if [[ $DRY_RUN == 1 ]]; then echo "${!var:-i-DRYRUN-$name}"; return; fi
+  ids=$(aws --region "$AWS_REGION" ec2 describe-instances \
+    --filters "Name=tag:Name,Values=$name" "Name=tag:Project,Values=$PROJECT_TAG" \
+              "Name=tag:Owner,Values=$OWNER_TAG" \
+              "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+    --query 'Reservations[].Instances[].InstanceId' --output text)
+  n=$(wc -w <<< "$ids")
+  (( n == 1 )) || die "$name 서버가 ${n}대 (기대 1대): ${ids:-없음} → build.sh 실행 여부·콘솔 확인"
+  if [[ -n ${!var:-} && ${!var} != "$ids" ]]; then
+    die "$name ID가 state 파일($var=${!var})과 다름: $ids → 서버를 다시 만들었는지 확인"
+  fi
+  echo "$ids"
+}
+
+# 서버 하나의 현재 상태 (pending/running/stopping/stopped ...)
+server_state() {
+  aws --region "$AWS_REGION" ec2 describe-instances --instance-ids "$1" \
+    --query 'Reservations[0].Instances[0].State.Name' --output text
 }

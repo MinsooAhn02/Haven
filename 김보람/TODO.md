@@ -201,3 +201,13 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [ ] 보람: 시험 결과를 받아 IAM 정책 보완·필요시 재시험 및 프로젝트 종료 자원 목록 정리
 
 세부 내용은 [2회차 11/10 추가 기록](2회차.md) 참조. **구성 성공과 실제 서비스 접속 시험 성공을 혼동하지 않는다.**
+
+## 2026-11-10 오후 추가 IAM 인계
+
+- [x] 민성님 실환경 `build.sh`와 IAM 권한 조건 대조: VPC 생성 오류 후 `Haven-Minsung-Infra-Policy` 수정, 서울 리전 인프라 작업 권한 보완. [12번 JSON](IAM/12_Minsung_Infra_Policy.json), PR #39(main 병합).
+- [x] 민성님 `RunInstances` 시험 결과 확인: 태그 없는 요청 거부, 공인 IP 자동 할당 명시적 거부, 기본 SG의 Haven 태그 부재에 따른 접근 거부 확인. **시험 명령과 실제 구축 스크립트의 조건을 구분함.**
+- [x] 민성님·민수님 역할 전달 설정 확인: `minsung`에 `iam:PassRole` 정책 연결, EC2용 역할 `haven-ec2-ssm-role` 및 `haven-ec2-ssm-profile` 연결, 역할에 `AmazonSSMManagedInstanceCore` 적용 확인.
+- [x] 추가 요청 정책 2개를 개인 브랜치에 문서화하고 [PR #42](https://github.com/MinsooAhn02/Haven/pull/42)에 함께 제출: [13번 EC2 종료(삭제) 권한](IAM/13_Minsung_TerminateInstances_Policy.json), [14번 민성 SSM 세션 접속 권한](IAM/14_Minsung_SessionManager_Policy.json).
+- [ ] **AWS 실적용 확인:** 위 13·14번 정책이 `minsung`에게 실제 연결·저장됐는지 확인. GitHub PR만으로 AWS 정책은 바뀌지 않음.
+- [ ] **담당자 검증 대기:** 민성님의 Haven 서버 SSM 접속·비대상 접근 거부 시험, EC2 종료 권한 시험(실제 영구 삭제 전 민수님 승인), 21시 NAT/EIP 정리 결과 및 비용 확인.
+- **권한 범위 주의:** `TerminateInstances` 정책은 서울 리전 `Project=Haven`, `Owner=minsung` 태그가 모두 붙은 서버에만 허용하지만, 시험 서버뿐 아니라 실제 Haven 서버도 삭제할 수 있음.

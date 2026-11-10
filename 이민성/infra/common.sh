@@ -4,6 +4,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=config.sh
 source "$HERE/config.sh"
 
+# Windows aws.exe는 출력 끝에 \r(CRLF)을 붙여 bash 비교가 깨진다 (11/10 실제 구축 때 RST-02 오탐으로 발견)
+# 모든 aws 출력에서 \r을 지운다. pipefail이 켜져 있어 aws 실패 코드는 그대로 전달된다
+aws() { command aws "$@" | tr -d '\r'; }
+
 STATE_FILE="$HERE/state/${AWS_REGION}.env"       # build.sh가 만든 자원 ID (Git에 올리지 않음, .gitignore)
 NAT_STATE_FILE="$HERE/state/${AWS_REGION}-nat.env" # 오늘 켠 NAT·EIP ID (nat-up.sh가 매번 새로 씀)
 

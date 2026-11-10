@@ -1,6 +1,6 @@
 """제한된 계정 관리 화면 (명세 2.2, 2회차 화면 계약 3·4장).
 
-- 운영 관리자만 접근. 일반 회원 403, 비로그인 302.
+- 운영 관리자 전용 권한이 있어야 접근. 없으면 403, 비로그인 302. is_staff만으로는 안 됨(명세 3.2).
 - 계정 목록에는 username, is_active, date_joined, last_login만 넘긴다(비밀번호·이메일·본문 없음).
 - 운영 관리자·최고 관리자·자기 자신은 상태 변경 대상이 아니다.
 """
@@ -13,22 +13,23 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
 from . import services
-from .permissions import is_manageable_member, operator_required
+from accounts.roles import members
+
+from .permissions import events_required, is_manageable_member, manage_required
 
 PAGE_SIZE = 20
 STATUS_VALUES = {"true": True, "false": False}
 
 
 @require_GET
-@operator_required
+@manage_required
 def account_list(request):
-    members = (
-        get_user_model()
-        .objects.filter(is_staff=False, is_superuser=False)
+    queryset = (
+        members()
         .only("username", "is_active", "date_joined", "last_login")
         .order_by("username", "id")
     )
-    page_obj = Paginator(members, PAGE_SIZE).get_page(request.GET.get("page"))
+    page_obj = Paginator(queryset, PAGE_SIZE).get_page(request.GET.get("page"))
     accounts = [
         SimpleNamespace(
             pk=u.pk,
@@ -43,7 +44,7 @@ def account_list(request):
 
 
 @require_POST
-@operator_required
+@manage_required
 def account_status(request, pk):
     target = get_object_or_404(get_user_model(), pk=pk)
     is_active = STATUS_VALUES.get(request.POST.get("is_active", ""))
@@ -59,7 +60,7 @@ def account_status(request, pk):
 
 
 @require_GET
-@operator_required
+@events_required
 def account_events(request):
     page_obj = Paginator(services.account_events(), PAGE_SIZE).get_page(request.GET.get("page"))
     events = [SimpleNamespace(**services.parse_event(e)) for e in page_obj.object_list]

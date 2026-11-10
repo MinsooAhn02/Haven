@@ -3,7 +3,7 @@ import os
 from io import StringIO
 from unittest import mock
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.core.management import CommandError, call_command
 from django.test import TransactionTestCase, override_settings
 
@@ -28,12 +28,26 @@ class SeedDemoTests(TransactionTestCase):
         self.assertTrue(a.check_password(SEED_ENV["HAVEN_SEED_PASSWORD"]))
         self.assertFalse(PostShare.objects.exists())
 
-    def test_operator_is_staff_but_not_superuser_and_members_are_not_staff(self):
+    def test_operator_has_only_the_two_operator_permissions(self):
+        """명세 3.2: 전용 권한 두 개, is_superuser=False. is_staff에 기대지 않는다."""
         with mock.patch.dict(os.environ, SEED_ENV):
             call_command("seed_demo", stdout=StringIO())
         op = User.objects.get(username="operator")
-        self.assertEqual((op.is_staff, op.is_superuser, op.is_active), (True, False, True))
-        self.assertFalse(User.objects.filter(username__startswith="member_", is_staff=True).exists())
+        self.assertEqual((op.is_staff, op.is_superuser, op.is_active), (False, False, True))
+        self.assertEqual(
+            sorted(op.user_permissions.values_list("content_type__app_label", "codename")),
+            [("adminpanel", "manage_account_status"), ("adminpanel", "view_account_status_events")],
+        )
+        self.assertTrue(op.has_perm("adminpanel.manage_account_status"))
+        members = User.objects.filter(username__startswith="member_")
+        self.assertFalse(members.filter(is_staff=True).exists())
+        self.assertFalse(members.filter(user_permissions__isnull=False).exists())
+
+    def test_refuses_when_operator_permissions_missing(self):
+        Permission.objects.filter(content_type__app_label="adminpanel").delete()
+        with mock.patch.dict(os.environ, SEED_ENV), self.assertRaises(CommandError):
+            call_command("seed_demo", stdout=StringIO())
+        self.assertEqual(User.objects.count(), 0)
 
     def test_share_option_shares_p1_with_member_b(self):
         with mock.patch.dict(os.environ, SEED_ENV):

@@ -5,9 +5,11 @@ owner·status는 폼에 없으므로 요청에 넣어 보내도 무시된다.
 from django import forms
 from django.contrib.auth import get_user_model
 
+from accounts.roles import is_member
+
 from .models import Post
 
-# 없는 아이디·비활성·자기 자신·운영 관리자를 구분하지 않는 하나의 문구(명세 3.3).
+# 없는 아이디·비활성·자기 자신·관리자 계정을 구분하지 않는 하나의 문구(명세 3.3).
 SHARE_TARGET_ERROR = "공유할 수 없는 사용자입니다."
 
 
@@ -43,8 +45,7 @@ class ShareForm(forms.Form):
             user is not None
             and user.is_active
             and user.pk != self.owner.pk
-            and not user.is_staff
-            and not user.is_superuser
+            and is_member(user)  # 운영 관리자·is_staff·superuser는 공유 대상이 아니다
         )
         if not allowed:
             raise forms.ValidationError(SHARE_TARGET_ERROR, code="invalid_target")

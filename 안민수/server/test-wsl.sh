@@ -75,6 +75,17 @@ echo secret > /srv/haven/uploads/private.txt
 check "nginx does not serve uploads directly" bash -c '[ "$(curl -s -o /dev/null -w "%{http_code}" -H "Host: haven.test" http://127.0.0.1/uploads/private.txt)" != 200 ] && [ "$(curl -s -o /dev/null -w "%{http_code}" -H "Host: haven.test" http://127.0.0.1/static/../uploads/private.txt)" != 200 ]'
 rm /srv/haven/uploads/private.txt
 check "gunicorn runs as haven, not root" [ "$(ps -o user= -C gunicorn | sort -u)" = haven ]
+# 본문 한도: 경계값은 앱이 413(+X-Request-ID 로그), 훨씬 큰 요청은 Nginx가 413(앱에 안 감)
+post() { head -c "$2" /dev/zero | tr '\0' a > "$T/body"; curl -s -o /dev/null -D "$T/hdr" -w '%{http_code}' -H "Host: haven.test" --data-binary @"$T/body" "http://127.0.0.1$1"; }
+from_app() { grep -qi '^x-request-id:' "$T/hdr"; }
+[ "$(post /posts/new/ 8193)" = 413 ] && from_app && ok "post 8193 bytes -> 413 from app (logged)" || bad "post 8193 bytes -> 413 from app"
+[ "$(post /posts/new/ 20000)" = 413 ] && ! from_app && ok "post 20000 bytes -> 413 from nginx (app not reached)" || bad "post 20000 bytes -> 413 from nginx"
+[ "$(post /posts/1/attachments/ 2200000)" = 413 ] && from_app && ok "upload 2.2MB -> 413 from app (logged)" || bad "upload 2.2MB -> 413 from app"
+[ "$(post /posts/1/attachments/ 4000000)" = 413 ] && ! from_app && ok "upload 4MB -> 413 from nginx" || bad "upload 4MB -> 413 from nginx"
+check "pypdf installed in venv" /srv/haven/venv/bin/python -c "import pypdf"
+check "cleanup timer enabled" [ "$(systemctl is-enabled haven-cleanup.timer)" = enabled ]
+expect_ok "cleanup service runs once (as haven, ReadWritePaths)" systemctl start haven-cleanup.service
+check "  ...result success" [ "$(systemctl show -p Result --value haven-cleanup.service)" = success ]
 expect_ok "deploy same commit again" bash "$D/deploy.sh" "$GOOD"
 expect_fail "deploy broken commit (must roll back)" bash "$D/deploy.sh" "$BAD"
 check "  ...current points back to good commit" [ "$(basename "$(readlink -f /srv/haven/current)")" = "$GOOD" ]

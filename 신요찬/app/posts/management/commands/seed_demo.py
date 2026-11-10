@@ -1,6 +1,7 @@
 """시험용 가상 데이터 (앱계약.md 2장, 권혁민 fixture 사전 조건).
 
-member_a(소유자) · member_b(공유 대상) · member_c(비대상) · operator(제한된 운영 관리자, is_staff)
+member_a(소유자) · member_b(공유 대상) · member_c(비대상)
+operator(제한된 운영 관리자: 전용 권한 manage_account_status·view_account_status_events, is_staff·superuser 아님)
 P1(id=1, A 소유), P2(id=2, A 소유, 삭제 시험 전용)
 --share: P1을 member_b에게 공유한 상태로 만든다(cases_share_granted 등 사전 조건).
 
@@ -13,11 +14,13 @@ import os
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from accounts.roles import OPERATOR_CODENAMES, PERM_APP
 from posts.models import Post, PostShare
 
 MEMBERS = ["member_a", "member_b", "member_c"]
@@ -53,7 +56,11 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             users = {name: User.objects.create_user(username=name, password=password) for name in MEMBERS}
-            User.objects.create_user(username=OPERATOR, password=password, is_staff=True)
+            operator = User.objects.create_user(username=OPERATOR, password=password)
+            perms = list(Permission.objects.filter(content_type__app_label=PERM_APP, codename__in=OPERATOR_CODENAMES))
+            if len(perms) != len(OPERATOR_CODENAMES):
+                raise CommandError("운영 관리자 권한이 없습니다. 'python manage.py migrate'를 먼저 실행하세요.")
+            operator.user_permissions.set(perms)
             for expected_id, title, body in POSTS:
                 post = Post.objects.create(owner=users["member_a"], title=title, body=body)
                 if post.pk != expected_id:

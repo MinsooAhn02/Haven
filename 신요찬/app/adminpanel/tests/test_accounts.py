@@ -4,11 +4,20 @@ from unittest import mock
 
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth import SESSION_KEY
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, Permission, User
 from django.test import Client, TestCase
 
 from adminpanel import services
 from posts.models import Post
+
+
+MANAGE = "manage_account_status"
+EVENTS = "view_account_status_events"
+
+
+def grant(user, *codenames):
+    user.user_permissions.add(*Permission.objects.filter(content_type__app_label="adminpanel", codename__in=codenames))
+    return user
 
 
 class AdminBase(TestCase):
@@ -16,8 +25,9 @@ class AdminBase(TestCase):
     def setUpTestData(cls):
         cls.a = User.objects.create_user("member_a", email="a@example.invalid", password="Virtual-Pass-2026!")
         cls.b = User.objects.create_user("member_b")
-        cls.op = User.objects.create_user("operator", is_staff=True)
-        cls.op2 = User.objects.create_user("operator2", is_staff=True)
+        cls.op = grant(User.objects.create_user("operator"), MANAGE, EVENTS)
+        cls.op2 = grant(User.objects.create_user("operator2"), MANAGE)
+        cls.staff_only = User.objects.create_user("staff_only", is_staff=True)  # 권한 없는 is_staff
         cls.root = User.objects.create_superuser("root_admin")
         cls.p1 = Post.objects.create(owner=cls.a, title="A의 비공개 제목", body="A의 비공개 본문")
 
@@ -51,7 +61,52 @@ class AccessBoundaryTests(AdminBase):
 
     def test_superuser_is_not_operator(self):
         """명세 2.2: 복구용 최고권한 계정은 일반 운영 흐름에 포함하지 않는다."""
-        self.assertEqual(self.as_user(self.root).get("/admin/accounts/").status_code, 403)
+        client = self.as_user(self.root)
+        for path in self.pages:
+            with self.subTest(path=path):
+                self.assertEqual(client.get(path).status_code, 403)
+
+    def test_is_staff_alone_is_not_operator(self):
+        """명세 3.2: is_staff만으로 작업을 허용하지 않는다."""
+        client = self.as_user(self.staff_only)
+        for path in self.pages:
+            with self.subTest(path=path):
+                self.assertEqual(client.get(path).status_code, 403)
+        self.assertEqual(client.post(f"/admin/accounts/{self.b.pk}/status/", {"is_active": "false"}).status_code, 403)
+        self.b.refresh_from_db()
+        self.assertTrue(self.b.is_active)
+
+    def test_each_page_needs_its_own_permission(self):
+        manager = grant(User.objects.create_user("manager_only"), MANAGE)
+        viewer = grant(User.objects.create_user("viewer_only"), EVENTS)
+        cases = [
+            (manager, "/admin/accounts/", 200),
+            (manager, "/admin/account-events/", 403),
+            (viewer, "/admin/accounts/", 403),
+            (viewer, "/admin/account-events/", 200),
+        ]
+        for user, path, status in cases:
+            with self.subTest(user=user.username, path=path):
+                self.assertEqual(self.as_user(user).get(path).status_code, status)
+        res = self.as_user(viewer).post(f"/admin/accounts/{self.b.pk}/status/", {"is_active": "false"})
+        self.assertEqual(res.status_code, 403)
+        self.b.refresh_from_db()
+        self.assertTrue(self.b.is_active)
+
+    def test_permission_through_group_counts(self):
+        group = Group.objects.create(name="account-operators")
+        group.permissions.add(*Permission.objects.filter(content_type__app_label="adminpanel"))
+        member = User.objects.create_user("group_operator")
+        member.groups.add(group)
+        self.assertEqual(self.as_user(member).get("/admin/accounts/").status_code, 200)
+        # 그룹으로 권한을 받은 운영 관리자도 관리 대상·계정 목록·공유 대상에서 빠진다.
+        client = self.as_user(self.op)
+        listed = [acc.username for acc in client.get("/admin/accounts/").context["accounts"]]
+        self.assertNotIn("group_operator", listed)
+        self.assertEqual(client.post(f"/admin/accounts/{member.pk}/status/", {"is_active": "false"}).status_code, 400)
+        self.a.refresh_from_db()
+        res = self.as_user(self.a).post(f"/posts/{self.p1.pk}/shares/", {"username": "group_operator"})
+        self.assertEqual(res.status_code, 400)
 
     def test_inactive_operator_session_rejected(self):
         client = self.as_user(self.op)
@@ -71,7 +126,7 @@ class OperatorScopeTests(AdminBase):
         self.assertEqual(res.status_code, 200)
         self.assertTemplateUsed(res, "adminpanel/accounts.html")
         accounts = list(res.context["accounts"])
-        self.assertEqual([acc.username for acc in accounts], ["member_a", "member_b"])
+        self.assertEqual([acc.username for acc in accounts], ["member_a", "member_b"])  # 운영자·is_staff·superuser 제외
         self.assertEqual(set(vars(accounts[0])), {"pk", "username", "is_active", "date_joined", "last_login"})
         self.assertNotContains(res, self.a.password)  # 비밀번호 해시
         self.assertNotContains(res, "a@example.invalid")
@@ -98,7 +153,7 @@ class OperatorScopeTests(AdminBase):
         self.assertFalse(LogEntry.objects.exists())
 
     def test_app09_cannot_change_operator_superuser_or_self(self):
-        for target in (self.op2, self.root, self.op):
+        for target in (self.op2, self.staff_only, self.root, self.op):
             with self.subTest(target=target.username):
                 res = self.client.post(f"/admin/accounts/{target.pk}/status/", {"is_active": "false"})
                 self.assertEqual(res.status_code, 400)

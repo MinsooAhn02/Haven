@@ -1,0 +1,359 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-sec-phase2-attack-regression",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "SEC-01",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": "sec_login_sql_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 8,
+      "verification_mode": "manual_required",
+      "note": "로그인 username SQLi 8종. 인증 우회, DB 오류, 세션 생성 여부 및 WAF 처리 차이 검증"
+    },
+    {
+      "case_id": "SEC-03",
+      "phase": 2,
+      "category": "injection",
+      "method": "GET",
+      "path": "/posts/1%20OR%201%3D1/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "숫자 ID 경로에 인코딩 SQL 문장 모양 입력. Django 라우팅 거부 여부 확인"
+    },
+    {
+      "case_id": "SEC-04",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_a",
+      "input_reference": "sec_login_sql_username.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 대상 username SQL 특수문자. 기존 로그인 fixture의 password 추가 필드는 Django ShareForm에서 무시됨. 공유 관계 미생성 별도 확인"
+    },
+    {
+      "case_id": "SEC-05",
+      "phase": 2,
+      "category": "injection",
+      "method": "GET",
+      "path": "/posts/?page=%27%20OR%201%3D1%20--",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "페이지 파라미터 SQL 문자열. DB 오류/타인 글 미노출 여부는 별도 확인"
+    },
+    {
+      "case_id": "SEC-06",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_body_attack_mix.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "제목/본문 속 SQL처럼 보이는 텍스트를 데이터로 저장; DB 변화와 응답 출력 별도 확인"
+    },
+    {
+      "case_id": "SEC-07",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_body_attack_mix.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "Django 템플릿 표현식 모양 입력은 평가하지 않아야 함. 결과 본문 수동 확인 필수"
+    },
+    {
+      "case_id": "SEC-09",
+      "phase": 2,
+      "category": "xss",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_stored_xss.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "제목 Stored XSS 확인용 문자열 저장. HTTP 302는 XSS 방어 PASS가 아니며 화면 렌더링 별도 검사"
+    },
+    {
+      "case_id": "SEC-10",
+      "phase": 2,
+      "category": "xss",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_body_attack_mix.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "본문 Stored XSS 확인용 문자열 저장. 브라우저에서 HTML 이스케이프/미실행 별도 확인"
+    },
+    {
+      "case_id": "SEC-11-PREP",
+      "phase": 2,
+      "category": "xss",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_a",
+      "input_reference": "sec_body_attack_mix.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유된 P1을 무해한 XSS/SSTI/SQL 표시 문자열로 교체. 별도 시험 DB에서만 실행"
+    },
+    {
+      "case_id": "SEC-11",
+      "phase": 2,
+      "category": "xss",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 대상 B의 P1 본문 조회. 이전 PREP의 문자열이 실행/평가되지 않는지 브라우저 확인"
+    },
+    {
+      "case_id": "SEC-23",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "미공유 C의 P1 직접 조회 IDOR 거부. P1 본문 미노출 별도 확인"
+    },
+    {
+      "case_id": "SEC-24",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_b",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1 읽기 공유받은 B의 수정 POST. 유효 CSRF여도 404, 원본 불변 별도 확인"
+    },
+    {
+      "case_id": "SEC-25",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/delete/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1 공유 대상 B의 삭제 POST 404, DB 원본 불변 별도 확인"
+    },
+    {
+      "case_id": "SEC-27",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B의 소유자 전용 공유 관리 POST 404; 권한 검사 선행, 관계 불변 확인"
+    },
+    {
+      "case_id": "SEC-28",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/shares/1/revoke/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "seed_demo --share 가 생성한 P1->B share_id=1을 B가 해제하려는 시도: 404, 관계 유지 확인"
+    },
+    {
+      "case_id": "SEC-42",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_a",
+      "input_reference": "post_without_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "소유자 A의 P1 수정 POST CSRF 누락 403, 원본 미변경 확인"
+    },
+    {
+      "case_id": "SEC-43",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_a",
+      "input_reference": "post_invalid_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "소유자 A의 P1 수정 POST 잘못된 CSRF 403, 원본 미변경 확인"
+    },
+    {
+      "case_id": "SEC-44",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_foreign_origin.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "유효 CSRF+외부 Origin의 작성 POST 403, 신규 기록 미생성 확인"
+    },
+    {
+      "case_id": "SEC-45-DELETE-GET",
+      "phase": 2,
+      "category": "csrf",
+      "method": "GET",
+      "path": "/posts/1/delete/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "삭제 확인 GET은 상태 변경 금지. P1 존재/내용 불변 확인"
+    },
+    {
+      "case_id": "SEC-45-LOGOUT-GET",
+      "phase": 2,
+      "category": "csrf",
+      "method": "GET",
+      "path": "/accounts/logout/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 405
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "로그아웃 GET은 405. 기존 A 세션 유지 여부 별도 확인"
+    },
+    {
+      "case_id": "SEC-46",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/1/shares/1/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_without_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1->B 공유 해제 시 CSRF 누락 403. share_id=1 관계 보존 별도 확인"
+    },
+    {
+      "case_id": "SEC-48",
+      "phase": 2,
+      "category": "business_logic",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_a",
+      "input_reference": "sec_share_operator.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "운영자 operator 공유 대상 거부. 공유 관계 미생성/공통 오류 메시지 별도 확인"
+    }
+  ]
+}

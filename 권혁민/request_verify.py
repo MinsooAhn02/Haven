@@ -31,7 +31,7 @@ REQ_ID_HEADER = "X-Haven-Request-ID"
 RUN_ID_HEADER = "X-Haven-Run-ID"
 MAX_RESPONSE = 2 * 1024 * 1024
 RESULT_FIELDS = [
-    "run_id", "request_id", "trace_id", "case_id", "timestamp_utc", "elapsed_ms",
+    "run_id", "request_id", "trace_id", "case_id", "parent_case_id", "payload_id", "timestamp_utc", "elapsed_ms",
     "auth_role", "category", "method", "path", "expected_app", "expected_waf",
     "http_status", "redirect_target", "response_summary", "app_observed",
     "waf_action", "rule_id", "waf_verdict", "app_validity", "transport_status",
@@ -262,6 +262,18 @@ def validate_suite(suite: object, fixtures: Path):
             payload = load_json(safe_relative(fixtures, ref))
             validate_payload(payload, fixtures)
 
+            if "variants" in payload:
+                variants = payload["variants"]
+
+                if len(variants) > item["max_requests"]:
+                    raise ConfigError(f"{cid}: variants 수가 max_requests를 초과합니다")
+
+                for variant in variants:
+                    expanded_id = f"{cid}-{variant['id']}"
+
+                    if len(expanded_id) > 64:
+                        raise ConfigError(f"{cid}: 확장된 case_id가 너무 깁니다")
+
 
 def select_phase(suite: dict, phase: int | None) -> dict:
     """선택한 회차만 원래 순서대로 반환한다. 원본 suite는 변경하지 않는다."""
@@ -308,6 +320,41 @@ def validate_payload(payload: object, root: Path):
     """POST payload의 지원 필드, 파일명, content type, 크기 등을 검사."""
     if not isinstance(payload, dict) or payload.get("csrf_mode", "valid") not in {"valid", "missing", "invalid"}:
         raise ConfigError("payload csrf_mode가 잘못되었습니다")
+
+    if "variants" in payload:
+        if set(payload) != {"variants"}:
+            raise ConfigError("다중 payload에는 variants만 허용합니다")
+
+        variants = payload["variants"]
+        if not isinstance(variants, list) or not 1 <= len(variants) <= 16:
+            raise ConfigError("variants는 1~16개여야 합니다")
+
+        seen = set()
+
+        for variant in variants:
+            if not isinstance(variant, dict) or set(variant) != {"id", "payload"}:
+                raise ConfigError("variant에는 id와 payload가 필요합니다")
+
+            variant_id = variant["id"]
+
+            if not isinstance(variant_id, str) or not re.fullmatch(r"P\d{2}", variant_id):
+                raise ConfigError("variant id는 P01 형식이어야 합니다")
+
+            if variant_id in seen:
+                raise ConfigError(f"중복 variant id: {variant_id}")
+
+            seen.add(variant_id)
+
+            item = variant["payload"]
+
+            if not isinstance(item, dict) or "variants" in item:
+                raise ConfigError("중첩 variants는 허용하지 않습니다")
+
+            # 기존 단일 payload 검증 로직 재사용
+            validate_payload(item, root)
+
+        return
+
     fields = payload.get("fields", {})
     if not isinstance(fields, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in fields.items()):
         raise ConfigError("fields는 문자열 키/값 객체여야 합니다")
@@ -337,6 +384,60 @@ def validate_payload(payload: object, root: Path):
 def read_payload(root: Path, ref: str) -> dict:
     """검증된 fixture 루트에서 입력 JSON을 읽는다."""
     return load_json(safe_relative(root, ref))
+
+
+def expand_suite_variants(suite: dict, fixtures: Path) -> dict:
+    """다중 payload 케이스를 요청별 실행 단위로 확장한다.
+
+    - 기존 단일 payload 케이스는 그대로 유지한다.
+    - 다중 payload 케이스는 case_id-P01 형태로 확장한다.
+    - 원본 suite와 case 객체는 변경하지 않는다.
+    - 네트워크 요청은 수행하지 않는다.
+    """
+    original_ids = {case["case_id"] for case in suite["cases"]}
+    used_ids = set()
+    expanded = []
+
+    for case in suite["cases"]:
+        ref = case["input_reference"]
+
+        if ref is None:
+            payload = None
+        else:
+            payload = read_payload(fixtures, ref)
+
+        # 기존 단일 payload 또는 GET 케이스
+        if payload is None or "variants" not in payload:
+            expanded.append(dict(case))
+            used_ids.add(case["case_id"])
+            continue
+
+        # 다중 payload 케이스
+        for variant in payload["variants"]:
+            expanded_id = f"{case['case_id']}-{variant['id']}"
+
+            # 기존 케이스 및 확장 케이스와의 ID 충돌 방지
+            if expanded_id in original_ids or expanded_id in used_ids:
+                raise ConfigError(
+                    f"확장 case_id 중복: {expanded_id}"
+                )
+
+            child = {
+                **case,
+                "case_id": expanded_id,
+                "parent_case_id": case["case_id"],
+                "payload_id": variant["id"],
+                "_variant_payload": variant["payload"],
+                "max_requests": 1,
+            }
+
+            expanded.append(child)
+            used_ids.add(expanded_id)
+
+    return {
+        **suite,
+        "cases": expanded,
+    }
 
 
 class CsrfHtmlParser(HTMLParser):
@@ -672,7 +773,13 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
     if case["method"] == "GET":
         return None, headers, None
 
-    payload = read_payload(fixture_root, case["input_reference"])
+    # 다중 페이로드로 확장된 케이스는 선택된 payload를 사용한다.
+    # 기존 단일 페이로드 케이스는 input_reference 파일을 그대로 읽는다.
+    if "_variant_payload" in case:
+        payload = case["_variant_payload"]
+    else:
+        payload = read_payload(fixture_root, case["input_reference"])
+
     fields = dict(payload.get("fields", {}))
     csrf = csrf_for_post(s, target, budget, prep_events, max_response_bytes,
                          payload.get("csrf_mode", "valid"), run_id)
@@ -750,7 +857,8 @@ def check_http_expected(detail: dict, expected: dict, *, target_origin: str | No
 def base_record(run_id: str, case: dict) -> dict:
     """요청 1건에 대한 결과 기본 필드를 만든다. 최초 판정은 UNKNOWN."""
     return dict(
-        run_id=run_id, request_id=str(uuid.uuid4()), trace_id=new_trace_id(), case_id=case["case_id"],
+        run_id=run_id, request_id=str(uuid.uuid4()), trace_id=new_trace_id(), case_id=case["case_id"], 
+        parent_case_id=case.get("parent_case_id"), payload_id=case.get("payload_id"),
         timestamp_utc=utc_now(), elapsed_ms=None, auth_role=case["auth_role"],
         category=case["category"], method=case["method"], path=safe_path_log(case["path"]),
         expected_app=case["expected_app"], expected_waf=case["expected_waf"],
@@ -811,14 +919,29 @@ def run(args) -> int:
 
     total_cases = len(suite["cases"])
     phase = getattr(args, "phase", None)
+
+    # 먼저 회차를 선택한다.
     suite = select_phase(suite, phase)
-    if any("checkpoint_before" in case for case in suite["cases"]) and not getattr(args, "manual_checkpoints", False):
+
+    if (any("checkpoint_before" in case for case in suite["cases"]) and not getattr(args, "manual_checkpoints", False)):
         raise ConfigError("수동 체크포인트 시험에는 --manual-checkpoints 옵션이 필요합니다")
+
     validate_selected_checkpoint_sequence(suite)
+
+    # 기존 논리적 시험 케이스 수를 보존한다.
+    selected_cases = len(suite["cases"])
+
+    # 다중 payload를 실제 요청 단위로 확장한다.
+    # 실행 전에 모든 확장을 끝내므로 ID 충돌도 전송 전에 발견된다.
+    suite = expand_suite_variants(suite, root)
+
+    execution_cases = len(suite["cases"])
+
     phase_label = "전체" if phase is None else f"{phase}회차"
     print(
         f"대상={target}  suite={suite['suite_id']}  "
-        f"회차={phase_label}  선택={len(suite['cases'])}/{total_cases}  "
+        f"회차={phase_label}  선택={selected_cases}/{total_cases}  "
+        f"요청단위={execution_cases}  "
         f"timeout={args.timeout}s  요청≤{args.max_requests}  "
         f"초당≤{args.rate}  시간≤{args.max_duration}s",
         file=sys.stderr,
@@ -839,8 +962,9 @@ def run(args) -> int:
     state.update(
         selected_phase=phase,
         total_suite_cases=total_cases,
-        selected_cases=len(suite["cases"]),
-        excluded_cases=total_cases - len(suite["cases"]),
+        selected_cases=selected_cases,
+        execution_cases=execution_cases,
+        excluded_cases=total_cases - selected_cases,
     )
     records = []
     failed = False

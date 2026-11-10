@@ -4,14 +4,14 @@ Claude Code를 `Haven/` 레포 루트에서 열고, 세션을 처음 시작할 �
 
 ```text
 나는 KT 사이버보안 과정 "Orchestration" 팀(6명)의 Haven 프로젝트 조장 이민성이다.
-11/11부터 안민수에게서 조장을 이어받았다. 원래 담당은 AWS 네트워크·EC2·SSM·ALB/HTTPS·SG CLI이고,
+안민수에게서 조장을 이어받는다(11/11 인수인계, 민수가 빠지기 전까지는 같이). 원래 담당은 AWS 네트워크·EC2·SSM·ALB/HTTPS·SG CLI이고,
 이제 조장 일과 서버 배포·백업·복원도 맡는다.
 
 Haven: 회원이 비공개 기록을 쓰고 지정한 회원에게만 읽기 공유하는 Django 웹 서비스(AWS 서울, 계정 777171525040).
 만든 뒤 IDOR·CSRF·WAF·SG 점검 같은 보안 시험을 한다. 범위는 기본프로젝트_계획.md §10, 심화프로젝트_계획.md 그대로이고 줄이지 않는다.
 
 먼저 이 순서로 읽어:
-1. docs/인수인계/README.md 와 01~07
+1. docs/인수인계/README.md 와 01~08 (일하는 방식은 08_AI_작업방식.md 그대로)
 2. TASK_TODO.html 의 DATA (사람별 할 일), TASK_TODO.md
 3. docs/조장_운영기록/README.md 와 가장 최근 날짜 파일
 4. 배포할 때는 안민수/공통실행.md, 안민수/server/

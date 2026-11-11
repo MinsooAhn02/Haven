@@ -1,6 +1,6 @@
 # Haven CLI
 
-**상태:** Python CLI 및 **로컬 가상 fixture 시험 구현 완료**. Django 서비스·실제 AWS WAF에 대한 보안 검증은 **미실행**이다.  
+**상태:** 실제 Django 2회차 HTTP 통합 시험 완료, 최종 보안 검증은 미완료 
 
 ## 1. 포함 파일
 
@@ -8,6 +8,7 @@
 권혁민/
 ├── request_verify.py             # 요청 재현(run)·로그 대조(correlate) CLI
 ├── mock_server.py                # 로컬 가상 서버·가상 WAF/앱 로그
+├── start_verify.ps1              # 로컬 테스트 서버 실행 파일
 ├── README.md                     # 사용법·입출력 형식·검증 범위
 ├── TODO.md                       # 회차별 진행 상태·검증 결과
 ├── Basic test plan.md            # 명세 ID별 기본 기능·보안 시험표
@@ -150,8 +151,8 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
   selected_cases, excluded_cases를 기록한다.
 - 제외된 다른 회차 케이스는 미실행 오류로 계산하지 않는다.
 
-현재 cases_haven_template.json은 총 47개이며,
-1회차 34개·2회차 12개·3회차 1개로 구성되어 있다.
+현재 cases_haven_template.json은 총 122개이며,
+1회차 34개·2회차 87개·3회차 1개로 구성되어 있다.
 
 공유 허용·해제·비활성화처럼 사전 DB 상태가 서로 다른
 시나리오는 별도 fixture 파일로 구분하여 관리한다.
@@ -191,6 +192,8 @@ python request_verify.py run --target https://YOUR-APP-HOST --allowlist allowlis
 - 시험은 승인된 테스트 환경과 가상 계정에서만 수행한다.
 
 ### 인증과 결과 기록
+
+--prompt-seed-password를 통해 공통 비밀번호 1회 입력 및 역할별 세션을 재사용한다.
 
 인증된 role이 있으면 최초 실행 시 username과 비밀번호를 **대화형**으로 입력받는다. 비밀번호는 화면에 표시하지 않는다. 각 role의 쿠키와 CSRF는 메모리 세션에만 유지하며, 기존 `accounts/login/` 경로의 실제 필드/동작은 신요찬 담당자와 합의해야 한다. 현재 로컬 mock는 실제 Django 인증이 아니며 가상 요청 동작만 구현한다.
 
@@ -239,8 +242,6 @@ Trace ID가 정상 전달되고 로깅되는지 확인해야 한다.
 
 ## 5. 아직 추가 구현·통합이 필요한 점
 
-- **팀 확인:** 공통 `scripts/request_verify.py` 경로로 통합하는 작업은 1번 안민수와 협의. 1회차에는 개인 폴더에서 개발.
-- **Django 연동:** 실제 필드명, 가입/로그인 CSRF 폼, POST 성공 리다이렉트, 운영자 권한, 감사 로그 스키마를 5번 신요찬과 확인한 뒤 케이스 기대값 확정.
 - **WAF 연동:** AWS WAF 실제 로그의 규칙 액션/Count 형식과 앱 로그, UTC 시간, request_id 필드를 대조. `COUNT`는 WAF 탐지 이벤트이지 실제 차단이 아니다.
 - **검증 범위:** SQLi·XSS·IDOR·파일 조작 결과는 HTTP만으로 결론 내리지 않고 DB 스냅샷, 출력 렌더링, 파일 위치/권한 등의 별도 증거가 있어야 한다. 여기서 작성한 코드는 **브라우저 JS 실행 판정·DB 읽기·실제 AWS 자동 정책 변경·동시 업로드 부하 시험을 수행하지 않는다.**
 - **공격 시험:** `cases_haven_template.json`은 시작점이 되는 **수동 조정용 예시**다. 실제 데이터 P1 ID·공유 여부·업로드 제한·로그 수집이 확정되기 전에는 실행하지 않는다. `sec_login_sql_username.json`은 예시 fixture로만 제공하며, 로그인 오류 시 기대 HTTP 코드는 담당자와 계약을 맞춰야 한다.
@@ -253,5 +254,5 @@ Trace ID가 정상 전달되고 로깅되는지 확인해야 한다.
 - [x] 대상/fixture path 검증, 부분 결과, 상관분석 단위·통합 테스트
 - [x] APP-11의 serialized body 8191/8192/8193 바이트 실제 길이 시험
 - [ ] 실제 Django 앱·AWS WAF에서 실행 (**2~4회차 의존 작업**)
-- [ ] 팀의 경로/인증/로그 필드 합의 후 `TODO.md`에 시험 환경·명령·결과 기록
-- [ ] `Hyeokmin`에 commit/push 및 `main` 대상 PR 제출
+- [x] 팀의 경로/인증/로그 필드 합의 후 `TODO.md`에 시험 환경·명령·결과 기록
+- [x] `Hyeokmin`에 commit/push 및 `main` 대상 PR 제출

@@ -1,0 +1,49 @@
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "fields": {
+          "title": "한글 기록 테스트",
+          "body": "한글과 영어, 숫자 123 그리고 이모지 😀"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "fields": {
+          "title": "따옴표와 SQL 모양 문자열",
+          "body": "SELECT * FROM posts WHERE id = 1; ' \""
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "fields": {
+          "title": "HTML 문자열 확인",
+          "body": "<script>alert('haven-test')</script>"
+        }
+      }
+    },
+    {
+      "id": "P04",
+      "payload": {
+        "fields": {
+          "title": "Django 템플릿 문자열",
+          "body": "{{ 7*7 }} {% if True %}test{% endif %}"
+        }
+      }
+    },
+    {
+      "id": "P05",
+      "payload": {
+        "fields": {
+          "title": "특수문자와 줄바꿈",
+          "body": "첫 번째 줄\n두 번째 줄\n& < > \" ' / = +"
+        }
+      }
+    }
+  ]
+}

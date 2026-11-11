@@ -2,13 +2,20 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ReadSESAccountStatus",
+      "Sid": "ReadSESAccountAndListIdentities",
       "Effect": "Allow",
       "Action": [
         "ses:GetAccount",
-        "ses:ListRecommendations"
+        "ses:ListRecommendations",
+        "ses:ListEmailIdentities"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "ReadSESEmailIdentityInSeoul",
+      "Effect": "Allow",
+      "Action": "ses:GetEmailIdentity",
+      "Resource": "arn:aws:ses:ap-northeast-2:ACCOUNT_ID_MASKED:identity/*"
     }
   ]
 }

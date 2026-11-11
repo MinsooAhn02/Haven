@@ -30,6 +30,9 @@ as_haven "$H/venv/bin/pip" install -q --disable-pip-version-check -r "$R/안민�
 SECRET_KEY=$(secret django/secret_key)
 APP_PW=$(secret db/app_password)
 OWNER_PW=$(secret db/owner_password)
+# HTTPS 도메인(https:// origin)이 있으면 앱이 ALB의 X-Forwarded-Proto를 믿고 쿠키에 Secure를 붙인다
+# (요찬 #51, 앱계약 1.2.1). 없으면(로컬·HTTP 시험) 0. 값을 항상 써서 무엇으로 떴는지 파일에서 보이게 한다.
+HTTPS_ON=0; [[ ${CSRF_TRUSTED_ORIGINS:-} == https://* ]] && HTTPS_ON=1
 umask 027
 cat > /etc/haven/haven.env.new <<EOF
 DJANGO_SECRET_KEY=$SECRET_KEY
@@ -41,6 +44,7 @@ DB_PASSWORD=$APP_PW
 DB_HOST=$DB_HOST
 HAVEN_UPLOAD_DIR=$H/uploads
 ${CSRF_TRUSTED_ORIGINS:+DJANGO_CSRF_TRUSTED_ORIGINS=$CSRF_TRUSTED_ORIGINS}
+DJANGO_HTTPS=$HTTPS_ON
 EOF
 chgrp haven /etc/haven/haven.env.new && mv /etc/haven/haven.env.new /etc/haven/haven.env
 umask 022

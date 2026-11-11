@@ -1,4 +1,3 @@
-
 {
   "variants": [
     {
@@ -23,6 +22,58 @@
           "field_name": "attachment",
           "local_fixture_path": "sample.txt",
           "filename": "..\\escape.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "subdir/escape.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P04",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "a..b.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P05",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": " leading.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P06",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "rtl‮txt.txt",
           "content_type": "text/plain"
         }
       }

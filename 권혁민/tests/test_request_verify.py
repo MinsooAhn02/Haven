@@ -3773,3 +3773,92 @@ class TestPhase2Integration:
         monkeypatch.setattr(cli, "prep_login", lambda *args: pytest.fail("Unexpected login preparation"))
         assert cli.main(phase2_command_arguments(args) + ["--prompt-seed-password"]) == 2
         assert not args.output_dir.exists()
+
+    def test_cleanup_runs_before_delete_and_logout(
+        self, tmp_path, monkeypatch
+    ):
+        grant = phase2_make_case(
+            "GRANT",
+            method="POST",
+            path="/posts/1/shares/",
+            status=302,
+        )
+        grant["input_reference"] = "basic_share_grant.json"
+
+        delete = phase2_make_case(
+            "DELETE",
+            method="POST",
+            path="/posts/1/delete/",
+            status=302,
+            cleanup_before=True,
+        )
+
+        logout = phase2_make_case(
+            "LOGOUT",
+            method="POST",
+            path="/accounts/logout/",
+            status=302,
+        )
+
+        cleanup = phase2_make_case(
+            "CLEANUP-GRANT",
+            method="POST",
+            path="/posts/1/shares/{share_id}/revoke/",
+            status=302,
+            after_case="GRANT",
+            share_reference=phase2_reference(
+                allow_missing=True
+            ),
+        )
+
+        args = phase2_make_args(
+            tmp_path,
+            phase2_make_suite(
+                [grant, delete, logout],
+                cleanup_cases=[cleanup],
+            ),
+        )
+
+        seen = []
+
+        def fake_login(session, *args):
+            session.cookies.set("csrftoken", "test-csrf")
+
+        def fake_send(
+            session, method, target, path,
+            budget, request_id, **kwargs
+        ):
+            budget.begin()
+            seen.append((method, path))
+
+            if method == "GET" and path == "/posts/1/shares/":
+                return (
+                    phase2_detail(200),
+                    phase2_share_html(
+                        phase2_share_row(1, 77, "member_b")
+                    ),
+                )
+
+            return phase2_detail(302), None
+
+        monkeypatch.setattr(cli, "prep_login", fake_login)
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+        assert cli.run(args) == 3
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        assert seen == [
+            ("POST", "/posts/1/shares/"),
+            ("GET", "/posts/1/shares/"),
+            ("POST", "/posts/1/shares/77/revoke/"),
+            ("POST", "/posts/1/delete/"),
+            ("POST", "/accounts/logout/"),
+        ]
+
+        assert result["cleanup_complete"] is True
+        assert result["cleanup_http_requests"] == 2
+        assert result["preparation_http_requests"] == 0
+        assert result["test_http_requests"] == 3

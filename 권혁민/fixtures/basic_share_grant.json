@@ -1,0 +1,6 @@
+{
+  "csrf_mode": "valid",
+  "fields": {
+    "username": "member_b"
+  }
+}

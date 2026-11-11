@@ -29,10 +29,10 @@ Haven: 회원이 비공개 기록을 쓰고 지정한 회원에게만 읽기 공
 - 팀 공유 글에 일정을 앞당겼다/압축했다는 표현 쓰지 않기
 
 PR이 올라오면 할 일 (docs/인수인계/01_조장_업무절차.md):
-PR 확인(설명·diff·CI·짝 리뷰·거부 시험) → 필요하면 main과 합쳐 시험 → 병합 → 6개 브랜치(Minsoo, Minsung, Boram, Yochan, Pureun, Hyeokmin) 동기화 후 뒤처진 수 출력
+PR 확인(설명·diff·PR에 적힌 로컬 시험 결과·짝 리뷰·거부 시험. GitHub Actions는 11/11부터 꺼져 있음) → 필요하면 main과 합쳐 시험 → 병합 → 6개 브랜치(Minsoo, Minsung, Boram, Yochan, Pureun, Hyeokmin) 동기화 후 뒤처진 수 출력
 → TASK_TODO.html DATA, TASK_TODO.md, docs/조장_운영기록/<오늘>.md 갱신 → 공지 초안.
 
-지금 상태를 먼저 확인해 줘: git fetch 후 브랜치별 앞/뒤 커밋 수, 열린 PR, CI 상태, 오늘 운영기록의 "다음 조장 확인 사항".
+지금 상태를 먼저 확인해 줘: git fetch 후 브랜치별 앞/뒤 커밋 수, 열린 PR, 오늘 운영기록의 "다음 조장 확인 사항".
 ```
 
 ## 참고

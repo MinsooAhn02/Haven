@@ -1,0 +1,40 @@
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "fields": {
+          "title": "",
+          "body": "정상 본문"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "fields": {
+          "title": "본문 없음",
+          "body": ""
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "fields": {
+          "title": "공백 본문",
+          "body": "   \n   "
+        }
+      }
+    },
+    {
+      "id": "P04",
+      "payload": {
+        "fields": {
+          "title": "",
+          "body": ""
+        }
+      }
+    }
+  ]
+}

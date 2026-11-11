@@ -1,0 +1,50 @@
+
+{
+  "schema_version": 1,
+  "suite_id": "haven-basic-body-authenticated",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "APP-11-OWNER-8191",
+      "phase": 2,
+      "category": "body_boundary",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "pad_8191.json",
+      "expected_app": {"http_status": 302},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "로그인 A의 실제 직렬화 body 8191바이트. 글 생성 성공 및 DB 저장 확인"
+    },
+    {
+      "case_id": "APP-11-OWNER-8192",
+      "phase": 2,
+      "category": "body_boundary",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "pad_8192.json",
+      "expected_app": {"http_status": 302},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "로그인 A의 실제 직렬화 body 8192바이트. 경계값 허용 및 DB 저장 확인"
+    },
+    {
+      "case_id": "APP-11-OWNER-8193",
+      "phase": 2,
+      "category": "body_boundary",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "pad_8193.json",
+      "expected_app": {"http_status": 413},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "로그인 A의 실제 직렬화 body 8193바이트. 413 거부 및 게시글 미생성 확인"
+    }
+  ]
+}

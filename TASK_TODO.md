@@ -177,7 +177,8 @@ flowchart LR
 | 김보람 | #29·#39·#42 병합. #42: 13번 EC2 삭제는 Name=haven-test* 만(web-1·db-1 불가), 14번 민성 Session Manager, 15번 Haven SG 삭제. 콘솔엔 13+15 합친 정책 적용. 11/11 #47(15번을 haven-sg-test만, 콘솔 적용)·#46(사용 $0.70, 크레딧 $140) 병합 | SES 메일·도메인 인증, ALB 밤 비용 | #29·#39·#42·#46·#47 |
 | 이민성 | #41 병합: AWS 실제 구축 완료(VPC·서브넷 4·NAT·S3 Endpoint·SG 3·EC2 2대, 공인 IP 없음, SSM 2대 Online). 연결확인표 1차 ✅16·🔶3·⚠️1·⏳13. Windows `aws.exe` `
 ` 오탐 수정, `build-ec2.sh` 추가. #44 `test-ec2.sh` 병합(시험용 EC2만 만들고 지움, 실제 생성·삭제 성공) . 21시 `night.sh` 첫 실행 정상(EC2 중지·NAT 삭제·EIP 해제, RST-03 통과) | 수 `morning.sh` → `test-ec2.sh`로 NET-04 → ALB·ACM | #41·#44 |
-| (11/11 저녁) 이민성 | #54 병합(f0dd5f7): ACM·ALB·443·80→301·Route 53, NET-01 HTTPS 200·NET-01-b 301 통과(민성 실제 실행 기록, 보람 승인), 가짜 시험 59/0. NET-06은 재부팅 대신 night→morning으로 바꿔 11/12 아침 | 11/12 NET-06, 백업·격리 복원, 15번 SG 실제 시험, https 도메인 재배포, ALB 밤 처리 | #54 |
+| (11/11 저녁) 이민성 | #54 병합(f0dd5f7): ACM·ALB·443·80→301·Route 53, NET-01 HTTPS 200·NET-01-b 301 통과(민성 실제 실행 기록, 보람 승인), 가짜 시험 59/0. NET-06은 재부팅 대신 night→morning으로 바꿔 11/12 아침 | 11/12 NET-06, 백업·격리 복원, 15번 SG 실제 시험, #51 반영 재배포, ALB 밤 처리 결정, DKIM CNAME 등록(#58 보류 해소 후) | #54 |
+| (11/11 저녁 2) 노푸른 | 푸른 보고: HTTPS 도메인에서 로그인, 작성·삭제, 첨부 업로드·목록 파일명/크기·다운로드 확인(조장은 재확인 안 함). #51(21d01f7)·#57(df145c9) 병합, #58 보류 | #51 재배포 뒤 같은 흐름·Secure 쿠키 재확인 | 푸른 보고 |
 
 PR #3은 화면 시안, PR #2는 설계·fixture 단계로 merge commit 병합했다. 두 PR의 GitGuardian 검사도 통과했다. Django 연결·live AWS 수집·실제 AWS 구축/연결은 후속 작업이며, 위 병합으로 회차 전체를 완료 처리하지 않는다.
 

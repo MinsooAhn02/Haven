@@ -1,0 +1,64 @@
+
+{
+  "schema_version": 1,
+  "suite_id": "haven-basic-auth-readonly",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "APP-A-OWN-POST",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {"http_status": 200},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "소유자 A는 자신의 P1 게시글을 조회할 수 있다"
+    },
+    {
+      "case_id": "APP-B-UNSHARED-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받지 않은 B는 P1에 접근할 수 없다"
+    },
+    {
+      "case_id": "APP-C-UNSHARED-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받지 않은 C는 P1에 접근할 수 없다"
+    },
+    {
+      "case_id": "APP-OPERATOR-POST-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "operator",
+      "input_reference": null,
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "운영 관리자도 다른 사용자의 게시글을 읽을 수 없다"
+    }
+  ]
+}

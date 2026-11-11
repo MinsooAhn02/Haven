@@ -1,0 +1,57 @@
+
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "harmless.php",
+          "content_type": "application/x-php"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "invalid.pdf",
+          "content_type": "application/pdf"
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "harmless.exe",
+          "content_type": "application/octet-stream"
+        }
+      }
+    },
+    {
+      "id": "P04",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "harmless.txt.php",
+          "content_type": "text/plain"
+        }
+      }
+    }
+  ]
+}

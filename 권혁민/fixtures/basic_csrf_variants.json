@@ -1,0 +1,36 @@
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "missing",
+        "origin_mode": "absent",
+        "fields": {
+          "title": "CSRF 누락",
+          "body": "거부되어야 하는 요청"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "invalid",
+        "fields": {
+          "title": "CSRF 오류",
+          "body": "거부되어야 하는 요청"
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "csrf_mode": "valid",
+        "origin_mode": "foreign",
+        "fields": {
+          "title": "외부 Origin",
+          "body": "거부되어야 하는 요청"
+        }
+      }
+    }
+  ]
+}

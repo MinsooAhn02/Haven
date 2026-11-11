@@ -31,6 +31,10 @@ install -d -o root -g haven -m 750 /etc/haven
 # GitHub 공식 호스트 키를 고정한다(처음 접속 때 가짜 서버를 믿지 않게). 틀리면 git이 접속을 거부한다.
 echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
   | install -o haven -g haven -m 644 /dev/stdin "$H/.ssh/known_hosts"
+# sg-web outbound는 80·443만 연다(민성 설계 4.2). GitHub SSH를 443(ssh.github.com)으로 돌린다.
+# 22로 가면 연결 시간 초과. 호스트 키는 같아서 HostKeyAlias로 위 known_hosts 줄을 그대로 쓴다.
+printf 'Host github.com\n  HostName ssh.github.com\n  Port 443\n  HostKeyAlias github.com\n' \
+  | install -o haven -g haven -m 600 /dev/stdin "$H/.ssh/config"
 
 # deploy.sh가 읽는 비밀 아닌 설정. 비밀값은 deploy.sh가 배포 때 SSM에서 읽어 haven.env에 쓴다.
 cat > /etc/haven/site.conf <<EOF

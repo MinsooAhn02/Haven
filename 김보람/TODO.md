@@ -308,12 +308,13 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 민성님이 `ses:GetAccount` 호출 시 `AccessDenied` 오류 보고: IAM 사용자 `minsung`에 해당 조회 권한이 없음.
 - [x] 보람이 AWS IAM에서 고객 관리형 정책 `Haven-Minsung-SES-Read` 생성 완료 보고.
 - [x] IAM 사용자 `minsung`에 해당 정책 직접 연결 완료 보고.
-- [x] 정책 JSON을 [19번 민성 SES 조회 정책](IAM/19_Minsung_SES_GetAccount_Read_Policy.json)에 기록. **허용 액션은 `ses:GetAccount` 하나**이며 리소스는 `*`. 메일 발송·SES 설정 변경 권한은 포함하지 않음.
-- [ ] **민성님 실제 시험 대기:** `ses:GetAccount` 재호출 후 조회 성공 또는 추가 `AccessDenied` 결과 전달. 사용자 화면으로 실제 호출 성공은 확인하지 않음.
+- [x] 정책 JSON을 [19번 민성 SES 조회 정책](IAM/19_Minsung_SES_GetAccount_Read_Policy.json)에 기록. **허용 액션은 `ses:GetAccount`, `ses:ListRecommendations` 2개**이며 리소스는 `*`. 메일 발송·SES 설정 변경 권한은 포함하지 않음.
+- [ ] **민성님 실제 시험 대기:** `ses:GetAccount` 및 `ses:ListRecommendations` 재호출 후 조회 성공 또는 추가 `AccessDenied` 결과 전달. 사용자 화면으로 실제 호출 성공은 확인하지 않음.
+- [x] 11/11 민성님이 `ses:ListRecommendations` 추가 누락 오류 보고 → 보람이 동일 고객 관리형 정책에 조회 액션 추가·저장(정책 버전 2, AWS 권한 요약에 읽기 2개 표시). 추가 정책 연결은 불필요.
 - **구분:** 보람이 민성에게 조회 권한을 연결한 것과, 보람 자신의 SES 권한·`#58` DKIM 등록 후 인증 완료 여부는 **별도 확인** 대상.
 
 ### 다음 TODO (2026-11-11 기준)
-1. **민성님 확인 대기:** `ses:GetAccount` 조회 재시험 결과.
+1. **민성님 확인 대기:** `ses:GetAccount`·`ses:ListRecommendations` 조회 재시험 결과.
 2. **SES 도메인:** [PR #58](https://github.com/MinsooAhn02/Haven/pull/58)의 CNAME 3개를 민성님이 Route 53에 등록한 뒤, 보람이 SES `orchestration-haven.cloud` 인증 상태 확인. `#58`은 현재 열린 PR이며 DNS 등록 완료로 오인하지 않음.
 3. **11/12(목):** 요찬님과 Django 실제 메일 발송·수신·실패 시험. SES 샌드박스 수신자 인증 제한과 앱에서 사용하는 발송 권한을 별도로 확인.
 4. **11/13(금):** 담당자 실제 권한 시험 결과를 받아 IAM 보완·기록하고 프로젝트 종료 시 AWS 자원 목록 및 새 계정 설정 절차 정리. **자원 삭제는 실행하지 않음**.

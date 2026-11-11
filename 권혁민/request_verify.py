@@ -6,6 +6,7 @@ correlate() → run 결과와 WAF·앱 JSONL 로그를 요청 ID로 결합 → �
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 from datetime import datetime, timezone
 import getpass
@@ -22,6 +23,7 @@ import uuid
 import socket
 import threading
 import os
+import warnings
 import requests
 
 ROLES = {"anonymous", "member_a", "member_b", "member_c", "operator"}
@@ -31,11 +33,11 @@ REQ_ID_HEADER = "X-Haven-Request-ID"
 RUN_ID_HEADER = "X-Haven-Run-ID"
 MAX_RESPONSE = 2 * 1024 * 1024
 RESULT_FIELDS = [
-    "run_id", "request_id", "trace_id", "case_id", "timestamp_utc", "elapsed_ms",
+    "run_id", "request_id", "trace_id", "case_id", "parent_case_id", "payload_id", "timestamp_utc", "elapsed_ms",
     "auth_role", "category", "method", "path", "expected_app", "expected_waf",
     "http_status", "redirect_target", "response_summary", "app_observed",
-    "waf_action", "rule_id", "waf_verdict", "app_validity", "transport_status",
-    "correlation_status", "evidence_path",
+    "waf_action", "rule_id", "waf_verdict", "app_validity", "transport_status", "request_attempted",
+    "correlation_status", "evidence_path", "execution_stage",
 ]
 
 
@@ -190,7 +192,7 @@ def validate_limits(args):
             raise ConfigError(f"{name}은 0 초과, {maximum} 이하여야 합니다")
 
 
-def validate_suite(suite: object, fixtures: Path):
+def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
     """케이스의 공통 스키마 및 fixture 참조를 전송 전에 검증."""
     if not isinstance(suite, dict) or suite.get("schema_version") != 1 or not isinstance(suite.get("suite_id"), str):
         raise ConfigError("suite에는 schema_version=1 및 suite_id가 필요합니다")
@@ -231,6 +233,29 @@ def validate_suite(suite: object, fixtures: Path):
                     f"{cid}: B 세션 기준 요청이 먼저 필요합니다"
                 )
         validate_path(item["path"])
+        if "critical" in item and type(item["critical"]) is not bool:
+            raise ConfigError(f"{cid}: critical은 bool이어야 합니다")
+        share_ref = item.get("share_reference")
+        if share_ref is not None:
+            if (not isinstance(share_ref, dict)
+                    or not {"post_id", "recipient", "lookup_role"}.issubset(share_ref)
+                    or set(share_ref) - {"post_id", "recipient", "lookup_role", "allow_missing"}
+                    or type(share_ref["post_id"]) is not int or not 1 <= share_ref["post_id"] <= 2**63 - 1
+                    or not isinstance(share_ref["recipient"], str)
+                    or share_ref["recipient"] not in {"member_a", "member_b", "member_c"}
+                    or not isinstance(share_ref["lookup_role"], str)
+                    or share_ref["lookup_role"] not in {"member_a", "member_b", "member_c"}
+                    or type(share_ref.get("allow_missing", False)) is not bool):
+                raise ConfigError(f"{cid}: share_reference 설정 오류")
+            if (item["method"] != "POST"
+                    or not re.fullmatch(r"/posts/[1-9]\d*/shares/\{share_id\}/revoke/", item["path"])):
+                raise ConfigError(f"{cid}: 동적 공유 ID는 공유 해제 POST 경로에서만 사용할 수 있습니다")
+            if share_ref.get("allow_missing") and not _cleanup:
+                raise ConfigError(f"{cid}: allow_missing은 cleanup_cases에서만 허용합니다")
+        elif "{share_id}" in item["path"]:
+            raise ConfigError(f"{cid}: 공유 ID 경로에는 share_reference가 필요합니다")
+        if "after_case" in item and not _cleanup:
+            raise ConfigError(f"{cid}: after_case는 cleanup_cases에서만 허용합니다")
         if not isinstance(item["category"], str) or not item["category"].strip() or not isinstance(item["note"], str):
             raise ConfigError(f"{cid}: category/note 오류")
         if type(item["max_requests"]) is not int or item["max_requests"] < 1 or item["max_requests"] > 1000:
@@ -262,6 +287,35 @@ def validate_suite(suite: object, fixtures: Path):
             payload = load_json(safe_relative(fixtures, ref))
             validate_payload(payload, fixtures)
 
+            if "variants" in payload:
+                if _cleanup:
+                    raise ConfigError(f"{cid}: cleanup에는 단일 payload가 필요합니다")
+                variants = payload["variants"]
+
+                if len(variants) > item["max_requests"]:
+                    raise ConfigError(f"{cid}: variants 수가 max_requests를 초과합니다")
+
+                for variant in variants:
+                    expanded_id = f"{cid}-{variant['id']}"
+
+                    if len(expanded_id) > 64:
+                        raise ConfigError(f"{cid}: 확장된 case_id가 너무 깁니다")
+
+    cleanup = suite.get("cleanup_cases", [])
+    if not isinstance(cleanup, list) or (_cleanup and cleanup):
+        raise ConfigError("cleanup_cases는 중첩되지 않은 목록이어야 합니다")
+    if cleanup:
+        validate_suite({"schema_version": 1, "suite_id": suite["suite_id"] + "-cleanup",
+                        "suite_kind": suite["suite_kind"], "cases": cleanup}, fixtures, _cleanup=True)
+        by_id = {case["case_id"]: case for case in cases}
+        for case in cleanup:
+            source = case.get("after_case")
+            if (case["case_id"] in found or not isinstance(source, str) or source not in by_id
+                    or case.get("phase") != by_id[source].get("phase")
+                    or case["method"] != "POST" or by_id[source]["method"] != "POST"
+                    or "checkpoint_before" in case):
+                raise ConfigError(f"{case['case_id']}: cleanup after_case/phase/POST 설정 오류")
+
 
 def select_phase(suite: dict, phase: int | None) -> dict:
     """선택한 회차만 원래 순서대로 반환한다. 원본 suite는 변경하지 않는다."""
@@ -279,7 +333,10 @@ def select_phase(suite: dict, phase: int | None) -> dict:
     if not selected:
         raise ConfigError(f"{phase}회차에 해당하는 케이스가 없습니다")
 
-    return {**suite, "cases": selected}
+    result = {**suite, "cases": selected}
+    if "cleanup_cases" in suite:
+        result["cleanup_cases"] = [case for case in suite["cleanup_cases"] if case.get("phase") == phase]
+    return result
 
 
 def validate_selected_checkpoint_sequence(suite: dict) -> None:
@@ -308,6 +365,41 @@ def validate_payload(payload: object, root: Path):
     """POST payload의 지원 필드, 파일명, content type, 크기 등을 검사."""
     if not isinstance(payload, dict) or payload.get("csrf_mode", "valid") not in {"valid", "missing", "invalid"}:
         raise ConfigError("payload csrf_mode가 잘못되었습니다")
+
+    if "variants" in payload:
+        if set(payload) != {"variants"}:
+            raise ConfigError("다중 payload에는 variants만 허용합니다")
+
+        variants = payload["variants"]
+        if not isinstance(variants, list) or not 1 <= len(variants) <= 16:
+            raise ConfigError("variants는 1~16개여야 합니다")
+
+        seen = set()
+
+        for variant in variants:
+            if not isinstance(variant, dict) or set(variant) != {"id", "payload"}:
+                raise ConfigError("variant에는 id와 payload가 필요합니다")
+
+            variant_id = variant["id"]
+
+            if not isinstance(variant_id, str) or not re.fullmatch(r"P\d{2}", variant_id):
+                raise ConfigError("variant id는 P01 형식이어야 합니다")
+
+            if variant_id in seen:
+                raise ConfigError(f"중복 variant id: {variant_id}")
+
+            seen.add(variant_id)
+
+            item = variant["payload"]
+
+            if not isinstance(item, dict) or "variants" in item:
+                raise ConfigError("중첩 variants는 허용하지 않습니다")
+
+            # 기존 단일 payload 검증 로직 재사용
+            validate_payload(item, root)
+
+        return
+
     fields = payload.get("fields", {})
     if not isinstance(fields, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in fields.items()):
         raise ConfigError("fields는 문자열 키/값 객체여야 합니다")
@@ -339,6 +431,60 @@ def read_payload(root: Path, ref: str) -> dict:
     return load_json(safe_relative(root, ref))
 
 
+def expand_suite_variants(suite: dict, fixtures: Path) -> dict:
+    """다중 payload 케이스를 요청별 실행 단위로 확장한다.
+
+    - 기존 단일 payload 케이스는 그대로 유지한다.
+    - 다중 payload 케이스는 case_id-P01 형태로 확장한다.
+    - 원본 suite와 case 객체는 변경하지 않는다.
+    - 네트워크 요청은 수행하지 않는다.
+    """
+    original_ids = {case["case_id"] for case in suite["cases"]}
+    used_ids = set()
+    expanded = []
+
+    for case in suite["cases"]:
+        ref = case["input_reference"]
+
+        if ref is None:
+            payload = None
+        else:
+            payload = read_payload(fixtures, ref)
+
+        # 기존 단일 payload 또는 GET 케이스
+        if payload is None or "variants" not in payload:
+            expanded.append(dict(case))
+            used_ids.add(case["case_id"])
+            continue
+
+        # 다중 payload 케이스
+        for variant in payload["variants"]:
+            expanded_id = f"{case['case_id']}-{variant['id']}"
+
+            # 기존 케이스 및 확장 케이스와의 ID 충돌 방지
+            if expanded_id in original_ids or expanded_id in used_ids:
+                raise ConfigError(
+                    f"확장 case_id 중복: {expanded_id}"
+                )
+
+            child = {
+                **case,
+                "case_id": expanded_id,
+                "parent_case_id": case["case_id"],
+                "payload_id": variant["id"],
+                "_variant_payload": variant["payload"],
+                "max_requests": 1,
+            }
+
+            expanded.append(child)
+            used_ids.add(expanded_id)
+
+    return {
+        **suite,
+        "cases": expanded,
+    }
+
+
 class CsrfHtmlParser(HTMLParser):
     """로그인 페이지 HTML에서 csrfmiddlewaretoken hidden input만 찾는다."""
     def __init__(self):
@@ -352,6 +498,85 @@ class CsrfHtmlParser(HTMLParser):
                 self.value = d["value"]
 
 
+class ShareHtmlParser(HTMLParser):
+    """소유자 공유 목록의 같은 li 안에서 사용자명과 해제 경로를 연결한다."""
+
+    def __init__(self, post_id: int, recipient: str):
+        super().__init__(convert_charrefs=True)
+        self.post_id = post_id
+        self.recipient = recipient
+        self.rows = []
+        self.open_rows = []
+        self.has_share_list = False
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if ((tag == "h2" and attributes.get("id") == "share-list-heading")
+                or (tag == "section" and attributes.get("aria-labelledby") == "share-list-heading")):
+            self.has_share_list = True
+        if tag == "li":
+            self.open_rows.append({"names": [], "actions": [], "title": None})
+        elif self.open_rows:
+            row = self.open_rows[-1]
+            if tag == "h3" and "record-title" in (attributes.get("class") or "").split():
+                if row["title"] is not None:
+                    raise ConfigError("공유 목록의 사용자명 구조가 모호합니다")
+                row["title"] = []
+            elif tag == "form":
+                row["actions"].append(((attributes.get("method") or "get").lower(), attributes.get("action") or ""))
+
+    def handle_data(self, data):
+        if self.open_rows and self.open_rows[-1]["title"] is not None:
+            self.open_rows[-1]["title"].append(data)
+
+    def handle_endtag(self, tag):
+        if not self.open_rows:
+            return
+        row = self.open_rows[-1]
+        if tag == "h3" and row["title"] is not None:
+            row["names"].append("".join(row["title"]).strip())
+            row["title"] = None
+        elif tag == "li":
+            self.rows.append(self.open_rows.pop())
+
+    def share_id(self) -> int | None:
+        if self.open_rows:
+            raise ConfigError("공유 목록 HTML이 완결되지 않았습니다")
+        matches = []
+        for row in self.rows:
+            if self.recipient not in row["names"]:
+                continue
+            if row["names"] != [self.recipient] or len(row["actions"]) != 1:
+                raise ConfigError("공유 대상의 해제 경로가 중복되거나 모호합니다")
+            method, action = row["actions"][0]
+            pattern = rf"/posts/{self.post_id}/shares/([1-9]\d{{0,18}})/revoke/"
+            match = re.fullmatch(pattern, action)
+            if method != "post" or match is None:
+                raise ConfigError("공유 대상의 해제 경로가 같은 글의 안전한 POST 경로가 아닙니다")
+            share_id = int(match.group(1))
+            if share_id > 2**63 - 1:
+                raise ConfigError("공유 ID가 BigAutoField 범위를 초과합니다")
+            matches.append(share_id)
+        if len(matches) > 1:
+            raise ConfigError("공유 대상 관계가 여러 개여서 ID를 결정할 수 없습니다")
+        if not matches and not self.has_share_list:
+            raise ConfigError("공유 목록 영역을 확인하지 못해 관계 부재를 판정할 수 없습니다")
+        return matches[0] if matches else None
+
+
+def parse_share_id(html: bytes, post_id: int, recipient: str) -> int | None:
+    """제한된 HTML만 메모리에서 검사하며 원문·CSRF 토큰을 기록하지 않는다."""
+    if not isinstance(html, bytes) or len(html) > 65536:
+        raise ConfigError("공유 목록 HTML의 형식 또는 크기가 잘못되었습니다")
+    parser = ShareHtmlParser(post_id, recipient)
+    try:
+        parser.feed(html.decode("utf-8"))
+        parser.close()
+    except UnicodeError as exc:
+        raise ConfigError("공유 목록이 UTF-8 HTML이 아닙니다") from exc
+    return parser.share_id()
+
+
 class RequestBudget:
     """로그인/CSRF 준비 포함 전체 요청 수·속도·시간 예산 관리."""
     def __init__(self, args):
@@ -361,6 +586,7 @@ class RequestBudget:
         self.duration = args.max_duration
         self.timeout = args.timeout
         self.count = 0
+        self.responses_received = 0
         self.started = time.monotonic()
         self.last_request = None
 
@@ -405,7 +631,8 @@ def new_session() -> requests.Session:
 
 def bounded_send(s: requests.Session, method: str, target: str, path: str, budget: RequestBudget,
                  request_id: str, *, fields=None, file_info=None, headers=None,
-                 max_response_bytes=MAX_RESPONSE, read_redirect_body=False, trace_id=None, on_send=None) -> tuple[dict, bytes | None]:
+                 max_response_bytes=MAX_RESPONSE, read_redirect_body=False, trace_id=None, on_send=None,
+                 capture_html=False) -> tuple[dict, bytes | None]:
     """HTTP를 최대 1회 전송한다. 리다이렉트 미추적·TLS 확인·응답 상한 적용."""
     url = target + validate_path(path)
     h = {REQ_ID_HEADER: request_id}
@@ -432,6 +659,7 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
             on_send(utc_now())
 
         with s.send(prepared, allow_redirects=False, timeout=timeout, stream=True, verify=True) as resp:
+            budget.responses_received += 1
             total = 0
             digest = hashlib.sha256()
             chunks = []
@@ -516,8 +744,10 @@ def bounded_send(s: requests.Session, method: str, target: str, path: str, budge
 
                     digest.update(chunk)
 
-                    # 로그인 준비 HTML만 메모리에 보관한다.
-                    if path == "/accounts/login/" and total <= 65536:
+                    # 로그인/공유 ID 조회 HTML만 제한된 크기로 메모리에 보관한다.
+                    if capture_html and total > 65536:
+                        raise TooLargeResponse("공유 목록 HTML이 65536바이트를 초과합니다")
+                    if (capture_html or path == "/accounts/login/") and total <= 65536:
                         chunks.append(chunk)
 
                 if deadline_expired.is_set() or time.monotonic() >= deadline:
@@ -572,7 +802,7 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
     """역할별 시험 계정으로 로그인한다. 비밀번호는 대화형 입력하고 기록 금지."""
     local_test_account = (
         target == "http://127.0.0.1:8000"
-        and role in {"member_a", "member_b", "member_c"}
+        and role in {"member_a", "member_b", "member_c", "operator"}
     )
     seed_password = (
         os.environ.get("HAVEN_SEED_PASSWORD")
@@ -636,6 +866,34 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
         raise ExecutionError("로그인 인증 준비 실패 (상태/세션 확인)")
 
 
+def resolve_share_id(case: dict, sessions: dict, prepped: dict, target: str,
+                     budget: RequestBudget, run_id: str, prep_events: list,
+                     max_response_bytes: int) -> int | None:
+    """현재 소유자 목록에서 관계 ID를 얻는다. 거부 시험의 B/C 세션은 변경하지 않는다."""
+    reference = case["share_reference"]
+    role = reference["lookup_role"]
+    if role not in sessions:
+        sessions[role] = new_session()
+    owner_session = sessions[role]
+    if not prepped.get(role):
+        prep_login(owner_session, target, budget, role, run_id, prep_events, max_response_bytes)
+        prepped[role] = True
+    rid = str(uuid.uuid4())
+    detail, html = bounded_send(
+        owner_session, "GET", target, f"/posts/{reference['post_id']}/shares/", budget, rid,
+        headers={RUN_ID_HEADER: run_id}, max_response_bytes=min(max_response_bytes, 65536),
+        capture_html=True,
+    )
+    prep_events.append({"request_id": rid, "stage": "share_lookup", "http_status": detail["status"],
+                        "post_id": reference["post_id"], "lookup_role": role})
+    if detail["status"] != 200 or html is None:
+        raise ExecutionError("소유자의 공유 목록을 HTTP 200 HTML로 확인하지 못했습니다")
+    share_id = parse_share_id(html, reference["post_id"], reference["recipient"])
+    if share_id is None and not reference.get("allow_missing", False):
+        raise ExecutionError("공유 대상 관계가 없어 해제 경로를 결정할 수 없습니다")
+    return share_id
+
+
 def csrf_for_post(s: requests.Session, target: str, budget: RequestBudget,
                   prep_events: list, max_response_bytes: int, mode: str, run_id: str):
     """POST에 쓰일 CSRF 토큰을 얻는다. missing/invalid 시험은 의도적 예외."""
@@ -672,7 +930,13 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
     if case["method"] == "GET":
         return None, headers, None
 
-    payload = read_payload(fixture_root, case["input_reference"])
+    # 다중 페이로드로 확장된 케이스는 선택된 payload를 사용한다.
+    # 기존 단일 페이로드 케이스는 input_reference 파일을 그대로 읽는다.
+    if "_variant_payload" in case:
+        payload = case["_variant_payload"]
+    else:
+        payload = read_payload(fixture_root, case["input_reference"])
+
     fields = dict(payload.get("fields", {}))
     csrf = csrf_for_post(s, target, budget, prep_events, max_response_bytes,
                          payload.get("csrf_mode", "valid"), run_id)
@@ -750,16 +1014,18 @@ def check_http_expected(detail: dict, expected: dict, *, target_origin: str | No
 def base_record(run_id: str, case: dict) -> dict:
     """요청 1건에 대한 결과 기본 필드를 만든다. 최초 판정은 UNKNOWN."""
     return dict(
-        run_id=run_id, request_id=str(uuid.uuid4()), trace_id=new_trace_id(), case_id=case["case_id"],
+        run_id=run_id, request_id=str(uuid.uuid4()), trace_id=new_trace_id(), case_id=case["case_id"], 
+        parent_case_id=case.get("parent_case_id"), payload_id=case.get("payload_id"),
         timestamp_utc=utc_now(), elapsed_ms=None, auth_role=case["auth_role"],
         category=case["category"], method=case["method"], path=safe_path_log(case["path"]),
         expected_app=case["expected_app"], expected_waf=case["expected_waf"],
         http_status=None, redirect_target=None, response_summary=None, app_observed=None,
         waf_action=None, rule_id=None, waf_verdict="UNKNOWN", app_validity="UNKNOWN",
-        transport_status="PENDING", correlation_status="PENDING_LOG", evidence_path=None,
+        transport_status="PENDING", request_attempted=False, correlation_status="PENDING_LOG", evidence_path=None,
         http_expectation_match=None, verdict="UNKNOWN",
         verification_mode=case.get("verification_mode", "manual_required"),
         manual_validation="REQUIRED" if case.get("verification_mode", "manual_required") == "manual_required" else "NOT_REQUIRED",
+        execution_stage="test",
     )
 
 
@@ -776,7 +1042,7 @@ def save_results(outdir: Path, state: dict, records: list, *, correlation=False)
     with csvpath.open("w", encoding="utf-8-sig", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=RESULT_FIELDS + ["http_expectation_match", "verdict"], extrasaction="ignore")
         w.writeheader()
-        for record in records:
+        for record in records + state.get("cleanup_results", []):
             row = {**record}
             row["expected_app"] = json.dumps(row["expected_app"], ensure_ascii=False)
             row["response_summary"] = json.dumps(row["response_summary"], ensure_ascii=False)
@@ -794,6 +1060,112 @@ def get_exit_code(records: list, *, incomplete: bool) -> int:
     return 0
 
 
+def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: dict,
+                    target: str, budget: RequestBudget, run_id: str, prep_events: list,
+                    fixture_root: Path, max_response_bytes: int, results: list) -> bool:
+    """시도한 변경의 복구만 같은 전역 예산 안에서 수행한다. 한 복구 오류가 다른 복구를 막지 않는다."""
+    complete = True
+    for source in cases:
+        case = dict(source)
+        record = base_record(run_id, case)
+        record.update(execution_stage="cleanup", after_case=case["after_case"])
+        if case["after_case"] not in attempted:
+            record.update(transport_status="SKIPPED", skip_reason="trigger_not_attempted")
+            results.append(record)
+            continue
+        try:
+            role = case["auth_role"]
+            if role not in sessions:
+                sessions[role] = new_session()
+            session = sessions[role]
+            if role != "anonymous" and not prepped.get(role):
+                prep_login(session, target, budget, role, run_id, prep_events, max_response_bytes)
+                prepped[role] = True
+            if "share_reference" in case:
+                share_id = resolve_share_id(case, sessions, prepped, target, budget,
+                                            run_id, prep_events, max_response_bytes)
+                if share_id is None:
+                    record.update(transport_status="SKIPPED", skip_reason="share_not_present")
+                    results.append(record)
+                    continue
+                case["path"] = case["path"].replace("{share_id}", str(share_id))
+                record["path"] = safe_path_log(case["path"])
+            fields, headers, file_info = prepare_case_request(
+                session, case, fixture_root, target, budget, run_id, prep_events, max_response_bytes)
+            detail, _ = bounded_send(
+                session, case["method"], target, case["path"], budget, record["request_id"],
+                fields=fields, file_info=file_info, headers=headers, trace_id=record["trace_id"],
+                max_response_bytes=max_response_bytes,
+                on_send=lambda timestamp: record.update(timestamp_utc=timestamp, request_attempted=True))
+            record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
+                          redirect_target=safe_location(detail["location"]), request_attempted=True,
+                          response_summary={"request_body_bytes": detail["request_body_bytes"],
+                                            "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],
+                                            "headers": detail["headers"]}, transport_status="OK",
+                          http_expectation_match=check_http_expected(detail, case["expected_app"], target_origin=target))
+            if not record["http_expectation_match"]:
+                complete = False
+        except (ExecutionError, ConfigError, KeyboardInterrupt) as exc:
+            record.update(transport_status="ERROR", verdict="ERROR",
+                          response_summary={"error": "KeyboardInterrupt" if isinstance(exc, KeyboardInterrupt) else str(exc)})
+            complete = False
+        results.append(record)
+        print(f"복구 {case['case_id']}: HTTP {record['http_status']} / {record['transport_status']}", file=sys.stderr)
+    return complete
+
+
+@contextmanager
+def temporary_seed_password(enabled: bool, target: str):
+    """명시적 로컬 시험 옵션에서만 공통 비밀번호를 받아 종료 시 환경을 복원한다."""
+    if not enabled:
+        yield
+        return
+    if target != "http://127.0.0.1:8000":
+        raise ConfigError("--prompt-seed-password는 http://127.0.0.1:8000에서만 사용할 수 있습니다")
+    previous = os.environ.get("HAVEN_SEED_PASSWORD")
+    try:
+        if not previous:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", getpass.GetPassWarning)
+                try:
+                    password = getpass.getpass("로컬 시험 계정 4개의 공통 비밀번호: ")
+                except (EOFError, getpass.GetPassWarning) as exc:
+                    raise ExecutionError("비밀번호를 가려서 입력할 수 있는 CMD 터미널이 필요합니다") from exc
+            if not password:
+                raise ExecutionError("시험 계정 비밀번호가 비어 있습니다")
+            os.environ["HAVEN_SEED_PASSWORD"] = password
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("HAVEN_SEED_PASSWORD", None)
+        else:
+            os.environ["HAVEN_SEED_PASSWORD"] = previous
+
+
+def print_run_summary(state: dict) -> None:
+    """본 시험과 정리 결과를 구분해 출력한다. 실제 입력값은 포함하지 않는다."""
+    records = state["results"]
+    cleanup = state.get("cleanup_results", [])
+    summary = {key: state.get(key) for key in (
+        "selected_cases", "execution_cases", "test_http_requests", "preparation_http_requests",
+        "cleanup_http_requests", "total_http_requests_including_preparation", "http_responses_received",
+        "unexecuted_cases", "cleanup_complete", "stopped_reason",
+    )}
+    summary.update(
+        recorded_results=len(records),
+        http_expectation_matches=sum(row.get("http_expectation_match") is True for row in records),
+        http_expectation_mismatches=sum(row.get("http_expectation_match") is False for row in records),
+        cleanup_results=len(cleanup),
+        cleanup_http_matches=sum(row.get("http_expectation_match") is True for row in cleanup),
+        cleanup_http_mismatches=sum(row.get("http_expectation_match") is False for row in cleanup),
+        cleanup_errors=sum(row.get("transport_status") == "ERROR" for row in cleanup),
+        cleanup_skipped=sum(row.get("transport_status") == "SKIPPED" for row in cleanup),
+    )
+    for verdict in ("PASS", "FAIL", "UNKNOWN", "ERROR"):
+        summary[verdict] = sum(row.get("verdict") == verdict for row in records)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
 def run(args) -> int:
     """승인한 대상의 고정 케이스를 순차 실행한다. HTTP 결과만으로 보안 PASS 금지."""
     # 1) 실행 전 검증: 대상이 allowlist와 정확히 일치해야 전송 가능.
@@ -805,26 +1177,74 @@ def run(args) -> int:
     approved = {canonical_origin(x) for x in allow["approved_origins"]}
     if target not in approved:
         raise ConfigError("대상 origin이 정확한 allowlist에 없습니다")
+    prompt_seed = getattr(args, "prompt_seed_password", False)
+    if prompt_seed and target != "http://127.0.0.1:8000":
+        raise ConfigError("--prompt-seed-password는 http://127.0.0.1:8000에서만 사용할 수 있습니다")
     root = args.fixture_dir.resolve(strict=True)
     suite = load_json(args.cases)
     validate_suite(suite, root)
 
     total_cases = len(suite["cases"])
     phase = getattr(args, "phase", None)
+
+    # 먼저 회차를 선택한다.
     suite = select_phase(suite, phase)
-    if any("checkpoint_before" in case for case in suite["cases"]) and not getattr(args, "manual_checkpoints", False):
+
+    if (any("checkpoint_before" in case for case in suite["cases"]) and not getattr(args, "manual_checkpoints", False)):
         raise ConfigError("수동 체크포인트 시험에는 --manual-checkpoints 옵션이 필요합니다")
+
     validate_selected_checkpoint_sequence(suite)
+
+    # 기존 논리적 시험 케이스 수를 보존한다.
+    selected_cases = len(suite["cases"])
+
+    # 다중 payload를 실제 요청 단위로 확장한다.
+    # 실행 전에 모든 확장을 끝내므로 ID 충돌도 전송 전에 발견된다.
+    suite = expand_suite_variants(suite, root)
+
+    cleanup_cases = suite.get("cleanup_cases", [])
+    if {case["case_id"] for case in suite["cases"]} & {case["case_id"] for case in cleanup_cases}:
+        raise ConfigError("확장된 시험 ID와 cleanup ID가 충돌합니다")
+
+    execution_cases = len(suite["cases"])
+
     phase_label = "전체" if phase is None else f"{phase}회차"
     print(
         f"대상={target}  suite={suite['suite_id']}  "
-        f"회차={phase_label}  선택={len(suite['cases'])}/{total_cases}  "
+        f"회차={phase_label}  선택={selected_cases}/{total_cases}  "
+        f"요청단위={execution_cases}  "
         f"timeout={args.timeout}s  요청≤{args.max_requests}  "
         f"초당≤{args.rate}  시간≤{args.max_duration}s",
         file=sys.stderr,
     )
     if args.output_dir.exists():
         raise ConfigError("출력 폴더가 이미 있습니다. 새 경로를 지정하세요")
+    if getattr(args, "dry_run", False):
+        all_cases = suite["cases"] + cleanup_cases
+        roles = {case["auth_role"] for case in all_cases} - {"anonymous"}
+        roles.update(case["share_reference"]["lookup_role"] for case in all_cases if "share_reference" in case)
+        print(json.dumps({
+            "target": target, "suite_id": suite["suite_id"], "selected_phase": phase,
+            "total_suite_cases": total_cases, "selected_cases": selected_cases,
+            "execution_cases": execution_cases, "cleanup_cases": len(cleanup_cases),
+            "authenticated_roles": sorted(roles), "minimum_login_requests": 2 * len(roles),
+            "minimum_http_requests_excluding_extra_preparation_and_cleanup": execution_cases + 2 * len(roles),
+            "share_lookup_case_count": sum("share_reference" in case for case in all_cases),
+            "request_budget": args.max_requests, "max_duration_seconds": args.max_duration,
+            "output_dir": str(args.output_dir),
+            "count_note": "실행 전 하한이며 실제 요청 수가 아닙니다. 추가 CSRF·공유 ID 조회·조건부 복구도 같은 예산에 포함합니다.",
+        }, ensure_ascii=False, indent=2))
+        print("DRY RUN: HTTP·DB 작업·비밀번호 입력·출력 폴더 생성은 수행하지 않았습니다.")
+        return 0
+    with temporary_seed_password(prompt_seed, target):
+        return _execute_run(args, target, root, suite, total_cases, selected_cases)
+
+
+def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, selected_cases: int) -> int:
+    """검증과 선택적 인증 정보 준비가 끝난 뒤 기존 실행 루프를 수행한다."""
+    phase = getattr(args, "phase", None)
+    execution_cases = len(suite["cases"])
+    cleanup_cases = suite.get("cleanup_cases", [])
     args.output_dir.mkdir(parents=True, exist_ok=False)
     # 2) 실행 단위 ID와 전역 요청 예산을 생성한다.
     run_id = str(uuid.uuid4())
@@ -839,24 +1259,51 @@ def run(args) -> int:
     state.update(
         selected_phase=phase,
         total_suite_cases=total_cases,
-        selected_cases=len(suite["cases"]),
-        excluded_cases=total_cases - len(suite["cases"]),
+        selected_cases=selected_cases,
+        execution_cases=execution_cases,
+        excluded_cases=total_cases - selected_cases,
+        cleanup_results=[], cleanup_complete=None, cleanup_http_requests=0,
+        test_http_requests=0, preparation_http_requests=0, http_responses_received=0,
     )
     records = []
+    attempted = set()
     failed = False
     try:
-        for case in suite["cases"]:
+        for source_case in suite["cases"]:
+            case = dict(source_case)
             record = base_record(run_id, case)
             role = case["auth_role"]
             try:
-                # 3) 사용자 역할별 Session 분리 (A 쿠키를 C가 재사용하지 않도록).
-                if role not in sessions:
-                    sessions[role] = new_session()
-                sess = sessions[role]
+                # 역할별 세션을 유지하되, 익명 로그인 POST는
+                # 케이스마다 독립된 세션을 사용한다.
+                isolate_login = (
+                    role == "anonymous"
+                    and case["method"] == "POST"
+                    and case["path"] == "/accounts/login/"
+                )
+
+                if isolate_login:
+                    session_key = (role, case["case_id"])
+                else:
+                    session_key = role
+
+                if session_key not in sessions:
+                    sessions[session_key] = new_session()
+
+                sess = sessions[session_key]
+
                 if role != "anonymous" and not prepped.get(role):
-                    prep_login(sess, target, budget, role, run_id, prep_events, args.max_response_bytes)
+                    prep_login(
+                        sess,
+                        target,
+                        budget,
+                        role,
+                        run_id,
+                        prep_events,
+                        args.max_response_bytes
+                    )
                     prepped[role] = True
-                
+
                 if case.get("checkpoint_before") == "deactivate_member_b":
                     baseline_ok = any(
                         previous["auth_role"] == "member_b"
@@ -892,6 +1339,12 @@ def run(args) -> int:
                         "timestamp_utc": utc_now(),
                     })
 
+                if "share_reference" in case:
+                    share_id = resolve_share_id(case, sessions, prepped, target, budget,
+                                                run_id, prep_events, args.max_response_bytes)
+                    case["path"] = case["path"].replace("{share_id}", str(share_id))
+                    record["path"] = safe_path_log(case["path"])
+
                 # 인가/CSRF 준비와 HTTP 전송을 분리해 run()의 흐름을 단순하게 유지한다.
                 fields, headers, file_info = prepare_case_request(
                     sess, case, root, target, budget, run_id, prep_events, args.max_response_bytes
@@ -906,16 +1359,18 @@ def run(args) -> int:
                         for key in ("body_bytes", "sha256")
                     ),
                     on_send=lambda timestamp: record.update(
-                        timestamp_utc=timestamp
+                        timestamp_utc=timestamp, request_attempted=True
                     ),
                 )
                 record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
                               redirect_target=safe_location(detail["location"]),
                               response_summary={"request_body_bytes": detail["request_body_bytes"], "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],
-                                                "headers": detail["headers"]}, transport_status="OK",
+                                                "headers": detail["headers"]}, transport_status="OK", request_attempted=True,
                               http_expectation_match=check_http_expected(detail, case["expected_app"], target_origin=target))
                 # No WAF/app log evidence in run: do not invent a pass based on HTTP 403.
                 record["verdict"] = "UNKNOWN"
+                if case.get("critical") and not record["http_expectation_match"]:
+                    failed = True
             except (ExecutionError, ConfigError, KeyboardInterrupt) as exc:
                 record.update(transport_status="ERROR", verdict="ERROR",
                               response_summary={"error": ("KeyboardInterrupt" if isinstance(exc, KeyboardInterrupt)
@@ -923,26 +1378,41 @@ def run(args) -> int:
                 failed = True
             # 4) 성공/실패마다 즉시 기록: 중단돼도 부분 증거를 보존한다.
             records.append(record)
+            if record["request_attempted"]:
+                attempted.add(case.get("parent_case_id", case["case_id"]))
+            state["test_http_requests"] = sum(row["request_attempted"] for row in records)
+            state["preparation_http_requests"] = budget.count - state["test_http_requests"]
+            state["http_responses_received"] = budget.responses_received
             state["unexecuted_cases"] = len(suite["cases"]) - len(records)
             state["total_http_requests_including_preparation"] = budget.count
             state["ended_utc"] = utc_now()
             if failed:
-                state["stopped_reason"] = f"case {case['case_id']}: " + record["response_summary"]["error"]
+                state["stopped_reason"] = f"case {case['case_id']}: " + record["response_summary"].get("error", "핵심 선행조건 HTTP 기대값 불일치")
             save_results(args.output_dir, state, records)
             print(f"{case['case_id']}: HTTP {record['http_status']} / {record['transport_status']} / "
                   f"상관 상태={record['correlation_status']}", file=sys.stderr)
             if failed:
                 break
     finally:
-        for s in sessions.values():
-            s.close()
-        state["total_http_requests_including_preparation"] = budget.count
-        state["ended_utc"] = utc_now()
-        state["unexecuted_cases"] = len(suite["cases"]) - len(records)
-        if not records or failed:
+        cleanup_started_count = budget.count
+        try:
+            state["cleanup_complete"] = execute_cleanup(
+                cleanup_cases, attempted, sessions, prepped, target, budget, run_id, prep_events,
+                root, args.max_response_bytes, state["cleanup_results"])
+        finally:
+            for s in sessions.values():
+                s.close()
+            state["cleanup_http_requests"] = budget.count - cleanup_started_count
+            state["test_http_requests"] = sum(row["request_attempted"] for row in records)
+            state["preparation_http_requests"] = cleanup_started_count - state["test_http_requests"]
+            state["http_responses_received"] = budget.responses_received
+            state["total_http_requests_including_preparation"] = budget.count
+            state["ended_utc"] = utc_now()
+            state["unexecuted_cases"] = len(suite["cases"]) - len(records)
             save_results(args.output_dir, state, records)
     print(f"run 결과: {args.output_dir / 'results.json'}", file=sys.stderr)
-    return get_exit_code(records, incomplete=failed or len(records) != len(suite["cases"]))
+    print_run_summary(state)
+    return get_exit_code(records, incomplete=failed or len(records) != len(suite["cases"]) or not state["cleanup_complete"])
 
 
 def log_lines(path: Path) -> list[dict]:
@@ -1278,7 +1748,7 @@ def correlate(args) -> int:
     out["correlated_utc"] = utc_now()
     out["source_run_json"] = args.run_json.name
     save_results(args.output_dir, out, records, correlation=True)
-    code = get_exit_code(records, incomplete=bool(state.get("stopped_reason")) or bool(state.get("unexecuted_cases")))
+    code = get_exit_code(records, incomplete=bool(state.get("stopped_reason")) or bool(state.get("unexecuted_cases")) or state.get("cleanup_complete") is False)
     print(f"correlate 결과: {args.output_dir / 'correlated_results.json'} (종료 코드 {code})", file=sys.stderr)
     return code
 
@@ -1358,6 +1828,8 @@ def create_parser():
     r.add_argument("--max-duration", type=float, default=300)
     r.add_argument("--max-response-bytes", type=int, default=MAX_RESPONSE)
     r.add_argument("--manual-checkpoints", action="store_true", help="계정 상태 변경 등 수동 체크포인트 허용")
+    r.add_argument("--dry-run", action="store_true", help="입력·출력 폴더 생성·HTTP 없이 선택한 시험 계획만 검증")
+    r.add_argument("--prompt-seed-password", action="store_true", help="로컬 127.0.0.1:8000 시험 계정의 공통 비밀번호를 한 번 가려서 입력")
     c = commands.add_parser("correlate", help="기존 run 결과에 로컬 JSONL WAF/앱 로그를 연결")
     c.add_argument("--run-json", required=True, type=Path)
     c.add_argument("--waf-log", required=True, type=Path)

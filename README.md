@@ -96,7 +96,7 @@ flowchart TB
 | 데이터 | 별도 EC2 PostgreSQL / EBS | runtime/migration 분리, DB/첨부/manifest 정합 복원 |
 | 네트워크 | VPC / ALB / SG | 공개 입구와 비공개 서버, 포트/출발지별 허용과 거부 |
 | AWS 권한/관리 | IAM / MFA / SSM | 사용자/그룹 실습, 운영 Role 분리, Web/DB 관리 접속 |
-| 외부 연결 | DNS / ACM / SES 또는 외부 메일 | 도메인, HTTPS 세션, 시험 메일 발송과 수신 |
+| 외부 연결 | DNS / ACM / SES 또는 외부 메일 | 도메인 `orchestration-haven.cloud`(11/11 구매), HTTPS 세션, 시험 메일 발송과 수신 |
 | 웹 보안 | WAF / CloudWatch Logs | 보안 정책 설정, Block 규칙에 일치하는 요청 자동 차단, Count 관찰과 로그 기반 재시험 |
 | 점검 | 자체 CLI / Prowler / ZAP Baseline | SG 설정 비교, 제한된 요청 재현, 경고와 실제 문제의 구분 |
 

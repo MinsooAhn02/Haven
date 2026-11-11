@@ -235,6 +235,11 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
         validate_path(item["path"])
         if "critical" in item and type(item["critical"]) is not bool:
             raise ConfigError(f"{cid}: critical은 bool이어야 합니다")
+
+        if "cleanup_before" in item:
+            if type(item["cleanup_before"]) is not bool or _cleanup:
+                raise ConfigError(f"{cid}: cleanup_before 설정 오류")
+            
         share_ref = item.get("share_reference")
         if share_ref is not None:
             if (not isinstance(share_ref, dict)
@@ -301,6 +306,13 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                     if len(expanded_id) > 64:
                         raise ConfigError(f"{cid}: 확장된 case_id가 너무 깁니다")
 
+    checkpoints = [
+        i for i, case in enumerate(cases)
+        if case.get("cleanup_before") is True
+    ]
+    if len(checkpoints) > 1:
+        raise ConfigError("복구 체크포인트는 하나만 지정할 수 있습니다")
+
     cleanup = suite.get("cleanup_cases", [])
     if not isinstance(cleanup, list) or (_cleanup and cleanup):
         raise ConfigError("cleanup_cases는 중첩되지 않은 목록이어야 합니다")
@@ -315,6 +327,17 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                     or case["method"] != "POST" or by_id[source]["method"] != "POST"
                     or "checkpoint_before" in case):
                 raise ConfigError(f"{case['case_id']}: cleanup after_case/phase/POST 설정 오류")
+
+        if checkpoints:
+            positions = {
+                case["case_id"]: i
+                for i, case in enumerate(cases)
+            }
+            for cleanup_case in cleanup:
+                if positions[cleanup_case["after_case"]] >= checkpoints[0]:
+                    raise ConfigError(
+                        f"{cleanup_case['case_id']}: 복구 대상은 체크포인트보다 먼저 실행되어야 합니다"
+                    )
 
 
 def select_phase(suite: dict, phase: int | None) -> dict:
@@ -1268,8 +1291,41 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
     records = []
     attempted = set()
     failed = False
+    
+    cleanup_done = False
+    cleanup_http_requests = 0
+
+    def perform_cleanup_once():
+        nonlocal cleanup_done, cleanup_http_requests
+
+        if cleanup_done:
+            return
+
+        started = budget.count
+        try:
+            state["cleanup_complete"] = execute_cleanup(
+                cleanup_cases, attempted, sessions, prepped,
+                target, budget, run_id, prep_events,
+                root, args.max_response_bytes,
+                state["cleanup_results"],
+            )
+        finally:
+            cleanup_http_requests += budget.count - started
+            state["cleanup_http_requests"] = cleanup_http_requests
+            cleanup_done = True
+
     try:
         for source_case in suite["cases"]:
+            if source_case.get("cleanup_before") is True:
+                perform_cleanup_once()
+
+                if not state["cleanup_complete"]:
+                    failed = True
+                    state["stopped_reason"] = (
+                        f"cleanup before {source_case['case_id']} incomplete"
+                    )
+                    break
+
             case = dict(source_case)
             record = base_record(run_id, case)
             role = case["auth_role"]
@@ -1381,7 +1437,7 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
             if record["request_attempted"]:
                 attempted.add(case.get("parent_case_id", case["case_id"]))
             state["test_http_requests"] = sum(row["request_attempted"] for row in records)
-            state["preparation_http_requests"] = budget.count - state["test_http_requests"]
+            state["preparation_http_requests"] = (budget.count - state["test_http_requests"] - cleanup_http_requests)
             state["http_responses_received"] = budget.responses_received
             state["unexecuted_cases"] = len(suite["cases"]) - len(records)
             state["total_http_requests_including_preparation"] = budget.count
@@ -1394,21 +1450,27 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
             if failed:
                 break
     finally:
-        cleanup_started_count = budget.count
         try:
-            state["cleanup_complete"] = execute_cleanup(
-                cleanup_cases, attempted, sessions, prepped, target, budget, run_id, prep_events,
-                root, args.max_response_bytes, state["cleanup_results"])
+            perform_cleanup_once()
         finally:
             for s in sessions.values():
                 s.close()
-            state["cleanup_http_requests"] = budget.count - cleanup_started_count
-            state["test_http_requests"] = sum(row["request_attempted"] for row in records)
-            state["preparation_http_requests"] = cleanup_started_count - state["test_http_requests"]
+
+            state["cleanup_http_requests"] = cleanup_http_requests
+            state["test_http_requests"] = sum(
+                row["request_attempted"] for row in records
+            )
+            state["preparation_http_requests"] = (
+                budget.count
+                - state["test_http_requests"]
+                - cleanup_http_requests
+            )
             state["http_responses_received"] = budget.responses_received
             state["total_http_requests_including_preparation"] = budget.count
             state["ended_utc"] = utc_now()
-            state["unexecuted_cases"] = len(suite["cases"]) - len(records)
+            state["unexecuted_cases"] = (
+                len(suite["cases"]) - len(records)
+            )
             save_results(args.output_dir, state, records)
     print(f"run 결과: {args.output_dir / 'results.json'}", file=sys.stderr)
     print_run_summary(state)

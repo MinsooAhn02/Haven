@@ -34,11 +34,20 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 # Unicode code points keep the teammate's folder name readable by PS 5.1.
 $appFolder = -join ([char[]]@(0xC2E0, 0xC694, 0xCC2C))
 $appRoot = Join-Path (Join-Path $repoRoot $appFolder) 'app'
-$pythonPath = (Get-Command python.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+$venvPython = Join-Path $repoRoot '.venv\Scripts\python.exe'
+
+if (Test-Path -LiteralPath $venvPython -PathType Leaf) {
+    $pythonPath = $venvPython
+} else {
+    $pythonPath = (Get-Command python.exe -CommandType Application -ErrorAction Stop |
+        Select-Object -First 1).Source
+}
 $managePath = Join-Path $appRoot 'manage.py'
 $databaseName = 'haven_verify'
 $databaseHost = 'localhost'
 $databasePort = '5432'
+$uploadRoot = Join-Path $env:TEMP 'haven-verify-uploads'
+$uploadMarker = Join-Path $uploadRoot '.haven-verify-only'
 
 function Invoke-LocalSql {
     param(
@@ -191,6 +200,7 @@ $managedEnvironment = @(
     'DJANGO_SETTINGS_MODULE', 'DJANGO_SECRET_KEY', 'DJANGO_DEBUG',
     'DJANGO_ALLOWED_HOSTS', 'DJANGO_CSRF_TRUSTED_ORIGINS',
     'HAVEN_SEED_PASSWORD', 'HAVEN_TEMPLATES_DIR', 'HAVEN_STATIC_DIR',
+    'HAVEN_UPLOAD_DIR',
     'PGPASSWORD', 'PGSERVICE', 'PGSERVICEFILE', 'PGOPTIONS', 'PGHOSTADDR',
     'PGCLIENTENCODING', 'PGCONNECT_TIMEOUT',
     'PYTHONDONTWRITEBYTECODE', 'PYTHONIOENCODING', 'PYTHONUTF8'
@@ -227,6 +237,20 @@ try {
     foreach ($environmentName in @('DB_PASSWORD', 'PGPASSWORD', 'PGSERVICE', 'PGSERVICEFILE', 'PGOPTIONS', 'PGHOSTADDR', 'HAVEN_TEMPLATES_DIR', 'HAVEN_STATIC_DIR')) {
         [Environment]::SetEnvironmentVariable($environmentName, $null, 'Process')
     }
+    # Dedicated local upload directory; refuse to reuse an unknown directory.
+    if (Test-Path -LiteralPath $uploadRoot) {
+        $uploadItem = Get-Item -LiteralPath $uploadRoot -Force
+        if (-not $uploadItem.PSIsContainer -or
+            ($uploadItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+            -not (Test-Path -LiteralPath $uploadMarker -PathType Leaf)) {
+            throw "Upload directory is not a verified Haven test directory: $uploadRoot"
+        }
+    } else {
+        New-Item -ItemType Directory -Path $uploadRoot -Force | Out-Null
+        Set-Content -LiteralPath $uploadMarker -Value 'Haven local test uploads' -Encoding ASCII
+    }
+
+    $env:HAVEN_UPLOAD_DIR = $uploadRoot
     $env:DB_NAME = $databaseName
     $env:DB_HOST = $databaseHost
     $env:DB_PORT = $databasePort
@@ -293,6 +317,21 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO haven_app;
             Assert-NoOtherConnections
             Write-Host 'Reset: clearing only haven_verify application data and resetting sequences.'
             Invoke-VerifyManage -ManagementArguments @('flush', '--noinput') -Stage 'Reset'
+            # Clear files belonging to this dedicated test directory only.
+            $links = @(Get-ChildItem -LiteralPath $uploadRoot -Force -Recurse |
+                Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint })
+
+            if ($links.Count -gt 0) {
+                throw 'Upload directory contains links. Refusing automatic cleanup.'
+            }
+
+            Get-ChildItem -LiteralPath $uploadRoot -Force |
+                Where-Object { $_.Name -ne '.haven-verify-only' } |
+                ForEach-Object {
+                    Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction Stop
+                }
+
+            Write-Host 'Reset: cleared dedicated upload files.'
         }
         $seedState = Invoke-LocalSql -Role haven_owner -Database $databaseName -Sql @'
 SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM auth_user)

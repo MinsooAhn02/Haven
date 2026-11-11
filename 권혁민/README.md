@@ -74,6 +74,15 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
 
 `response_summary.request_body_bytes`가 **8191, 8192, 8193**이고 모의 응답이 **302, 302, 413**인지 확인한다. 실제 Django 및 Nginx의 크기 정책은 별개 시험 대상이다.
 
+### 실제 Django 로컬 시험
+
+`start_verify.ps1 -Mode Reset`으로 `haven_verify` DB와 전용 업로드 저장소를 초기화한 뒤 Django 서버를 실행한다.
+
+재시험 시에는 기존 서버를 종료하고 다시 초기화한다.
+
+```powershell
+.\start_verify.ps1 -Mode Reset
+
 ## 3. Case JSON 계약
 
 명세에서 요구한 루트/케이스 필드를 유지하고, 시험 편의를 위해 `verification_mode`와 선택 필드 `phase`를 추가하였다.
@@ -154,9 +163,11 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
 `cases_haven_template.json`에 1~3회차 시험을 통합했다.
 
 - 논리 케이스 153개, 실제 HTTP 시험 197건
-- pytest 237개 통과
+- pytest 251개 통과 (PR #62 리뷰 M1~M8 보강)
 - 로컬 Django 시험 HTTP 기대값 197/197 일치, 복구 완료
 - AWS WAF Count 및 앱/WAF 로그 상관분석 미완료
+
+AWS에서는 `cases_haven_auth_smoke.json`을 우선 실행한다. 전체 `cases_haven_template.json`은 시험 계정·게시글 ID와 DB 초기 상태를 확인한 후 실행한다. 해당 시험에는 데이터 변경·삭제가 포함된다.
 
 ### 계정 비활성화 수동 체크포인트
 

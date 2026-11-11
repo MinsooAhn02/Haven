@@ -14,17 +14,17 @@
 | 배정 | 사람마다 주력 + 대기열을 넉넉하게. 다 못 해도 됨 | 한 사람이 막히면 나머지가 기다리던 문제(날짜별 시간표 방식) 해소 |
 | 보고 | 매일 끝나면 Discord에 오늘 상황 보고 | 저녁 재배정의 입력 |
 | 재배정 | 조장이 저녁에 보고·브랜치·PR·CI를 대조 → `TASK_TODO.html`의 `DATA` 수정 PR | 남은 일을 다음 날로 넘기고, 끝낸 사람에게 다음 일 |
-| main 반영 | 본인 브랜치 → PR → CI 통과 → 병합. main 직접 푸시 금지 | 무료 비공개 저장소라 브랜치 보호를 못 켬(API 403). 규칙으로 운영 |
+| main 반영 | 본인 브랜치 → PR → PR 본문의 로컬 시험 결과 확인(GitHub Actions는 11/11부터 꺼짐) → 병합. main 직접 푸시 금지(조장 기록 제외) | 무료 비공개 저장소라 브랜치 보호를 못 켬(API 403). 규칙으로 운영 |
 | 브랜치 통일 | main 병합 후 각 개인 브랜치에 main을 병합(merge commit, force push 금지) | 개인 브랜치를 계속 쓰므로 이력 보존 |
 | 개인 TODO | 원문은 그대로 두고 끝에 `민수's comment · 날짜`(조장 코멘트)를 덧붙임 | 팀원 기록을 덮어쓰지 않기 위해 |
 
 ## 조장 매일 점검 순서
 
 1. `git fetch` → 브랜치별 main 대비 앞/뒤 커밋 수 확인 (`git rev-list --left-right --count origin/main...origin/<브랜치>`)
-2. 열린 PR·CI 확인 (`gh pr list`, `gh run list`)
+2. 열린 PR 확인 (`gh pr list`). Actions는 꺼져 있어 `gh run list`는 쓰지 않고 PR 본문의 로컬 시험 결과를 본다
 3. PR 없이 main에 들어온 커밋 확인 (`git log --first-parent --format='%h %an %s' <지난 확인 SHA>..origin/main`)
 4. 팀원 보고와 실제 커밋·PR 대조 → 완료(실제로 돌려 본 것만) / 진행 / 대기를 구분
-5. `TASK_TODO.html` DATA 갱신 PR → 병합 후 개인 브랜치에 main 병합
+5. 저녁 정리 순서(`docs/인수인계/01` 3장): ① 개인 TODO 배포(필요할 때만, PR로) → ② main 현황판·기록 갱신(조장 기록만 main 직접 push) → ③ 6개 브랜치 동기화 → 공지. 동기화는 main에 들어갈 변경이 모두 끝난 마지막에 한 번만
 6. 이 폴더에 그날 기록 추가
 
 ## 주의

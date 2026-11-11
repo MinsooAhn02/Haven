@@ -260,3 +260,13 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [ ] 민성님 SSM Session Manager 실제 접속 및 권한 거부 시험 결과 수신.
 - [ ] WAF·CloudWatch Logs 권한은 담당자 요청 시 확인·최소 범위 보완.
 - [ ] 11/13 종료 시 지울 자원 목록 및 실사용액 재확인.
+
+## 2026-11-11 Route 53 호스팅 영역 조회 권한 — AWS 적용 및 민성 인계
+
+- [x] 민성님 요청: 호스팅 영역 생성 뒤 조회 오류 발생. AWS 오류에 `route53:GetHostedZoneCount` 미허용 명시됨.
+- [x] 기존 `minsung` 인라인 정책 수정 시 사용자 인라인 정책 합계 **2,048자 제한 초과** 오류 확인. 기존 인라인 정책은 변경하지 않음.
+- [x] 별도 **고객 관리형 정책** `Haven-Minsung-Route53-Read` 생성 성공 및 IAM 사용자 `minsung`에게 **직접 정책 연결** 완료(사용자 확인).
+- [x] [17번 Route 53 조회 정책](IAM/17_Minsung_Route53_Read_Policy.json)에 AWS에 입력한 JSON 기록. `GetHostedZoneCount`, `ListHostedZones`, `ListHostedZonesByName` 및 특정 호스팅 영역 `HOSTED_ZONE_ID_MASKED`에 대한 `GetHostedZone`, `ListResourceRecordSets` 조회만 허용. DNS 레코드 변경·삭제 권한은 추가하지 않음.
+- [x] 민성님이 **호스팅 영역 생성 완료**, Route 53 네임서버 4개를 공유했다고 보고함(11/11 10:42). 도메인 등록업체 NS 위임 및 외부 DNS 정상 응답까지 완료했다는 의미는 아님.
+- [ ] **담당자 검증 대기:** 민성님이 `GetHostedZoneCount` 및 호스팅 영역 조회를 다시 수행한 결과/추가 거부 오류 공유. 생성 완료 보고와 개별 API 조회 권한 시험을 구분함.
+- **담당:** 민성님=호스팅 영역·DNS 후속 설정 및 검증 / 보람=권한 생성·연결·기록.

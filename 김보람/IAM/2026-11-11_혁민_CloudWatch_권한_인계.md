@@ -3,13 +3,17 @@
 ## AWS 설정 완료 (보람 작업, 콘솔 화면 확인)
 
 - IAM 사용자 `hyeokmin` 생성, 콘솔 로그인용 임시 비밀번호 및 첫 로그인 변경 설정. 비밀번호 원문은 저장소에 기재하지 않음.
-- `hyeokmin` 사용자에 관리형 `IAMUserChangePassword`와 고객 관리형 아래 정책 2개 연결된 화면 확인.
+- `hyeokmin` 사용자에 **총 4개 정책이 연결된 AWS 콘솔 화면 확인** (11/11, MFA 정책 추가 후).
+  - `IAMUserChangePassword`: 자신의 콘솔 암호 변경
+  - `Haven-IAM-Self-MFA-Password`: 자신의 MFA 등록 및 관리용 고객 관리형 정책 ([09번 정책 JSON](09_IAM_Self_MFA_Password_Policy.json)과 같은 내용으로 생성하도록 안내). **정책 연결만 확인했고, 실제 MFA 등록은 혁민님이 해야 함.**
   - `Haven-Hyeokmin-CloudWatch-Read`: 서울 로그 그룹 목록, `/haven/web` 로그 스트림·이벤트 조회
   - `Haven-Hyeokmin-EC2-WAF-LogQuery-Read`: 서울 EC2 조회(`ec2:Describe*`), `/haven/web` 로그 검색, 서울 리전 WAF Web ACL 목록·상세 조회
 - EC2 역할 `haven-ec2-ssm-role`에 인라인 정책 `Haven-EC2-Web-CloudWatch-Write`가 추가된 화면 확인.
   - `/haven/web` 기존 로그 그룹의 스트림 확인·생성 및 로그 이벤트 전송 권한
   - 기존 SSM·S3·파라미터 정책은 그대로 유지
 - 혁민용 두 정책에 `ssm:StartSession`은 추가하지 않음.
+
+**04번은 이전 설계 초안:** [`04_Web_Logs_Policy.json`](04_Web_Logs_Policy.json)은 미적용 초안이고, 현재 EC2 역할에 실제 연결된 로그 쓰기 정책 기록은 **22번**임.
 
 ## 대응하는 JSON 기록
 

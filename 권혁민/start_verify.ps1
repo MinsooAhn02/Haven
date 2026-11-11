@@ -34,7 +34,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 # Unicode code points keep the teammate's folder name readable by PS 5.1.
 $appFolder = -join ([char[]]@(0xC2E0, 0xC694, 0xCC2C))
 $appRoot = Join-Path (Join-Path $repoRoot $appFolder) 'app'
-$pythonPath = Join-Path $repoRoot '.venv\Scripts\python.exe'
+$pythonPath = (Get-Command python.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $managePath = Join-Path $appRoot 'manage.py'
 $databaseName = 'haven_verify'
 $databaseHost = 'localhost'

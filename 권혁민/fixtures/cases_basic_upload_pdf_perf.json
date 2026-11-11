@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-phase3-pdf-performance",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "UP-PDF-PERF-P1",
+      "phase": 3,
+      "category": "pdf_performance",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_pdf_perf_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "P1: 정상 PDF(1페이지), 중간(250페이지), 복잡(1500페이지) 구조 PDF 각 1개를 순차 업로드. 각 응답 elapsed_ms 비교. 테스트 시작 시 해당 글에 첨부 0개, 계정 전체 사용량 10MiB 미만이어야 함."
+    },
+    {
+      "case_id": "UP-PDF-PERF-P2",
+      "phase": 3,
+      "category": "pdf_performance",
+      "method": "POST",
+      "path": "/posts/2/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_pdf_perf_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "P2: 정상 PDF(1페이지), 중간(250페이지), 복잡(1500페이지) 구조 PDF 각 1개를 순차 업로드. 각 응답 elapsed_ms 비교. 테스트 시작 시 해당 글에 첨부 0개, 계정 전체 사용량 10MiB 미만이어야 함."
+    }
+  ]
+}

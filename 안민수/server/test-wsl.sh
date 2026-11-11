@@ -68,6 +68,7 @@ expect_fail "haven_app still cannot DROP a migrated table" app_sql "drop table a
 check "env file is 640 root:haven" [ "$(stat -c '%a %U:%G' /etc/haven/haven.env)" = "640 root:haven" ]
 check "uploads dir is 750 haven:haven" [ "$(stat -c '%a %U:%G' /srv/haven/uploads)" = "750 haven:haven" ]
 check "env has HAVEN_UPLOAD_DIR, no CSRF line when unset" bash -c 'grep -qx "HAVEN_UPLOAD_DIR=/srv/haven/uploads" /etc/haven/haven.env && ! grep -q CSRF /etc/haven/haven.env'
+check "env has DJANGO_HTTPS=0 without an https origin" grep -qx "DJANGO_HTTPS=0" /etc/haven/haven.env
 GPID=$(systemctl show -p MainPID --value haven)
 check "service can write uploads (ReadWritePaths)" bash -c "nsenter -t $GPID -m runuser -u haven -- touch /srv/haven/uploads/.probe && rm /srv/haven/uploads/.probe"
 check "service cannot write code dir (ProtectSystem=strict)" bash -c "! nsenter -t $GPID -m runuser -u haven -- touch /srv/haven/current/.probe 2>/dev/null"

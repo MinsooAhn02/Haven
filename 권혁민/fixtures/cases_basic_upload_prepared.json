@@ -1,0 +1,123 @@
+
+{
+  "schema_version": 1,
+  "suite_id": "haven-basic-upload-prepared",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "UP-01-A-TXT-UPLOAD",
+      "phase": 3,
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {"http_status": 302},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A의 정상 TXT 업로드. ACTIVE 저장 및 원본 해시 확인"
+    },
+    {
+      "case_id": "UP-02-INVALID-FORMATS",
+      "phase": 3,
+      "category": "upload_validation",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_invalid_variants.json",
+      "expected_app": {"http_status": 400},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 4,
+      "verification_mode": "manual_required",
+      "note": "미지원 확장자·PDF 내용 위장·이중 확장자 거부"
+    },
+    {
+      "case_id": "UP-03-INVALID-FILENAMES",
+      "phase": 3,
+      "category": "upload_validation",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_filename_variants.json",
+      "expected_app": {"http_status": 400},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 2,
+      "verification_mode": "manual_required",
+      "note": "파일명 경로 구분자·상위 경로 이동 거부"
+    },
+    {
+      "case_id": "UP-06-B-UPLOAD-DENIED",
+      "phase": 3,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_b",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1을 읽기 공유받은 B의 업로드 권한 거부"
+    },
+    {
+      "case_id": "UP-06-C-UPLOAD-DENIED",
+      "phase": 3,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_c",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1을 공유받지 않은 C의 업로드 거부"
+    },
+    {
+      "case_id": "UP-13-CSRF-INVALID",
+      "phase": 3,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_csrf_variants.json",
+      "expected_app": {"http_status": 403},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "업로드 CSRF 누락·불일치·외부 Origin 거부"
+    },
+    {
+      "case_id": "UP-13-ANON-VALID-CSRF",
+      "phase": 3,
+      "category": "authentication",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "anonymous",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "CSRF가 유효해도 비로그인 업로드는 로그인 화면으로 이동"
+    },
+    {
+      "case_id": "UP-09-DIRECT-MEDIA",
+      "phase": 3,
+      "category": "file_access",
+      "method": "GET",
+      "path": "/media/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {"http_status": 404},
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공개 media 경로 및 디렉터리 목록 미노출 확인. 배포 프록시의 403 거부도 별도 평가"
+    }
+  ]
+}

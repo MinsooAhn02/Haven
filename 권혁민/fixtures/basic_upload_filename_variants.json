@@ -1,0 +1,31 @@
+
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "../escape.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "..\\escape.txt",
+          "content_type": "text/plain"
+        }
+      }
+    }
+  ]
+}

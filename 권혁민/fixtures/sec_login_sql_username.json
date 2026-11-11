@@ -1,1 +1,1 @@
-{"csrf_mode":"valid", "fields":{"username":"' OR '1'='1' --", "password":"dummy-only-not-real"}}
+{"csrf_mode":"valid", "fields":{"username":"' OR '1'='1' -- ", "password":"dummy-only-not-real"}}

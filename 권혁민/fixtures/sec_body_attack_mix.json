@@ -1,0 +1,7 @@
+{
+  "csrf_mode": "valid",
+  "fields": {
+    "title": "SEC mix {{ 7|add:7 }} SQL ' OR '1'='1",
+    "body": "SEC-06 SQL-like: ' OR '1'='1' --\nSEC-07 template-like: {{ 7|add:7 }}\nSEC-10 XSS-like: <img src=x onerror=alert('haven-local-test')>\n이 문자열들은 시험용 데이터이며 실행되면 안 됩니다."
+  }
+}

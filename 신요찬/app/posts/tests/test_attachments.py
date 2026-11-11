@@ -12,12 +12,13 @@ import stat
 import tempfile
 import threading
 import time
+from datetime import timedelta
 from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth.models import Permission, User
 from django.core.management import CommandError, call_command
-from django.db import DatabaseError, connection
+from django.db import DatabaseError, connection, transaction
 from django.test import Client, TestCase, TransactionTestCase, override_settings
 
 from posts import attachments
@@ -592,6 +593,11 @@ class CommandTests(AttachmentBase):
         self.assertFalse(old_tmp.exists())
         self.assertTrue(orphan.exists())  # 기본은 목록만
         self.assertIn("orphan 11111111-1111-1111-1111-111111111111", out.getvalue())
+        out = io.StringIO()
+        call_command("cleanup_attachments", "--delete-orphans", stdout=out)
+        self.assertTrue(orphan.exists())  # 막 생긴 파일은 업로드 중일 수 있어 지우지 않는다
+        self.assertIn("orphans_kept=1", out.getvalue())
+        os.utime(orphan, (time.time() - 7200, time.time() - 7200))
         call_command("cleanup_attachments", "--delete-orphans", stdout=io.StringIO())
         self.assertFalse(orphan.exists())
         self.assertTrue((self.upload_dir / str(keep.storage_key)).exists())
@@ -619,6 +625,174 @@ class CommandTests(AttachmentBase):
         (self.upload_dir / str(att.storage_key)).unlink()
         with self.assertRaises(CommandError):
             call_command("attachment_manifest", "--verify", stdout=io.StringIO(), stderr=io.StringIO())
+
+
+class CleanupRaceTests(AttachmentBase):
+    """권혁민 #38 리뷰: 정리 명령이 목록을 읽은 뒤 그 사이에 바뀐 첨부·파일을 지우지 않는다."""
+
+    def old_pending_with_file(self):
+        att = Attachment.objects.create(post=self.p1, original_name="s.txt", size_bytes=1)
+        Attachment.objects.filter(pk=att.pk).update(created_at=att.created_at - timedelta(hours=2))
+        (self.upload_dir / str(att.storage_key)).write_bytes(b"s")
+        att.refresh_from_db()
+        return att
+
+    def test_stale_pending_activated_after_listing_is_skipped(self):
+        listed = self.old_pending_with_file()  # 정리 명령이 읽어 둔 옛 상태
+        Attachment.objects.filter(pk=listed.pk).update(
+            status=Attachment.Status.ACTIVE, content_type=attachments.TXT_CONTENT_TYPE, sha256="0" * 64)
+        cutoff = listed.created_at + timedelta(minutes=1)
+        result = attachments.purge(listed, statuses=(Attachment.Status.PENDING,), created_before=cutoff)
+        self.assertEqual(result, attachments.SKIPPED)
+        self.assertEqual(Attachment.objects.get(pk=listed.pk).status, Attachment.Status.ACTIVE)
+        self.assertTrue((self.upload_dir / str(listed.storage_key)).exists())
+
+    def test_pending_newer_than_cutoff_is_skipped(self):
+        att = Attachment.objects.create(post=self.p1, original_name="n.txt", size_bytes=1)
+        result = attachments.purge(att, statuses=(Attachment.Status.PENDING,), created_before=att.created_at)
+        self.assertEqual(result, attachments.SKIPPED)
+        self.assertTrue(Attachment.objects.filter(pk=att.pk).exists())
+
+    def test_command_skips_attachment_activated_during_run(self):
+        listed = self.old_pending_with_file()
+        real_purge = attachments.purge
+
+        def activate_then_purge(att, **kw):
+            # 목록을 읽은 뒤, 지우기 직전에 업로드가 끝난 상황
+            Attachment.objects.filter(pk=att.pk).update(
+                status=Attachment.Status.ACTIVE, content_type=attachments.TXT_CONTENT_TYPE, sha256="0" * 64)
+            return real_purge(att, **kw)
+
+        out = io.StringIO()
+        with mock.patch.object(attachments, "purge", side_effect=activate_then_purge):
+            call_command("cleanup_attachments", stdout=out)
+        self.assertIn("stale_pending_purged=0", out.getvalue())
+        self.assertIn("skipped=1", out.getvalue())
+        self.assertTrue((self.upload_dir / str(listed.storage_key)).exists())
+        self.assertEqual(self.as_user(self.b).get(
+            f"/posts/{self.p1.pk}/attachments/{listed.pk}/download/").status_code, 200)
+
+    def test_orphan_is_rechecked_against_rows_before_delete(self):
+        att = self.make_active()
+        path = self.upload_dir / str(att.storage_key)
+        os.utime(path, (time.time() - 7200, time.time() - 7200))
+        out = io.StringIO()
+        # 정리 명령이 행 목록을 읽은 뒤에 이 업로드의 행이 생긴 상황(목록에는 없음)
+        with mock.patch("posts.management.commands.cleanup_attachments.Command._known_keys", return_value=set()):
+            call_command("cleanup_attachments", "--delete-orphans", stdout=out)
+        self.assertTrue(path.exists())
+        self.assertIn("orphans_kept=1", out.getvalue())
+        self.assertIn("orphans_removed=0", out.getvalue())
+
+    def test_deleting_post_with_leftover_pending_is_finished(self):
+        """DELETING 글에 PENDING이 남아 있어도(activate는 ACTIVE 글에서만 성공) 정리가 끝까지 간다."""
+        att = Attachment.objects.create(post=self.p2, original_name="p.txt", size_bytes=1)
+        (self.upload_dir / str(att.storage_key)).write_bytes(b"p")
+        Post.objects.filter(pk=self.p2.pk).update(status=Post.Status.DELETING)
+        out = io.StringIO()
+        call_command("cleanup_attachments", stdout=out)
+        self.assertIn("posts_finished=1", out.getvalue())
+        self.assertFalse(Post.objects.filter(pk=self.p2.pk).exists())
+        self.assertFalse((self.upload_dir / str(att.storage_key)).exists())
+
+    def test_old_non_uuid_file_is_still_removed(self):
+        junk = self.upload_dir / "leftover.bin"
+        junk.write_bytes(b"x")
+        os.utime(junk, (time.time() - 7200, time.time() - 7200))
+        out = io.StringIO()
+        call_command("cleanup_attachments", "--delete-orphans", stdout=out)
+        self.assertFalse(junk.exists())
+        self.assertIn("orphan (non-uuid file)", out.getvalue())
+
+
+class CleanupLockTests(UploadDirMixin, TransactionTestCase):
+    """정리와 업로드 완료(activate)가 같은 순간에 겹쳐도 "성공했는데 파일 없음"이 생기지 않는다."""
+
+    def test_activate_waits_for_cleanup_and_fails_cleanly(self):
+        a = User.objects.create_user("member_a")
+        post = Post.objects.create(owner=a, title="t", body="b")
+        att = Attachment.objects.create(post=post, original_name="s.txt", size_bytes=1)
+        Attachment.objects.filter(pk=att.pk).update(created_at=att.created_at - timedelta(hours=2))
+        att.refresh_from_db()
+        (self.upload_dir / str(att.storage_key)).write_bytes(b"s")
+        cutoff = att.created_at + timedelta(minutes=1)
+        claimed = threading.Event()
+        results = {}
+
+        def cleanup():
+            try:
+                def hold():
+                    claimed.set()
+                    time.sleep(0.5)  # 행을 잠근 채로 머문다
+                with mock.patch.object(attachments, "after_claim", side_effect=hold):
+                    results["purge"] = attachments.purge(
+                        att, statuses=(Attachment.Status.PENDING,), created_before=cutoff)
+            finally:
+                connection.close()
+
+        def finish_upload():
+            try:
+                claimed.wait(5)
+                started = time.monotonic()
+                results["activate"] = attachments.activate(att, a, attachments.TXT_CONTENT_TYPE, "0" * 64)
+                results["waited"] = time.monotonic() - started
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=cleanup), threading.Thread(target=finish_upload)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(results["purge"], attachments.PURGED)
+        self.assertFalse(results["activate"])  # 업로드는 성공으로 끝나지 않는다
+        self.assertGreater(results["waited"], 0.3)  # 행 잠금 때문에 기다렸다
+        self.assertFalse(Attachment.objects.filter(pk=att.pk).exists())
+        self.assertFalse((self.upload_dir / str(att.storage_key)).exists())
+
+
+    def test_cleanup_waits_for_activation_and_then_skips(self):
+        """반대 순서(리뷰가 지적한 상황): 업로드 완료가 진행 중일 때 정리가 겹치면, 정리가 기다렸다가 건너뛴다."""
+        a = User.objects.create_user("member_a")
+        post = Post.objects.create(owner=a, title="t", body="b")
+        att = Attachment.objects.create(post=post, original_name="s.txt", size_bytes=1)
+        Attachment.objects.filter(pk=att.pk).update(created_at=att.created_at - timedelta(hours=2))
+        att.refresh_from_db()  # 정리 명령이 목록에서 읽어 둔 옛 상태(PENDING)
+        path = self.upload_dir / str(att.storage_key)
+        path.write_bytes(b"s")
+        cutoff = att.created_at + timedelta(minutes=1)
+        activating = threading.Event()
+        results = {}
+
+        def finish_upload():
+            try:
+                with transaction.atomic():  # activate()와 같은 변경을 하고, 커밋 전에 머문다
+                    Attachment.objects.filter(pk=att.pk, status=Attachment.Status.PENDING).update(
+                        status=Attachment.Status.ACTIVE, content_type=attachments.TXT_CONTENT_TYPE, sha256="0" * 64)
+                    activating.set()
+                    time.sleep(0.5)
+            finally:
+                connection.close()
+
+        def cleanup():
+            try:
+                activating.wait(5)
+                started = time.monotonic()
+                results["purge"] = attachments.purge(
+                    att, statuses=(Attachment.Status.PENDING,), created_before=cutoff)
+                results["waited"] = time.monotonic() - started
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=finish_upload), threading.Thread(target=cleanup)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(results["purge"], attachments.SKIPPED)
+        self.assertGreater(results["waited"], 0.3)  # 커밋을 기다렸다
+        self.assertEqual(Attachment.objects.get(pk=att.pk).status, Attachment.Status.ACTIVE)
+        self.assertTrue(path.exists())
 
 
 class ConcurrentUploadTests(UploadDirMixin, TransactionTestCase):

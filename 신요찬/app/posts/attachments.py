@@ -259,19 +259,37 @@ def mark_delete_pending(post_id, attachment_id, owner):
     return attachment
 
 
-def purge(attachment):
-    """DELETE_PENDING(또는 오래된 PENDING) 첨부의 파일을 지우고 메타데이터를 지운다.
+PURGED, SKIPPED, FAILED = "purged", "skipped", "failed"
 
-    파일 삭제가 실패하면 행을 남겨 둔다(디스크에 파일이 있는 동안 용량을 돌려주지 않음).
+
+def after_claim():
+    """동시성 시험에서 행을 잠근 뒤 파일을 지우기 전에 지연을 넣기 위한 자리(평소에는 아무것도 하지 않음)."""
+
+
+def purge(attachment, *, statuses=(Attachment.Status.DELETE_PENDING,), created_before=None):
+    """정리 대상 첨부의 파일을 지우고 메타데이터를 지운다.
+
+    지우기 직전에 행을 잠그고 상태를 다시 확인한다(권혁민 #38 리뷰). 목록을 읽은 뒤 그 사이에
+    업로드가 끝나 ACTIVE가 된 첨부는 건드리지 않는다(SKIPPED). 잠금을 잡은 동안 업로드의
+    activate()는 같은 행에서 기다렸다가, 행이 지워졌으면 실패로 끝나므로 "성공했는데 파일이 없는"
+    상태가 생기지 않는다.
+    파일 삭제가 실패하면 행을 남겨 둔다(디스크에 파일이 있는 동안 용량을 돌려주지 않음, FAILED).
     """
-    try:
-        _unlink(final_path(attachment.storage_key))
-    except OSError:
-        logger.warning("attachment file removal failed id=%s", attachment.pk)
-        return False
-    _unlink_quietly(incoming_dir() / f"{attachment.storage_key}.part")
-    Attachment.objects.filter(pk=attachment.pk).delete()
-    return True
+    with transaction.atomic():
+        current = Attachment.objects.select_for_update().filter(pk=attachment.pk).first()
+        if current is None:
+            return PURGED  # 이미 정리됨
+        if current.status not in statuses or (created_before is not None and current.created_at >= created_before):
+            return SKIPPED
+        after_claim()
+        try:
+            _unlink(final_path(current.storage_key))
+        except OSError:
+            logger.warning("attachment file removal failed id=%s", current.pk)
+            return FAILED
+        _unlink_quietly(incoming_dir() / f"{current.storage_key}.part")
+        current.delete()
+    return PURGED
 
 
 def _unlink(path):

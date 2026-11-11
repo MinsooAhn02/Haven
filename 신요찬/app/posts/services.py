@@ -33,8 +33,10 @@ def delete_post(post_id, owner):
 
 def finish_post_deletion(post):
     """DELETING 글의 첨부 파일을 정리하고, 남은 첨부가 없으면 글을 지운다. 끝났으면 True."""
+    # DELETING 글의 첨부는 delete_post()가 모두 DELETE_PENDING으로 바꿨다. PENDING이 남아 있어도
+    # activate()는 글이 ACTIVE일 때만 성공하므로 다시 살아날 수 없어 같이 지운다.
     for attachment in list(post.attachments.all()):
-        attachments.purge(attachment)
+        attachments.purge(attachment, statuses=(Attachment.Status.DELETE_PENDING, Attachment.Status.PENDING))
     with transaction.atomic():
         locked = Post.objects.select_for_update().filter(pk=post.pk, status=Post.Status.DELETING).first()
         if locked is None:

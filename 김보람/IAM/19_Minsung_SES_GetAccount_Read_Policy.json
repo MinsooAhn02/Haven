@@ -5,7 +5,8 @@
       "Sid": "ReadSESAccountStatus",
       "Effect": "Allow",
       "Action": [
-        "ses:GetAccount"
+        "ses:GetAccount",
+        "ses:ListRecommendations"
       ],
       "Resource": "*"
     }

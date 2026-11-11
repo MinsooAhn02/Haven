@@ -1992,6 +1992,7 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
+      "cleanup_before": true,
       "note": "최후반 파괴적 시험: P2는 A가 소유한 삭제 전용 테스트 글. POST 후 P2 접근 차단/DB 정리 확인"
     },
     {

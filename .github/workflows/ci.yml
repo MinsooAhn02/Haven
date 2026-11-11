@@ -1,19 +1,8 @@
 name: CI
 
-# 실행 횟수 줄이기 (11/11): 무료 비공개 레포는 Actions 시간이 월 한도라서.
-# - push는 main만. 개인 브랜치는 PR을 열면 pull_request로 시험된다(조장의 6개 브랜치 동기화 push로 돌지 않게).
-# - 문서·현황판만 바뀌면 건너뛴다(코드 시험과 무관).
-# - 같은 브랜치에 새 커밋이 오면 앞의 실행은 취소한다.
 on:
   push:
-    branches: [main]
-    paths-ignore: ['**.md', 'TASK_TODO.html', 'docs/**']
   pull_request:
-    paths-ignore: ['**.md', 'TASK_TODO.html', 'docs/**']
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read

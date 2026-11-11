@@ -302,3 +302,30 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - **ALB 야간 과금:** 밤에도 ALB·WAF가 켜져 있을 때 비용을 계산해 민성에게 준다(유지·삭제 결정용). #54 리뷰의 후속 확인 항목이다.
 - **삭제 절차:** ALB·리스너·대상 그룹·ACM·Route 53 정리 순서는 민성이 `destroy.sh`에 추가한다. 실제 삭제는 조장 확인 후에만 한다.
 - **확인 지원:** 15번(SG 삭제) 실제 허용/거부 시험은 민성이 한다. 결과를 받아 정책 기록에 반영한다.
+
+## 2026-11-11 민성 SES 계정 조회 권한 추가
+
+- [x] 민성님이 `ses:GetAccount` 호출 시 `AccessDenied` 오류 보고: IAM 사용자 `minsung`에 해당 조회 권한이 없음.
+- [x] 보람이 AWS IAM에서 고객 관리형 정책 `Haven-Minsung-SES-Read` 생성 완료 보고.
+- [x] IAM 사용자 `minsung`에 해당 정책 직접 연결 완료 보고.
+- [x] 정책 JSON을 [19번 민성 SES 조회 정책](IAM/19_Minsung_SES_GetAccount_Read_Policy.json)에 기록. **허용 액션은 `ses:GetAccount`, `ses:ListRecommendations`, `ses:ListEmailIdentities`, `ses:GetEmailIdentity` 4개**이며, 이메일 자격 증명 상세 조회는 서울 리전의 SES identity ARN으로 제한. 메일 발송·SES 설정 변경 권한은 포함하지 않음.
+- [x] **민성님 실제 시험 결과(11/11):** `ses:ListEmailIdentities` 15:16 목록 조회 성공, `ses:GetEmailIdentity` 15:17 CLI 조회 성공. `ses:GetAccount`·`ses:ListRecommendations`는 SES 콘솔 첫 화면 접속으로 간접 확인(각 API 직접 호출 결과는 별도 미확인). 15:51 `ses:SendEmail` AccessDenied 거부 시험 성공(발송 권한 없음). PR #60 코멘트 근거.
+- [x] 11/11 민성님이 `ses:ListRecommendations` 추가 누락 오류 보고 → 보람이 동일 고객 관리형 정책에 조회 액션 추가·저장(정책 버전 2, AWS 권한 요약에 읽기 2개 표시). 추가 정책 연결은 불필요.
+- [x] 11/11 민성님 추가 요청 `ses:ListEmailIdentities`·`ses:GetEmailIdentity` → 보람이 같은 정책에 추가·저장, 정책 버전 3 확인(권한 요약: SES v2 / Pinpoint Email의 나열·읽기). 실제 API 재시험은 대기.
+- **구분:** 보람이 민성에게 조회 권한을 연결한 것과, 보람 자신의 SES 권한·`#58` DKIM 등록 후 인증 완료 여부는 **별도 확인** 대상.
+
+### 다음 TODO (2026-11-11 기준)
+1. **SES 조회 시험:** 민성님 보고 기준 목록·상세 조회 성공 및 `ses:SendEmail` 거부 확인. `GetAccount`·`ListRecommendations` 개별 호출은 별도 미확인.
+2. **SES 도메인:** [PR #58](https://github.com/MinsooAhn02/Haven/pull/58)은 병합 완료. CNAME 3개 Route 53 등록을 보람이 확인했고, **11/11 15:57 민성님이 `orchestration-haven.cloud` 확인됨(Verified)·DKIM SUCCESS 보고**. 보람 SES 완료 화면 직접 재조회는 별도.
+3. **11/12(목):** 요찬님과 Django 실제 메일 발송·수신·실패 시험. SES 샌드박스 수신자 인증 제한과 앱에서 사용하는 발송 권한을 별도로 확인.
+4. **11/13(금):** 담당자 실제 권한 시험 결과를 받아 IAM 보완·기록하고 프로젝트 종료 시 AWS 자원 목록 및 새 계정 설정 절차 정리. **자원 삭제는 실행하지 않음**.
+5. **가능할 때:** 다른 리전 자원·일별 AWS 실사용액 확인.
+
+- **완료된 항목:** ALB·WAF 평일 밤·주말 비용표는 PR #57 병합 완료. 포트폴리오 스크린샷 분류는 수업 후 재개(프로젝트 AWS 작업 TODO와 별개).
+
+## 2026-11-11 AWS 자원 현황 정리 (콘솔 조회 기록)
+
+- [x] [AWS 자원 현황 및 종료 확인 목록](AWS_자원현황_종료확인목록_2026-11-11.md) 작성: EC2 2·Haven VPC 1·서브넷 4·보안 그룹 3·NAT 1·ALB 1·EBS 2(40 GiB)·S3 1·EIP/공인 IPv4 3 및 연결 대상·Route 53 1·SES 확인됨/DKIM SUCCESS(민성 보고)·WAF 조회 0개.
+- [x] 기본 VPC·기본 서브넷·기본 SG와 Haven 자원을 구분하여 기록.
+- [ ] 종료 전에 담당자 확인 필요: IGW/라우팅, S3 Gateway Endpoint, ACM 인증서, ALB 대상 그룹/리스너, EBS 스냅샷, CloudWatch 로그, S3 백업 객체, 다른 리전의 자원.
+- **이 단계는 자원 현황 초안 및 인계 목록 작성 완료이며 실제 자원 삭제/변경 또는 종료 승인 아님.**

@@ -233,6 +233,34 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                     f"{cid}: B 세션 기준 요청이 먼저 필요합니다"
                 )
         validate_path(item["path"])
+        capture = item.get("capture_post_id", False)
+
+        if type(capture) is not bool:
+            raise ConfigError(f"{cid}: capture_post_id 형식 오류")
+
+        if capture and (
+            _cleanup
+            or item["method"] != "POST"
+            or item["path"] != "/posts/new/"
+            or item["expected_app"]["http_status"] != 302
+        ):
+            raise ConfigError(f"{cid}: 게시글 ID 캡처 설정 오류")
+
+        post_ref = item.get("post_reference")
+
+        if post_ref is not None:
+            if (
+                not isinstance(post_ref, str)
+                or not re.fullmatch(r"[A-Za-z0-9_-]{2,64}", post_ref)
+                or not re.fullmatch(
+                    r"/posts/\{post_id\}/(?:attachments/|delete/)",
+                    item["path"],
+                )
+            ):
+                raise ConfigError(f"{cid}: post_reference 설정 오류")
+
+        elif "{post_id}" in item["path"]:
+            raise ConfigError(f"{cid}: post_id 참조가 없습니다")
         if "critical" in item and type(item["critical"]) is not bool:
             raise ConfigError(f"{cid}: critical은 bool이어야 합니다")
 
@@ -337,6 +365,29 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                 if positions[cleanup_case["after_case"]] >= checkpoints[0]:
                     raise ConfigError(
                         f"{cleanup_case['case_id']}: 복구 대상은 체크포인트보다 먼저 실행되어야 합니다"
+                    )
+
+    if not _cleanup:
+        creators = {}
+        for case in cases:
+            ref = case.get("post_reference")
+            if ref is not None:
+                source = creators.get(ref)
+                if source is None or source["auth_role"] != case["auth_role"]:
+                    raise ConfigError(
+                        f"{case['case_id']}: 게시글 생성 선행조건 오류"
+                    )
+
+            if case.get("capture_post_id"):
+                creators[case["case_id"]] = case
+
+        for cleanup_case in cleanup:
+            ref = cleanup_case.get("post_reference")
+            if ref is not None:
+                source = creators.get(ref)
+                if source is None or source["auth_role"] != cleanup_case["auth_role"]:
+                    raise ConfigError(
+                        f"{cleanup_case['case_id']}: 복구 게시글 참조 오류"
                     )
 
 
@@ -1012,6 +1063,21 @@ def same_origin_redirect_path(location: str | None, target_origin: str | None) -
     return None
 
 
+def extract_created_post_id(location: str | None, target: str) -> int:
+    """신규 글 생성 응답의 Location에서 게시글 ID를 안전하게 추출한다."""
+    path = same_origin_redirect_path(location, target)
+
+    match = re.fullmatch(r"/posts/([1-9]\d{0,18})/", path or "")
+    if match is None:
+        raise ExecutionError("신규 글 생성 Location에서 게시글 ID를 확인하지 못했습니다")
+
+    post_id = int(match.group(1))
+    if post_id > 2**63 - 1:
+        raise ExecutionError("게시글 ID가 허용 범위를 초과했습니다")
+
+    return post_id
+
+
 def check_http_expected(detail: dict, expected: dict, *, target_origin: str | None = None) -> bool:
     """응답 코드·리다이렉트·길이·해시·헤더의 명시적 기대값을 비교."""
     ok = detail["status"] == expected["http_status"]
@@ -1085,9 +1151,10 @@ def get_exit_code(records: list, *, incomplete: bool) -> int:
 
 def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: dict,
                     target: str, budget: RequestBudget, run_id: str, prep_events: list,
-                    fixture_root: Path, max_response_bytes: int, results: list) -> bool:
+                    fixture_root: Path, max_response_bytes: int, results: list, created_post_ids: dict | None = None) -> bool:
     """시도한 변경의 복구만 같은 전역 예산 안에서 수행한다. 한 복구 오류가 다른 복구를 막지 않는다."""
     complete = True
+    created_post_ids = created_post_ids or {}
     for source in cases:
         case = dict(source)
         record = base_record(run_id, case)
@@ -1104,6 +1171,16 @@ def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: d
             if role != "anonymous" and not prepped.get(role):
                 prep_login(session, target, budget, role, run_id, prep_events, max_response_bytes)
                 prepped[role] = True
+            if "post_reference" in case:
+                post_id = created_post_ids.get(case["post_reference"])
+
+                if post_id is None:
+                    raise ExecutionError("복구 대상 게시글 ID를 확인하지 못했습니다")
+
+                case["path"] = case["path"].replace(
+                    "{post_id}", str(post_id)
+                )
+                record["path"] = safe_path_log(case["path"])
             if "share_reference" in case:
                 share_id = resolve_share_id(case, sessions, prepped, target, budget,
                                             run_id, prep_events, max_response_bytes)
@@ -1290,6 +1367,7 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
     )
     records = []
     attempted = set()
+    created_post_ids = {}
     failed = False
     
     cleanup_done = False
@@ -1308,6 +1386,7 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                 target, budget, run_id, prep_events,
                 root, args.max_response_bytes,
                 state["cleanup_results"],
+                created_post_ids=created_post_ids,
             )
         finally:
             cleanup_http_requests += budget.count - started
@@ -1330,6 +1409,19 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
             record = base_record(run_id, case)
             role = case["auth_role"]
             try:
+                if "post_reference" in case:
+                    ref = case["post_reference"]
+                    post_id = created_post_ids.get(ref)
+
+                    if post_id is None:
+                        raise ExecutionError(
+                            f"{case['case_id']}: 선행 게시글 ID를 찾을 수 없습니다"
+                        )
+
+                    case["path"] = case["path"].replace(
+                        "{post_id}", str(post_id)
+                    )
+                    record["path"] = safe_path_log(case["path"])
                 # 역할별 세션을 유지하되, 익명 로그인 POST는
                 # 케이스마다 독립된 세션을 사용한다.
                 isolate_login = (
@@ -1418,6 +1510,20 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                         timestamp_utc=timestamp, request_attempted=True
                     ),
                 )
+                if case.get("capture_post_id"):
+                    if not check_http_expected(
+                        detail, case["expected_app"], target_origin=target
+                    ):
+                        raise ExecutionError("게시글 생성 HTTP 기대값 불일치")
+
+                    post_id = extract_created_post_id(
+                        detail["location"], target
+                    )
+
+                    if post_id in created_post_ids.values():
+                        raise ExecutionError("중복된 생성 게시글 ID입니다")
+
+                    created_post_ids[case["case_id"]] = post_id
                 record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
                               redirect_target=safe_location(detail["location"]),
                               response_summary={"request_body_bytes": detail["request_body_bytes"], "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],

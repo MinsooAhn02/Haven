@@ -7,14 +7,18 @@ from django.urls import Resolver404, resolve
 # 글 작성·수정 POST의 전체 body 한도 (명세 0장 "글 요청 크기", APP-11). CSRF 토큰과 폼 인코딩을 포함한 바이트 수.
 POST_BODY_LIMIT = 8192
 POST_BODY_LIMITED_VIEWS = frozenset({"posts:create", "posts:edit"})
+# 첨부 업로드 POST의 전체 multipart body 한도 (명세 0장 "업로드 요청 크기", UP-04). 2 MiB + 64 KiB.
+UPLOAD_BODY_LIMIT = 2_162_688
+UPLOAD_VIEWS = frozenset({"posts:attachment_upload"})
 
 
 class PostBodyLimitMiddleware:
-    """글 작성·수정 POST body가 8,192바이트를 넘으면 413 (앱계약 결정 9: 413이 CSRF보다 먼저).
+    """글 작성·수정 POST body가 8,192바이트, 첨부 업로드 body가 2,162,688바이트를 넘으면 413.
+    (앱계약 결정 9: 413이 CSRF보다 먼저)
 
     - 이 검사는 view 실행 전 단계(__call__)에서 한다. CSRF 검사(process_view)와 로그인 검사(view)는
       그 뒤에 일어나므로, 크기 초과는 토큰이 없거나 비로그인이어도 413이다(Nginx client_max_body_size와 같은 순서).
-    - 글 경로에만 적용한다. 로그인·가입 등 다른 폼과 3회차 첨부 업로드 경로는 건드리지 않는다(명세 4장).
+    - 글 작성·수정과 첨부 업로드 경로에만 각자의 한도를 적용한다. 로그인·가입·공유 폼은 건드리지 않는다(명세 4장).
     - Content-Length가 한도를 넘으면 body를 읽지 않고 거부한다. 한도 이내라고 적힌 요청도 실제로 읽은
       바이트를 다시 센다. Django는 Content-Length만큼만 읽으므로 이보다 많이 읽는 일은 없다.
     - 숫자가 아니거나 음수인 Content-Length는 400(오류 화면). 보통은 Nginx·Gunicorn이 먼저 거부한다.
@@ -26,21 +30,33 @@ class PostBodyLimitMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if request.method == "POST" and self._is_limited(request):
-            status = self._check(request)
+        if request.method == "POST":
+            view_name = self._view_name(request)
+            if view_name in POST_BODY_LIMITED_VIEWS:
+                status = self._check(request, POST_BODY_LIMIT, read_body=True)
+            elif view_name in UPLOAD_VIEWS:
+                # multipart는 메모리로 읽지 않는다. Django는 Content-Length보다 많이 읽지 않으므로
+                # 선언값 검사로 실제 수신량이 제한된다. 파일 크기는 view에서 실제 받은 bytes로 다시 센다.
+                status = self._check(request, UPLOAD_BODY_LIMIT, read_body=False)
+                if status is None:
+                    from posts.upload_handlers import use_strict_name_parser
+
+                    use_strict_name_parser(request)  # CSRF 검사가 multipart를 파싱하기 전에
+            else:
+                status = None
             if status:
                 return self._reject(request, status)
         return self.get_response(request)
 
     @staticmethod
-    def _is_limited(request):
+    def _view_name(request):
         try:
-            return resolve(request.path_info).view_name in POST_BODY_LIMITED_VIEWS
+            return resolve(request.path_info).view_name
         except Resolver404:
-            return False
+            return None
 
     @staticmethod
-    def _check(request):
+    def _check(request, limit, read_body):
         """거부할 상태 코드. 통과면 None."""
         try:
             declared = int(request.META.get("CONTENT_LENGTH") or 0)
@@ -49,11 +65,14 @@ class PostBodyLimitMiddleware:
             return 400
         if declared < 0:
             return 400
-        if declared > POST_BODY_LIMIT or len(request.body) > POST_BODY_LIMIT:
+        if declared > limit or (read_body and len(request.body) > limit):
             return 413
         return None
 
     def _reject(self, request, status):
+        from config.request_log import mark
+
+        mark(request, "body_too_large" if status == 413 else "bad_content_length")
         template = self.template_name if status == 413 else "400.html"
         try:
             content = render_to_string(template, request=request)

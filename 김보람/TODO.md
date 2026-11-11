@@ -240,3 +240,56 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [ ] **실행 시험 대기:** 민성님이 새 정책으로 시험용 SG 삭제 허용·운영용 SG 삭제 거부 결과 확인. 시험용 `haven-sg-test`는 11/11 서울 리전 목록에 없었으며, 재생성은 확인되지 않음.
 - [ ] **추가 안전 확인:** 다른 IAM 정책의 삭제 허용 및 SG 태그 수정 가능 범위를 점검해야 운영용 SG 삭제가 완전히 불가능하다고 결론 내릴 수 있음.
 - **주의:** 이 기록은 IAM **설정 저장 성공** 확인이며 실제 삭제 허용/거부 시험 완료로 간주하지 않음. 이미 삭제된 SG나 실제 AWS SG 자체는 수정하지 않음.
+
+## 2026-11-11 오전 추가 기록 — Route 53 및 SES
+
+### 민성 Route 53 호스팅 영역 생성 권한
+- [x] 민성님이 `route53:CreateHostedZone` 실행 시 **identity-based policy 미허용(AccessDenied)** 오류를 공유함.
+- [x] AWS IAM 사용자 `minsung` 권한 목록에서 **`Haven-Minsung-Route53-...` 인라인 정책 연결** 확인(11/11 사용자 제공 IAM 콘솔 캡처).
+- [x] 요청에 맞는 최소 생성 액션 `route53:CreateHostedZone`, `Resource: "*"` **정책 예시**를 [16번 JSON](IAM/16_Minsung_Route53_CreateHostedZone_Policy.json)에 기록. **콘솔에서 실제 저장된 정책 전문은 캡처로 확인하지 못했으므로 JSON과의 완전 일치는 미검증**.
+- [ ] **민성님 실제 재시험 대기:** Route 53 호스팅 영역 생성 성공/실패 결과와 중복 생성 여부 확인. DNS 레코드 관리, ACM 검증 등에 추가 IAM 권한이 필요하면 구체적인 거부 오류를 받아 별도 검토.
+- **담당 구분:** 도메인·DNS·ALB 연결은 민성님, 계정 IAM·추가 비용 기록은 보람 담당. 기존 도메인과 DNS 설정을 보람이 직접 수정하지 않음.
+
+### SES 발신 주소 확인 및 메일 시험
+- [x] 서울 리전 SES에서 테스트용 발신 이메일 자격 증명 **확인됨(Verified)** 상태 확인.
+- [x] **SES 테스트 메일 발송·수신 확인**(단독 시험). 서비스 앱 연동 시험은 별도 진행 예정.
+- [ ] Haven 정식 발신 주소(프로젝트 도메인 사용 여부)·발송 방식의 앱 적용 입력을 요찬님과 확정하고, 그 주소에 맞춘 EC2 Role의 `ses:SendEmail` 최소 권한 설정. **정식 서비스 발신 주소는 미확정**.
+- [ ] 11/12(목) 요찬님과 실제 Django 이메일 발송·수신/실패 동작 검증 (SES 샌드박스 제한 여부 확인 포함).
+
+### 다음 점검
+- [ ] 민성님 SSM Session Manager 실제 접속 및 권한 거부 시험 결과 수신.
+- [ ] WAF·CloudWatch Logs 권한은 담당자 요청 시 확인·최소 범위 보완.
+- [ ] 11/13 종료 시 지울 자원 목록 및 실사용액 재확인.
+
+## 2026-11-11 Route 53 호스팅 영역 조회 권한 — AWS 적용 및 민성 인계
+
+- [x] 민성님 요청: 호스팅 영역 생성 뒤 조회 오류 발생. AWS 오류에 `route53:GetHostedZoneCount` 미허용 명시됨.
+- [x] 기존 `minsung` 인라인 정책 수정 시 사용자 인라인 정책 합계 **2,048자 제한 초과** 오류 확인. 기존 인라인 정책은 변경하지 않음.
+- [x] 별도 **고객 관리형 정책** `Haven-Minsung-Route53-Read` 생성 성공 및 IAM 사용자 `minsung`에게 **직접 정책 연결** 완료(사용자 확인).
+- [x] [17번 Route 53 조회 정책](IAM/17_Minsung_Route53_Read_Policy.json)에 AWS에 입력한 JSON 기록. `GetHostedZoneCount`, `ListHostedZones`, `ListHostedZonesByName` 및 특정 호스팅 영역 `Z08342321QNIZCEME3KGF`에 대한 `GetHostedZone`, `ListResourceRecordSets` 조회만 허용. DNS 레코드 변경·삭제 권한은 추가하지 않음.
+- [x] 민성님이 **호스팅 영역 생성 완료**, Route 53 네임서버 4개를 공유했다고 보고함(11/11 10:42). 도메인 등록업체 NS 위임 및 외부 DNS 정상 응답까지 완료했다는 의미는 아님.
+- [ ] **담당자 검증 대기:** 민성님이 `GetHostedZoneCount` 및 호스팅 영역 조회를 다시 수행한 결과/추가 거부 오류 공유. 생성 완료 보고와 개별 API 조회 권한 시험을 구분함.
+- **담당:** 민성님=호스팅 영역·DNS 후속 설정 및 검증 / 보람=권한 생성·연결·기록.
+
+## 2026-11-11 3회차 ALB·HTTPS 민성 IAM 추가 권한 — AWS 적용 기록
+
+- [x] **민수님 지시:** 민성님 계정에 ALB(로드 밸런서·대상 그룹·리스너), ACM(`RequestCertificate`·`DescribeCertificate`·`ListCertificates`), Route 53(해당 Haven 호스팅 영역 변경·변경상태 조회) 권한 요청.
+- [x] 고객 관리형 정책 `Haven-Minsung-ALB-ACM-DNS-Policy` 생성 후 IAM 사용자 `minsung`에 직접 연결(사용자 완료 보고).
+- [x] 민성님 추가 요청: ALB·ACM 조회 접근 거부 해결, ACM 인증서 태그, ALB 수정·실패 시 정리용 삭제, ALB 서비스 연결 역할 생성 권한 추가.
+- [x] `AWSServiceRoleForElasticLoadBalancing` 역할을 IAM 역할 검색에서 찾지 못했다고 사용자 확인. 기존 정책에 조건부 `iam:CreateServiceLinkedRole`을 추가.
+- [x] 해당 고객 관리형 정책을 JSON으로 편집·저장 완료했다고 사용자 확인. AWS 권한 요약 화면에서 Certificate Manager, ELB/ELB v2, IAM, Route 53 항목 표시 확인.
+- [x] 정책 JSON을 [18번 파일](IAM/18_Minsung_ALB_ACM_Route53_Policy.json)에 기록(사용자에게 제공한 편집용 JSON 기준). AWS JSON 본문을 다시 조회하여 파일과 직접 대조한 것은 아님.
+- **권한 범위:** ELB는 서울 `ap-northeast-2`, Haven 접두어 `haven-*`와 요청/리소스의 `Project=Haven` 태그를 조건으로 설정. ACM 요청은 `Project=Haven`, `Owner=minsung` 요청 태그 조건. Route 53 변경은 호스팅 영역 `Z08342321QNIZCEME3KGF`로 제한, 단 `route53:GetChange` 조회는 AWS change ARN 사용.
+- [ ] **민성님 실제 검증 대기:** ALB·ACM 읽기, 인증서 요청·태그, ALB 생성·리스너 생성, DNS 변경 권한, 서비스 연결 역할 자동 생성 성공/거부와 추가 오류 공유. 저장 성공만으로 모든 API 호출 성공을 보장하지 않음.
+- [ ] **삭제는 민수님 확인 후에만:** 권한에 ELB DeleteListener/TargetGroup/LoadBalancer를 포함했어도 실제 삭제 실행은 별도 승인 및 대상 식별 후 진행.
+- **주의:** 새 정책은 유효성/동작 시뮬레이터 및 실제 허용·거부 시험이 아직 검증되지 않음. 세부 조건이 API 호출 시 적용되지 않거나 권한 부족이 추가로 나올 수 있으며 그 경우 최소 수정 필요. WAF 권한은 미추가.
+
+## 2026-11-11 민성 ALB 생성 중 EC2 조회 권한 추가
+
+- [x] 민성님: ACM 인증서·대상 그룹 생성까지 진행한 뒤 ALB `CreateLoadBalancer`에서 `AccessDenied: ec2:GetSecurityGroupsForVpc` 발생(11:37:22 오류 공유).
+- [x] AWS 고객 관리형 정책 `Haven-Minsung-Infra-Policy`의 `ReadEC2InSeoul`에 `ec2:GetSecurityGroupsForVpc`를 추가. 기존 `ec2:Describe*` 및 `aws:RequestedRegion=ap-northeast-2` 조건 유지(보람 AWS JSON 편집 화면 확인).
+- [x] AWS 정책 편집 후 권한 요약 화면 확인(보람 제공 캡처). **저장 완료는 보람의 확인 기준으로 기록**, 실제 EC2 조회·ALB 생성 성공은 민성님 시험이 필요.
+- [x] GitHub [12번 인프라 정책](IAM/12_Minsung_Infra_Policy.json)에 동일 변경 반영. 이미 `minsung`에게 연결된 고객 관리형 정책이므로 새 연결 작업은 필요하지 않음.
+- [ ] **민성님 재시험 대기:** `CreateLoadBalancer` 재시도 및 결과 공유. 추가 오류가 있으면 정확한 거부 액션을 확인 후 최소 권한으로 보완.
+- **참고:** 기존 `ec2:Describe*`에 `ec2:DescribeAccountAttributes`·`ec2:DescribeInternetGateways`·`ec2:DescribeAddresses`가 포함되므로 별도 추가하지 않음.
+

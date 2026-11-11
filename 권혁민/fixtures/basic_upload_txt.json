@@ -1,0 +1,11 @@
+
+{
+  "csrf_mode": "valid",
+  "fields": {},
+  "file": {
+    "field_name": "attachment",
+    "local_fixture_path": "sample.txt",
+    "filename": "haven_test.txt",
+    "content_type": "text/plain"
+  }
+}

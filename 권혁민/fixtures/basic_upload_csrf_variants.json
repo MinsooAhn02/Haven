@@ -1,0 +1,46 @@
+
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "missing",
+        "origin_mode": "absent",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "csrf_missing.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "invalid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "csrf_invalid.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "csrf_mode": "valid",
+        "origin_mode": "foreign",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "foreign_origin.txt",
+          "content_type": "text/plain"
+        }
+      }
+    }
+  ]
+}

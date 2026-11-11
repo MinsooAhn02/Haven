@@ -1,0 +1,41 @@
+
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "member_a"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "operator"
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "haven_nonexistent_user"
+        }
+      }
+    },
+    {
+      "id": "P04",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": ""
+        }
+      }
+    }
+  ]
+}

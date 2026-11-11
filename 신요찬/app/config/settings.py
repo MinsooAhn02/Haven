@@ -62,6 +62,23 @@ DEBUG = env_bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", required=True)
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
+# HTTPS (명세 3.2 "cookie Secure/HttpOnly/SameSite와 프록시 신뢰를 명시", DEP-03, 앱계약.md 1.2).
+# ALB가 TLS를 끝내고 Nginx(80)를 거쳐 Gunicorn으로 넘긴다. ALB가 원래 scheme을 X-Forwarded-Proto로 붙이고
+# Nginx는 그 값만 그대로 넘긴다(안민수/server/web-setup.sh). Web의 80은 ALB SG에서만 열려 있어 이 헤더를
+# 신뢰하는 범위는 ALB를 거친 요청뿐이다. 그래서 HTTPS 배포에서만 켜고, 로컬·CI(HTTP)에서는 끈다.
+HAVEN_HTTPS = env_bool("DJANGO_HTTPS", default=False)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if HAVEN_HTTPS else None
+SESSION_COOKIE_SECURE = HAVEN_HTTPS
+CSRF_COOKIE_SECURE = HAVEN_HTTPS
+# 아래는 켜고 끔과 관계없이 명시한다. 화면 JS가 쿠키를 읽지 않으므로(폼의 csrf_token 사용) CSRF 쿠키도 HttpOnly.
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+# HTTP→HTTPS 전환은 ALB가 한다. 앱에서 SECURE_SSL_REDIRECT를 켜면 ALB 상태 검사(HTTP /healthz)가 301로 실패한다.
+# HSTS는 도메인 운영이 안정된 뒤 정한다(한 번 보내면 브라우저가 기간 동안 되돌리지 못함).
+SECURE_SSL_REDIRECT = False
+
 INSTALLED_APPS = [
     # LogEntry(계정 상태 변경 이력)를 쓰기 위해 설치만 한다. 관리자 사이트 URL은 연결하지 않는다(config/urls.py).
     "django.contrib.admin",

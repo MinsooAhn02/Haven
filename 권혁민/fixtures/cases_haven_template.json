@@ -279,7 +279,7 @@
       "verification_mode": "manual_required",
       "note": "사전조건 P2=id2·ACTIVE·owner A. GET은 삭제 확인만, P2 DB 상태 불변"
     },
-        {
+    {
       "case_id": "APP-02-OWNER-AFTER-DELETE-CONFIRM",
       "phase": 1,
       "category": "crud",
@@ -375,7 +375,7 @@
       "verification_mode": "manual_required",
       "note": "B가 A의 P1 수정 POST 시 404. P1 DB 값이 변하지 않았는지 수동 확인"
     },
-        {
+    {
       "case_id": "APP-03-UNSHARED-B-DELETE-GET",
       "phase": 1,
       "category": "authorization",
@@ -488,12 +488,12 @@
       "note": "사전조건 P1은 A 소유. 수정 후 P1의 DB/본문 반영 수동 확인"
     },
     {
-      "case_id": "SH-01-B-SHARED-BEFORE",
+      "case_id": "APP-A-OWN-POST",
       "phase": 2,
-      "category": "sharing",
+      "category": "authorization",
       "method": "GET",
-      "path": "/posts/shared/",
-      "auth_role": "member_b",
+      "path": "/posts/1/",
+      "auth_role": "member_a",
       "input_reference": null,
       "expected_app": {
         "http_status": 200
@@ -501,23 +501,42 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "SH-01 공유 전 대조군: B의 공유 목록은 200이지만 P1은 미노출. 초기 DB에서 B가 공유받은 글이 없는지 확인"
+      "note": "소유자 A는 자신의 P1 게시글을 조회할 수 있다",
+      "critical": true
     },
     {
-      "case_id": "SH-01-C-SHARED-BEFORE",
+      "case_id": "APP-A-OWN-P2",
       "phase": 2,
-      "category": "sharing",
+      "category": "authorization",
       "method": "GET",
-      "path": "/posts/shared/",
+      "path": "/posts/2/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "초기 P2 소유자 조회 성공 대조군. P2 미존재 상태에서 교차 공유 시험을 진행하지 않음",
+      "critical": true
+    },
+    {
+      "case_id": "SH-05-C-P2-BEFORE",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/2/",
       "auth_role": "member_c",
       "input_reference": null,
       "expected_app": {
-        "http_status": 200
+        "http_status": 404
       },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "SH-01 미공유 사용자 C의 목록 조회는 200. P1은 미노출이며 실제 화면 확인 필요"
+      "critical": true,
+      "note": "초기 C의 P2 접근 거부 대조군. 기존 P2→C 공유를 시험에서 새로 만든 관계로 오인해 정리하지 않도록 보호"
     },
     {
       "case_id": "SH-01-B-DETAIL-BEFORE",
@@ -533,7 +552,76 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "SH-01 공유 전 B가 A 소유 P1에 직접 접근하면 404. P1은 ACTIVE, B에게 미공유 상태여야 함"
+      "note": "SH-01 공유 전 B가 A 소유 P1에 직접 접근하면 404. P1은 ACTIVE, B에게 미공유 상태여야 함",
+      "critical": true
+    },
+    {
+      "case_id": "APP-C-UNSHARED-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받지 않은 C는 P1에 접근할 수 없다",
+      "critical": true
+    },
+    {
+      "case_id": "SH-07-OPERATOR-P1-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "operator",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "제한된 운영자라도 A 소유 P1을 공유받지 않았다면 조회 권한이 없음. 관리자 권한에 의한 본문 열람 방지",
+      "critical": true
+    },
+    {
+      "case_id": "SH-01-B-SHARED-BEFORE",
+      "phase": 2,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "SH-01 공유 전 대조군: B의 공유 목록은 200이지만 P1은 미노출. 초기 DB에서 B가 공유받은 글이 없는지 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-01-C-SHARED-BEFORE",
+      "phase": 2,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "SH-01 미공유 사용자 C의 목록 조회는 200. P1은 미노출이며 실제 화면 확인 필요",
+      "critical": true
     },
     {
       "case_id": "SH-07-ANON-SHARED-GET",
@@ -550,7 +638,8 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "SH-07 비로그인 사용자의 공유 목록 접근은 로그인으로 이동. Location의 next 쿼리값은 경로 비교에서 제외"
+      "note": "SH-07 비로그인 사용자의 공유 목록 접근은 로그인으로 이동. Location의 next 쿼리값은 경로 비교에서 제외",
+      "critical": true
     },
     {
       "case_id": "APP-07-MEMBER-ADMIN-GET",
@@ -566,7 +655,8 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "일반 회원 A는 관리자 계정 관리 화면 접근 불가. 계정 정보 미노출 확인"
+      "note": "일반 회원 A는 관리자 계정 관리 화면 접근 불가. 계정 정보 미노출 확인",
+      "critical": true
     },
     {
       "case_id": "APP-07-MEMBER-EVENTS-GET",
@@ -582,7 +672,8 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "일반 회원 B의 계정 상태 변경 이력 조회 거부. 타인의 계정 정보와 감사 기록 미노출"
+      "note": "일반 회원 B의 계정 상태 변경 이력 조회 거부. 타인의 계정 정보와 감사 기록 미노출",
+      "critical": true
     },
     {
       "case_id": "APP-09-OPERATOR-ADMIN-GET",
@@ -598,44 +689,256 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "별도로 준비된 제한된 운영자 계정은 계정 상태 목록 조회 가능. 본문·비밀번호 해시·민감정보 미노출 확인"
+      "note": "별도로 준비된 제한된 운영자 계정은 계정 상태 목록 조회 가능. 본문·비밀번호 해시·민감정보 미노출 확인",
+      "critical": true
     },
     {
-      "case_id": "SH-07-OPERATOR-P1-DENIED",
+      "case_id": "APP-07-MEMBER-A-EVENTS-GET",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/admin/account-events/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "일반 회원의 관리자 감사 이력 접근 거부"
+    },
+    {
+      "case_id": "APP-07-MEMBER-STATUS-POST",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/admin/accounts/2/status/",
+      "auth_role": "member_a",
+      "input_reference": "basic_status_disable.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "일반 회원의 계정 비활성화 직접 POST 거부"
+    },
+    {
+      "case_id": "APP-08-OPERATOR-EVENTS",
+      "phase": 2,
+      "category": "logging",
+      "method": "GET",
+      "path": "/admin/account-events/",
+      "auth_role": "operator",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "관리자 감사 이력 화면 접근. 로그 민감정보 노출 여부는 별도 확인"
+    },
+    {
+      "case_id": "APP-09-OPERATOR-SELF-STATUS",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/admin/accounts/4/status/",
+      "auth_role": "operator",
+      "input_reference": "basic_status_disable.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "운영 관리자의 자기 자신 비활성화 거부. operator ID=4 전제"
+    },
+    {
+      "case_id": "APP-01-SIGNUP-INVALID-MULTI",
+      "phase": 2,
+      "category": "authentication",
+      "method": "POST",
+      "path": "/accounts/signup/",
+      "auth_role": "anonymous",
+      "input_reference": "basic_signup_invalid_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 4,
+      "verification_mode": "manual_required",
+      "note": "필수값 누락·잘못된 아이디·약한 비밀번호·비밀번호 불일치 거부. 계정 미생성 확인"
+    },
+    {
+      "case_id": "APP-02-INVALID-POST-MULTI",
+      "phase": 2,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "basic_post_invalid_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 4,
+      "verification_mode": "manual_required",
+      "note": "잘못된 제목·빈 본문·공백 본문을 거부하고 DB 미변경 확인"
+    },
+    {
+      "case_id": "APP-05-CSRF-MULTI",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "basic_csrf_variants.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "CSRF 토큰 누락·불일치·외부 Origin 거부"
+    },
+    {
+      "case_id": "APP-06-TEXT-MULTI",
+      "phase": 2,
+      "category": "input_validation",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "basic_text_valid_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 5,
+      "verification_mode": "manual_required",
+      "note": "한국어·따옴표·HTML·템플릿·특수문자 정상 저장 및 안전한 출력 확인"
+    },
+    {
+      "case_id": "APP-11-OWNER-8191",
+      "phase": 2,
+      "category": "body_boundary",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "pad_8191.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "로그인 A의 실제 직렬화 body 8191바이트. 글 생성 성공 및 DB 저장 확인"
+    },
+    {
+      "case_id": "APP-11-OWNER-8192",
+      "phase": 2,
+      "category": "body_boundary",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "pad_8192.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "로그인 A의 실제 직렬화 body 8192바이트. 경계값 허용 및 DB 저장 확인"
+    },
+    {
+      "case_id": "APP-11-OWNER-8193",
+      "phase": 2,
+      "category": "body_boundary",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "pad_8193.json",
+      "expected_app": {
+        "http_status": 413
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "로그인 A의 실제 직렬화 body 8193바이트. 413 거부 및 게시글 미생성 확인"
+    },
+    {
+      "case_id": "SH-01-A-GRANT",
+      "phase": 2,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_grant.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A가 B에게 P1 읽기 공유 생성",
+      "critical": true
+    },
+    {
+      "case_id": "SH-04-A-SHARES-GET-BASELINE",
+      "phase": 2,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "정상 대조군: P1 소유자 A가 공유 관리 화면에 접근할 수 있어야 함. B 공유 관계와 P1 소유권 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-01-B-SHARED-LIST",
+      "phase": 2,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전조건: P1이 B에게 공유됨. 공유 목록에 P1이 표시되는지는 별도 확인"
+    },
+    {
+      "case_id": "SH-01-B-DETAIL-ALLOWED",
       "phase": 2,
       "category": "authorization",
       "method": "GET",
       "path": "/posts/1/",
-      "auth_role": "operator",
+      "auth_role": "member_b",
       "input_reference": null,
       "expected_app": {
-        "http_status": 404
+        "http_status": 200
       },
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "제한된 운영자라도 A 소유 P1을 공유받지 않았다면 조회 권한이 없음. 관리자 권한에 의한 본문 열람 방지"
+      "note": "B는 공유받은 P1의 본문을 읽을 수 있어야 함",
+      "critical": true
     },
     {
-      "case_id": "SEC-03",
+      "case_id": "SH-01-C-DETAIL-DENIED",
       "phase": 2,
-      "category": "sqli",
-      "method": "GET",
-      "path": "/posts/1%20OR%201%3D1/",
-      "auth_role": "member_a",
-      "input_reference": null,
-      "expected_app": {
-        "http_status": 404
-      },
-      "expected_waf": "NOT_APPLICABLE",
-      "max_requests": 1,
-      "verification_mode": "manual_required",
-      "note": "2회차 보안 시험 후보: 숫자 ID 자리에 인코딩된 SQL 유사 입력. 라우팅 거부·DB 오류 미노출 확인"
-    },
-    {
-      "case_id": "SEC-23",
-      "phase": 2,
-      "category": "idor",
+      "category": "authorization",
       "method": "GET",
       "path": "/posts/1/",
       "auth_role": "member_c",
@@ -646,12 +949,269 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "ID 1이 A가 소유하고 C에게 공유하지 않은 가상 글인지 사전 확인"
+      "note": "C에게는 공유하지 않았으므로 P1 접근 404, 본문 미노출"
+    },
+    {
+      "case_id": "SH-02-B-EDIT-GET-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받은 B라도 수정 화면에는 접근할 수 없음"
+    },
+    {
+      "case_id": "SH-02-B-EDIT-POST-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_b",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B의 수정 POST 거부. P1 제목과 본문이 변경되지 않았는지 DB 확인 통합 시험에서는 동일 요청 SEC-24도 이 결과에 연결한다"
+    },
+    {
+      "case_id": "SH-02-B-DELETE-POST-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/delete/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B의 삭제 POST 거부. P1과 기존 공유 관계가 유지되는지 DB 확인 통합 시험에서는 동일 요청 SEC-25도 이 결과에 연결한다"
+    },
+    {
+      "case_id": "SH-02-B-SHARES-GET-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B는 읽기 권한만 보유하므로 P1의 공유 관리 화면 접근 거부"
+    },
+    {
+      "case_id": "SH-02-B-DELETE-GET-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/delete/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B는 P1을 읽을 수 있지만 삭제 확인 화면에는 접근할 수 없음. P1과 공유 관계 유지 확인"
+    },
+    {
+      "case_id": "SH-02-B-SHARES-POST-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받은 B의 공유 생성 POST는 유효한 CSRF를 사용해도 권한 검사에서 404. 공유 관계와 P1은 변경되지 않아야 함 통합 시험에서는 동일 요청 SEC-27도 이 결과에 연결한다"
+    },
+    {
+      "case_id": "SH-02-C-SHARES-GET-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1을 공유받지 않은 C가 공유 관리 화면에 접근하면 404. 공유 대상 정보 미노출"
+    },
+    {
+      "case_id": "SH-02-C-SHARES-POST-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_c",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "C의 공유 관리 POST는 CSRF가 유효하더라도 소유권 검사에서 404. P1과 PostShare 관계 미변경"
+    },
+    {
+      "case_id": "SH-07-ANON-SHARES-GET",
+      "phase": 2,
+      "category": "authentication",
+      "method": "GET",
+      "path": "/posts/1/shares/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비로그인 사용자가 P1 공유 관리 화면 접근 시 로그인으로 이동. 공유 대상 정보 미노출"
+    },
+    {
+      "case_id": "SH-04-A-DUPLICATE",
+      "phase": 2,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_grant.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B에게 중복 공유해도 관계가 중복 생성되지 않아야 함"
+    },
+    {
+      "case_id": "SH-04-A-INVALID-TARGETS",
+      "phase": 2,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_invalid_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 4,
+      "verification_mode": "manual_required",
+      "note": "자기 자신·운영자·없는 사용자·빈 입력 공유 거부"
+    },
+    {
+      "case_id": "SEC-01",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": "sec_login_sql_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 8,
+      "verification_mode": "manual_required",
+      "note": "로그인 username SQLi 8종. 인증 우회, DB 오류, 세션 생성 여부 및 WAF 처리 차이 검증"
+    },
+    {
+      "case_id": "SEC-03",
+      "phase": 2,
+      "category": "injection",
+      "method": "GET",
+      "path": "/posts/1%20OR%201%3D1/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "숫자 ID 경로에 인코딩 SQL 문장 모양 입력. Django 라우팅 거부 여부 확인"
+    },
+    {
+      "case_id": "SEC-04",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_a",
+      "input_reference": "sec_login_sql_username.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 대상 username SQL 특수문자. 기존 로그인 fixture의 password 추가 필드는 Django ShareForm에서 무시됨. 공유 관계 미생성 별도 확인"
+    },
+    {
+      "case_id": "SEC-05",
+      "phase": 2,
+      "category": "injection",
+      "method": "GET",
+      "path": "/posts/?page=%27%20OR%201%3D1%20--",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "페이지 파라미터 SQL 문자열. DB 오류/타인 글 미노출 여부는 별도 확인"
+    },
+    {
+      "case_id": "SEC-06",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_body_attack_mix.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "제목/본문 속 SQL처럼 보이는 텍스트를 데이터로 저장; DB 변화와 응답 출력 별도 확인 동일 payload 생성 요청 SEC-07/SEC-10을 대표하며 SQL 모양·템플릿·HTML 출력은 각각 수동 확인한다"
     },
     {
       "case_id": "SEC-09",
       "phase": 2,
-      "category": "stored_xss",
+      "category": "xss",
       "method": "POST",
       "path": "/posts/new/",
       "auth_role": "member_a",
@@ -662,7 +1222,745 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
-      "note": "HTTP 성공만으로 XSS 방어 증명 불가: 조회 화면에서 실행 여부를 별도로 확인"
+      "note": "제목 Stored XSS 확인용 문자열 저장. HTTP 302는 XSS 방어 PASS가 아니며 화면 렌더링 별도 검사"
+    },
+    {
+      "case_id": "SEC-11-PREP",
+      "phase": 2,
+      "category": "xss",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_a",
+      "input_reference": "sec_body_attack_mix.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유된 P1을 무해한 XSS/SSTI/SQL 표시 문자열로 교체. 별도 시험 DB에서만 실행",
+      "critical": true
+    },
+    {
+      "case_id": "SEC-11",
+      "phase": 2,
+      "category": "xss",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 대상 B의 P1 본문 조회. 이전 PREP의 문자열이 실행/평가되지 않는지 브라우저 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SEC-23",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "미공유 C의 P1 직접 조회 IDOR 거부. P1 본문 미노출 별도 확인"
+    },
+    {
+      "case_id": "SEC-42",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_a",
+      "input_reference": "post_without_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "소유자 A의 P1 수정 POST CSRF 누락 403, 원본 미변경 확인"
+    },
+    {
+      "case_id": "SEC-43",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/1/edit/",
+      "auth_role": "member_a",
+      "input_reference": "post_invalid_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "소유자 A의 P1 수정 POST 잘못된 CSRF 403, 원본 미변경 확인"
+    },
+    {
+      "case_id": "SEC-44",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_foreign_origin.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "유효 CSRF+외부 Origin의 작성 POST 403, 신규 기록 미생성 확인"
+    },
+    {
+      "case_id": "SEC-45-DELETE-GET",
+      "phase": 2,
+      "category": "csrf",
+      "method": "GET",
+      "path": "/posts/1/delete/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "삭제 확인 GET은 상태 변경 금지. P1 존재/내용 불변 확인"
+    },
+    {
+      "case_id": "SEC-45-LOGOUT-GET",
+      "phase": 2,
+      "category": "csrf",
+      "method": "GET",
+      "path": "/accounts/logout/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 405
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "로그아웃 GET은 405. 기존 A 세션 유지 여부 별도 확인"
+    },
+    {
+      "case_id": "SEC-46",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/1/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_without_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1→B의 실제 공유 ID로 CSRF 없는 해제 POST. 403 및 관계 보존을 별도 확인",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a"
+      }
+    },
+    {
+      "case_id": "SH-04-OPERATOR-DISABLE-C",
+      "phase": 2,
+      "category": "admin",
+      "method": "POST",
+      "path": "/admin/accounts/3/status/",
+      "auth_role": "operator",
+      "input_reference": "basic_status_disable.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 대상 검증 전에 일반 회원 C를 비활성화",
+      "critical": true
+    },
+    {
+      "case_id": "SH-04-A-INACTIVE-TARGET",
+      "phase": 2,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_c.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비활성 회원 C에게 공유 시 400. PostShare 행이 생성되지 않아야 함",
+      "critical": true
+    },
+    {
+      "case_id": "SH-04-OPERATOR-ENABLE-C",
+      "phase": 2,
+      "category": "admin",
+      "method": "POST",
+      "path": "/admin/accounts/3/status/",
+      "auth_role": "operator",
+      "input_reference": "basic_status_enable.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비활성 공유 거부 확인 후 C를 다시 활성화",
+      "critical": true
+    },
+    {
+      "case_id": "SH-05-A-GRANT-P2-C",
+      "phase": 2,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/2/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_c.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A가 P2를 C에게 공유. 생성된 실제 ID를 교차 공유 관계 시험에 사용한다",
+      "critical": true
+    },
+    {
+      "case_id": "SH-05-A-CROSS-SHARE-ID",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "실제 P2→C 공유 ID를 P1 해제 URL에 지정. 404 및 P1→B/P2→C 관계 유지 확인",
+      "share_reference": {
+        "post_id": 2,
+        "recipient": "member_c",
+        "lookup_role": "member_a"
+      },
+      "critical": true
+    },
+    {
+      "case_id": "SH-05-B-P1-STILL-ALLOWED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "잘못된 공유 해제 요청 후에도 B의 P1 조회 가능",
+      "critical": true
+    },
+    {
+      "case_id": "SH-05-C-P2-STILL-ALLOWED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/2/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "잘못된 공유 해제 요청 후에도 C의 P2 조회 가능",
+      "critical": true
+    },
+    {
+      "case_id": "SH-05-C-P1-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "C는 P2만 공유받았으므로 P1 조회 불가",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-B-ACTIVE-BASELINE",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전조건 A/B 활성, P1 ACTIVE, A가 B에게 공유. B 로그인 세션으로 P1 조회 200을 확인",
+      "critical": true
+    },
+    {
+      "case_id": "APP-09-OPERATOR-DISABLE-B",
+      "phase": 2,
+      "category": "admin",
+      "method": "POST",
+      "path": "/admin/accounts/2/status/",
+      "auth_role": "operator",
+      "input_reference": "basic_status_disable.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "운영 관리자가 일반 회원 B를 비활성화. 감사 기록 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-B-INACTIVE-DETAIL",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "operator의 직전 비활성화 POST 이후 기존 B 세션 그대로 상세 재요청. 로그인 이동 및 본문 미노출 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-B-INACTIVE-SHARED-LIST",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B 비활성화 후 같은 세션으로 공유 목록 재접근. 로그인 이동, 공유 본문 미노출 확인",
+      "critical": true
+    },
+    {
+      "case_id": "APP-09-OPERATOR-ENABLE-B",
+      "phase": 2,
+      "category": "admin",
+      "method": "POST",
+      "path": "/admin/accounts/2/status/",
+      "auth_role": "operator",
+      "input_reference": "basic_status_enable.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "운영 관리자가 B를 다시 활성화. 감사 기록 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-B-ACTIVE-RESTORED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B 재활성화 후 같은 세션에서 공유 P1 조회 복구를 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-OPERATOR-DISABLE-A",
+      "phase": 2,
+      "category": "admin",
+      "method": "POST",
+      "path": "/admin/accounts/1/status/",
+      "auth_role": "operator",
+      "input_reference": "basic_status_disable.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 P1의 소유자 A를 비활성화. 공유 관계는 유지한다",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-A-INACTIVE-B-SHARED-LIST",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A 비활성, B 활성, P1 ACTIVE 및 B 공유 관계 유지. B의 공유 목록은 200이지만 P1이 노출되면 안 됨. 화면 별도 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-A-INACTIVE-B-DETAIL",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A 소유자 계정이 비활성 상태면 기존 공유 관계가 유지돼 있어도 B의 P1 직접 조회는 404여야 함",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-A-INACTIVE-C-DETAIL",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A 비활성 상태에서 미공유 사용자 C의 P1 직접 조회 역시 404이며 본문과 존재 여부가 노출되면 안 됨",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-A-INACTIVE-OWN-DETAIL",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "비활성 소유자 A의 기존 세션도 로그인 사용자로 취급하지 않아야 함",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-OPERATOR-ENABLE-A",
+      "phase": 2,
+      "category": "admin",
+      "method": "POST",
+      "path": "/admin/accounts/1/status/",
+      "auth_role": "operator",
+      "input_reference": "basic_status_enable.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "소유자 A를 활성 상태로 복구",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-A-ACTIVE-RESTORED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A 재활성화 후 기존 A 세션으로 P1 소유자 조회 복구 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-06-OWNER-ACTIVE-B-RESTORED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "소유자 A 복구 후 기존 B 공유 조회도 다시 허용되는지 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-05-B-REVOKE-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/shares/{share_id}/revoke/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B는 자신이 공유받은 관계도 해제할 수 없음",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a"
+      },
+      "critical": true
+    },
+    {
+      "case_id": "SH-05-C-REVOKE-DENIED",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/shares/{share_id}/revoke/",
+      "auth_role": "member_c",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받지 않은 C의 공유 해제 거부",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a"
+      },
+      "critical": true
+    },
+    {
+      "case_id": "SH-03-A-REVOKE",
+      "phase": 2,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/1/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "소유자 A가 B의 P1 공유 해제",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a"
+      },
+      "critical": true
+    },
+    {
+      "case_id": "SH-03-A-DETAIL-AFTER",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 해제 후에도 소유자 A는 P1을 조회할 수 있어야 함. P1이 ACTIVE 상태인지 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-03-B-SHARED-LIST-AFTER",
+      "phase": 2,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 해제 후 B의 공유 목록은 200이지만 P1은 표시되지 않아야 함. 화면 내용은 별도 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-03-B-DETAIL-AFTER",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A가 B의 P1 공유를 해제한 뒤 B의 직접 조회는 404. 기존 공유 관계가 DB에서 제거됐는지 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-03-C-DETAIL-AFTER",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 해제 이후에도 미공유 사용자 C의 P1 조회는 404. 타인 글 존재 여부와 본문 미노출 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-05-A-REVOKE-P2-C",
+      "phase": 2,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/2/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "소유자가 P2→C의 실제 공유 관계를 해제",
+      "critical": true,
+      "share_reference": {
+        "post_id": 2,
+        "recipient": "member_c",
+        "lookup_role": "member_a"
+      }
+    },
+    {
+      "case_id": "SH-05-C-P2-AFTER-REVOKE",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/2/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P2 공유 해제 직후 기존 C 세션으로 접근 거부 확인",
+      "critical": true
+    },
+    {
+      "case_id": "SH-05-C-SHARED-LIST-AFTER",
+      "phase": 2,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/shared/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "C 공유 목록에서 P2가 사라졌는지 화면 별도 확인"
+    },
+    {
+      "case_id": "APP-09-OPERATOR-EVENTS-AFTER",
+      "phase": 2,
+      "category": "admin",
+      "method": "GET",
+      "path": "/admin/account-events/",
+      "auth_role": "operator",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "상태 변경 후 이력에 행위자·대상·변경 전후 상태 기록 확인"
     },
     {
       "case_id": "SEC-32",
@@ -681,22 +1979,6 @@
       "note": "실제 .php 파일이 아님. dummy TXT 내용의 filename 확장자만 조작"
     },
     {
-      "case_id": "SEC-44",
-      "phase": 2,
-      "category": "csrf",
-      "method": "POST",
-      "path": "/posts/new/",
-      "auth_role": "member_a",
-      "input_reference": "sec_foreign_origin.json",
-      "expected_app": {
-        "http_status": 403
-      },
-      "expected_waf": "NOT_APPLICABLE",
-      "max_requests": 1,
-      "verification_mode": "manual_required",
-      "note": "실제 HTTPS에서 Origin 검증 확인; 로그인/CSRF 환경 정상 대조군 필수"
-    },
-    {
       "case_id": "APP-02-OWNER-DELETE",
       "phase": 1,
       "category": "crud",
@@ -712,7 +1994,7 @@
       "verification_mode": "manual_required",
       "note": "최후반 파괴적 시험: P2는 A가 소유한 삭제 전용 테스트 글. POST 후 P2 접근 차단/DB 정리 확인"
     },
-        {
+    {
       "case_id": "APP-02-OWNER-AFTER-DELETE",
       "phase": 1,
       "category": "crud",
@@ -761,6 +2043,105 @@
       "max_requests": 1,
       "verification_mode": "manual_required",
       "note": "로그아웃 POST 직후 같은 member_a HTTP 세션으로 보호 목록 GET. 재로그인 없이 로그인 화면으로 이동하고 기록 내용이 노출되지 않는지 확인"
+    }
+  ],
+  "cleanup_cases": [
+    {
+      "case_id": "CLEANUP-C-ACTIVE",
+      "phase": 2,
+      "category": "cleanup",
+      "method": "POST",
+      "path": "/admin/accounts/3/status/",
+      "auth_role": "operator",
+      "input_reference": "basic_status_enable.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "SH-04-OPERATOR-DISABLE-C",
+      "note": "C 비활성화 시도를 했다면 활성 상태로 복구"
+    },
+    {
+      "case_id": "CLEANUP-B-ACTIVE",
+      "phase": 2,
+      "category": "cleanup",
+      "method": "POST",
+      "path": "/admin/accounts/2/status/",
+      "auth_role": "operator",
+      "input_reference": "basic_status_enable.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "APP-09-OPERATOR-DISABLE-B",
+      "note": "B 비활성화 시도를 했다면 활성 상태로 복구"
+    },
+    {
+      "case_id": "CLEANUP-A-ACTIVE",
+      "phase": 2,
+      "category": "cleanup",
+      "method": "POST",
+      "path": "/admin/accounts/1/status/",
+      "auth_role": "operator",
+      "input_reference": "basic_status_enable.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "SH-06-OPERATOR-DISABLE-A",
+      "note": "A 비활성화 시도를 했다면 활성 상태로 복구"
+    },
+    {
+      "case_id": "CLEANUP-P2-C",
+      "phase": 2,
+      "category": "cleanup",
+      "method": "POST",
+      "path": "/posts/2/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "SH-05-A-GRANT-P2-C",
+      "note": "P2→C 시험 공유 정리. 이미 없으면 POST 없이 건너뜀",
+      "share_reference": {
+        "post_id": 2,
+        "recipient": "member_c",
+        "lookup_role": "member_a",
+        "allow_missing": true
+      }
+    },
+    {
+      "case_id": "CLEANUP-P1-B",
+      "phase": 2,
+      "category": "cleanup",
+      "method": "POST",
+      "path": "/posts/1/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "SH-01-A-GRANT",
+      "note": "P1→B 시험 공유 정리. 이미 없으면 POST 없이 건너뜀",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a",
+        "allow_missing": true
+      }
     }
   ]
 }

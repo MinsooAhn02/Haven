@@ -51,3 +51,12 @@ class ShareForm(forms.Form):
             raise forms.ValidationError(SHARE_TARGET_ERROR, code="invalid_target")
         self.recipient = user
         return username
+
+
+class AttachmentForm(forms.Form):
+    """첨부 업로드: 파일 하나(필드 이름 attachment, 권혁민 fixture와 같음).
+
+    형식·크기 검사는 attachments 모듈이 실제 bytes로 한다.
+    """
+
+    attachment = forms.FileField(allow_empty_file=True, error_messages={"required": "파일을 선택해 주세요."})

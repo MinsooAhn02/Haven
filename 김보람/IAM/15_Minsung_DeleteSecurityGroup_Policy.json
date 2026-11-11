@@ -9,7 +9,8 @@
       "Condition": {
         "StringEquals": {
           "aws:RequestedRegion": "ap-northeast-2",
-          "aws:ResourceTag/Project": "Haven"
+          "aws:ResourceTag/Project": "Haven",
+          "aws:ResourceTag/Name": "haven-sg-test"
         }
       }
     }

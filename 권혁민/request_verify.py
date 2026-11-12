@@ -238,14 +238,6 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
         if type(capture) is not bool:
             raise ConfigError(f"{cid}: capture_post_id 형식 오류")
 
-        if capture and (
-            _cleanup
-            or item["method"] != "POST"
-            or item["path"] != "/posts/new/"
-            or item["expected_app"]["http_status"] != 302
-        ):
-            raise ConfigError(f"{cid}: 게시글 ID 캡처 설정 오류")
-
         post_ref = item.get("post_reference")
 
         if post_ref is not None:
@@ -303,6 +295,13 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
         status = expected["http_status"]
         if not (isinstance(status, int) and not isinstance(status, bool) and 100 <= status <= 599):
             raise ConfigError(f"{cid}: http_status는 100~599 정수여야 합니다")
+        if capture and (
+            _cleanup
+            or item["method"] != "POST"
+            or item["path"] != "/posts/new/"
+            or item["expected_app"]["http_status"] != 302
+        ):
+            raise ConfigError(f"{cid}: 게시글 ID 캡처 설정 오류")
         if "redirect_path" in expected:
             validate_path(expected["redirect_path"])
         if "sha256" in expected and (not isinstance(expected["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", expected["sha256"])):
@@ -1510,6 +1509,13 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                         timestamp_utc=timestamp, request_attempted=True
                     ),
                 )
+                
+                record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
+                              redirect_target=safe_location(detail["location"]),
+                              response_summary={"request_body_bytes": detail["request_body_bytes"], "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],
+                                                "headers": detail["headers"]}, transport_status="OK", request_attempted=True,
+                              http_expectation_match=check_http_expected(detail, case["expected_app"], target_origin=target))
+
                 if case.get("capture_post_id"):
                     if not check_http_expected(
                         detail, case["expected_app"], target_origin=target
@@ -1524,19 +1530,25 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                         raise ExecutionError("중복된 생성 게시글 ID입니다")
 
                     created_post_ids[case["case_id"]] = post_id
-                record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
-                              redirect_target=safe_location(detail["location"]),
-                              response_summary={"request_body_bytes": detail["request_body_bytes"], "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],
-                                                "headers": detail["headers"]}, transport_status="OK", request_attempted=True,
-                              http_expectation_match=check_http_expected(detail, case["expected_app"], target_origin=target))
+                
                 # No WAF/app log evidence in run: do not invent a pass based on HTTP 403.
                 record["verdict"] = "UNKNOWN"
                 if case.get("critical") and not record["http_expectation_match"]:
                     failed = True
             except (ExecutionError, ConfigError, KeyboardInterrupt) as exc:
-                record.update(transport_status="ERROR", verdict="ERROR",
-                              response_summary={"error": ("KeyboardInterrupt" if isinstance(exc, KeyboardInterrupt)
-                                                          else str(exc))})
+                record.update(
+                    transport_status="ERROR",
+                    verdict="ERROR",
+                )
+
+                if record.get("response_summary") is None:
+                    record["response_summary"] = {}
+
+                record["response_summary"]["error"] = (
+                    "KeyboardInterrupt"
+                    if isinstance(exc, KeyboardInterrupt)
+                    else str(exc)
+                )
                 failed = True
             # 4) 성공/실패마다 즉시 기록: 중단돼도 부분 증거를 보존한다.
             records.append(record)
@@ -1730,21 +1742,33 @@ def event_matches_run(event: dict, row: dict) -> bool:
 
 
 def log_timestamp(event: dict) -> datetime | None:
-    """ISO UTC 또는 AWS 밀리초 epoch를 UTC datetime으로 정규화."""
+    """시간대가 명시된 시각 또는 epoch만 UTC로 정규화한다."""
     val = event.get("timestamp_utc")
     if val is None:
         val = event.get("ts")
     if val is None:
         val = event.get("timestamp")
-    if isinstance(val, (float, int)):
-        if val > 10**11:  # AWS WAF epoch millis
-            val /= 1000
-        return datetime.fromtimestamp(val, timezone.utc)
-    if isinstance(val, str):
-        try:
-            return datetime.fromisoformat(val.replace("Z", "+00:00")).astimezone(timezone.utc)
-        except ValueError:
+
+    try:
+        if isinstance(val, bool):
             return None
+
+        if isinstance(val, (int, float)):
+            if val > 10**11:
+                val /= 1000
+            return datetime.fromtimestamp(val, timezone.utc)
+
+        if isinstance(val, str):
+            parsed = datetime.fromisoformat(
+                val.replace("Z", "+00:00")
+            )
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                return None
+            return parsed.astimezone(timezone.utc)
+
+    except (ValueError, TypeError, OverflowError, OSError):
+        return None
+
     return None
 
 
@@ -1755,11 +1779,15 @@ def plausible_event(event: dict, row: dict, origin: str) -> bool:
     if event.get("target_origin") not in {None, origin}:
         return False
     t1 = log_timestamp(event)
-    try:
-        t2 = datetime.fromisoformat(row["timestamp_utc"])
-    except (ValueError, TypeError):
-        return False
-    return t1 is not None and abs((t1 - t2).total_seconds()) <= 120
+    t2 = log_timestamp({
+        "timestamp_utc": row.get("timestamp_utc")
+    })
+
+    return (
+        t1 is not None
+        and t2 is not None
+        and abs((t1 - t2).total_seconds()) <= 120
+    )
 
 
 def correlate(args) -> int:

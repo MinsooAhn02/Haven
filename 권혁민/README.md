@@ -1,6 +1,6 @@
 # Haven CLI
 
-**상태:** 실제 Django 2회차 HTTP 통합 시험 완료, 최종 보안 검증은 미완료 
+**상태:** 1~3회차 로컬 Django HTTP 통합 시험 완료, AWS WAF·로그 검증 미완료
 
 ## 1. 포함 파일
 
@@ -73,6 +73,16 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
 ```
 
 `response_summary.request_body_bytes`가 **8191, 8192, 8193**이고 모의 응답이 **302, 302, 413**인지 확인한다. 실제 Django 및 Nginx의 크기 정책은 별개 시험 대상이다.
+
+### 실제 Django 로컬 시험
+
+`start_verify.ps1 -Mode Reset`으로 `haven_verify` DB와 전용 업로드 저장소를 초기화한 뒤 Django 서버를 실행한다.
+
+재시험 시에는 기존 서버를 종료하고 다시 초기화한다.
+
+```powershell
+.\start_verify.ps1 -Mode Reset
+```
 
 ## 3. Case JSON 계약
 
@@ -151,16 +161,14 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
   selected_cases, excluded_cases를 기록한다.
 - 제외된 다른 회차 케이스는 미실행 오류로 계산하지 않는다.
 
-현재 cases_haven_template.json은 총 122개이며,
-1회차 34개·2회차 87개·3회차 1개로 구성되어 있다.
+`cases_haven_template.json`에 1~3회차 시험을 통합했다.
 
-공유 허용·해제·비활성화처럼 사전 DB 상태가 서로 다른
-시나리오는 별도 fixture 파일로 구분하여 관리한다.
-이는 현재 준비된 케이스의 분류이며, 회차별 전체 요구사항을
-모두 구현했다는 의미는 아니다.
+- 논리 케이스 153개, 실제 HTTP 시험 197건
+- pytest 251개 통과 (PR #62 리뷰 M1~M8 보강)
+- 로컬 Django 시험 HTTP 기대값 197/197 일치, 복구 완료
+- AWS WAF Count 및 앱/WAF 로그 상관분석 미완료
 
-Haven 템플릿은 실제 Django 앱과 시험 데이터가 준비된 뒤 사용한다.
-로컬 mock 서버에서 앱의 권한·공유·첨부 기능을 검증할 수는 없다.
+AWS에서는 `cases_haven_auth_smoke.json`을 우선 실행한다. 전체 `cases_haven_template.json`은 시험 계정·게시글 ID와 DB 초기 상태를 확인한 후 실행한다. 해당 시험에는 데이터 변경·삭제가 포함된다.
 
 ### 계정 비활성화 수동 체크포인트
 
@@ -244,7 +252,7 @@ Trace ID가 정상 전달되고 로깅되는지 확인해야 한다.
 
 - **WAF 연동:** AWS WAF 실제 로그의 규칙 액션/Count 형식과 앱 로그, UTC 시간, request_id 필드를 대조. `COUNT`는 WAF 탐지 이벤트이지 실제 차단이 아니다.
 - **검증 범위:** SQLi·XSS·IDOR·파일 조작 결과는 HTTP만으로 결론 내리지 않고 DB 스냅샷, 출력 렌더링, 파일 위치/권한 등의 별도 증거가 있어야 한다. 여기서 작성한 코드는 **브라우저 JS 실행 판정·DB 읽기·실제 AWS 자동 정책 변경·동시 업로드 부하 시험을 수행하지 않는다.**
-- **공격 시험:** `cases_haven_template.json`은 시작점이 되는 **수동 조정용 예시**다. 실제 데이터 P1 ID·공유 여부·업로드 제한·로그 수집이 확정되기 전에는 실행하지 않는다. `sec_login_sql_username.json`은 예시 fixture로만 제공하며, 로그인 오류 시 기대 HTTP 코드는 담당자와 계약을 맞춰야 한다.
+- **시험 환경:** 통합 시험은 초기화된 `haven_verify` DB와 시험용 파일 저장소를 기준으로 실행한다.
 - **출력/비밀 관리:** 실제 AWS WAF 및 앱 원본 로그는 접근 제한된 로컬 저장소에 두고 Git에 업로드하지 않는다. 개인 `.gitignore`를 이용해 output, `*.jsonl` 등을 제외한다.
 
 ## 6. 1회차 완료 체크
@@ -253,6 +261,7 @@ Trace ID가 정상 전달되고 로깅되는지 확인해야 한다.
 - [x] 로컬 mock fixture 서버 구성
 - [x] 대상/fixture path 검증, 부분 결과, 상관분석 단위·통합 테스트
 - [x] APP-11의 serialized body 8191/8192/8193 바이트 실제 길이 시험
-- [ ] 실제 Django 앱·AWS WAF에서 실행 (**2~4회차 의존 작업**)
+- [x] 실제 Django 앱에서 1~3회차 로컬 HTTP 통합 시험
+- [ ] AWS WAF Count 및 실제 앱/WAF 로그 상관분석
 - [x] 팀의 경로/인증/로그 필드 합의 후 `TODO.md`에 시험 환경·명령·결과 기록
 - [x] `Hyeokmin`에 commit/push 및 `main` 대상 PR 제출

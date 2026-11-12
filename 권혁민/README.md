@@ -82,6 +82,7 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
 
 ```powershell
 .\start_verify.ps1 -Mode Reset
+```
 
 ## 3. Case JSON 계약
 

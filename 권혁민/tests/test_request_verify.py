@@ -4117,6 +4117,13 @@ def test_capture_post_id_mismatch_stops_run(
     assert result["results"][0]["transport_status"] == "ERROR"
     assert "기대값 불일치" in result["results"][0]["response_summary"]["error"]
 
+    row = result["results"][0]
+    assert row["http_status"] == 400
+    assert row["elapsed_ms"] == 0.1
+    assert row["http_expectation_match"] is False
+    assert row["response_summary"]["body_bytes"] == 0
+    assert "headers" in row["response_summary"]
+
 
 # M6: 복구 체크포인트는 하나만 허용
 def test_rejects_multiple_cleanup_checkpoints():
@@ -4168,5 +4175,65 @@ def test_rejects_cleanup_after_checkpoint():
     ):
         cli.validate_suite(
             suite,
+            ROOT / "fixtures",
+        )
+
+
+@pytest.mark.parametrize("value", [
+    True,
+    False,
+    float("inf"),
+    float("-inf"),
+    float("nan"),
+    10**100,
+    "2026-11-11T12:00:00",
+    "not-a-time",
+])
+def test_invalid_log_timestamp_is_unresolved(value):
+    assert cli.log_timestamp({"timestamp": value}) is None
+
+
+def test_log_timestamp_normalizes_explicit_timezone():
+    actual = cli.log_timestamp({
+        "ts": "2026-11-11T21:00:00+09:00"
+    })
+    assert actual == datetime(
+        2026, 11, 11, 12, 0, tzinfo=timezone.utc
+    )
+
+
+def test_plausible_event_rejects_naive_run_timestamp():
+    row = {
+        "run_id": "time-test",
+        "timestamp_utc": "2026-11-11T12:00:00",
+    }
+    event = {
+        "timestamp_utc": "2026-11-11T12:00:00+00:00"
+    }
+
+    assert cli.plausible_event(
+        event, row, "https://haven.example:443"
+    ) is False
+
+
+@pytest.mark.parametrize("expected", [
+    None,
+    {},
+    [],
+    {"http_status": "302"},
+])
+def test_capture_rejects_malformed_expected_app(expected):
+    case = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        status=302,
+        capture_post_id=True,
+    )
+    case["expected_app"] = expected
+
+    with pytest.raises(cli.ConfigError):
+        cli.validate_suite(
+            phase2_make_suite([case]),
             ROOT / "fixtures",
         )

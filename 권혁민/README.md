@@ -1,6 +1,6 @@
 # Haven CLI
 
-**상태:** 1~3회차 로컬 Django HTTP 통합 시험 완료, AWS WAF·로그 검증 미완료
+**상태:** 1~3회차 로컬 Django HTTP 통합 시험 완료, AWS WAF 초기 구성 완료(Count 모드), ALB 연결 및 실제 로그 분석 대기
 
 ## 1. 포함 파일
 
@@ -265,3 +265,33 @@ Trace ID가 정상 전달되고 로깅되는지 확인해야 한다.
 - [ ] AWS WAF Count 및 실제 앱/WAF 로그 상관분석
 - [x] 팀의 경로/인증/로그 필드 합의 후 `TODO.md`에 시험 환경·명령·결과 기록
 - [x] `Hyeokmin`에 commit/push 및 `main` 대상 PR 제출
+
+## 7. AWS WAF 구성 (2026-11-12)
+
+### 구성 완료
+
+- Web ACL: `haven-web-acl`
+- 리전: `ap-northeast-2` / REGIONAL
+- 기본 동작: Allow
+- 관리형 규칙 3개: CommonRuleSet, SQLiRuleSet, KnownBadInputsRuleSet
+- 규칙 그룹 모두 Count 모드 적용
+- 사전 WCU 확인: 1,100
+- CloudWatch 로그 그룹: `aws-waf-logs-haven`
+- 로그 보존 기간: 30일
+- Authorization, Cookie 헤더 마스킹 적용
+
+### 검증 결과
+
+- `create-web-acl`: 성공
+- `get-web-acl`: 기본 Allow 및 규칙 그룹 Count 확인
+- `put-logging-configuration`: 성공
+- CloudWatch 로그 그룹 및 30일 보존 설정 확인
+
+### 미완료 작업
+
+- ALB에 Web ACL 연결 (이민성 담당)
+- 실제 WAF Count 로그 수집 및 오탐 분석
+- WAF·Nginx·Django 로그 상관분석
+- Block 전환 대상 선정 및 적용 전후 검증
+
+현재 ALB 연결 전이므로 실제 요청에 대한 WAF 탐지 성능 및 차단 여부는 검증하지 않았다.

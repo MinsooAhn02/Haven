@@ -147,6 +147,28 @@ def read_upload(uploaded):
 
 # ---------------------------------------------------------------- 예약·저장·확정
 
+def check_limits(owner, post, size):
+    """글당 3개, 계정당 10 MiB. PENDING·ACTIVE·DELETE_PENDING을 모두 센다."""
+    counted = Attachment.objects.filter(status__in=COUNTED_STATUSES)
+    if counted.filter(post=post).count() >= MAX_FILES_PER_POST:
+        raise AttachmentRejected("글 하나에 첨부는 3개까지입니다.")
+    used = counted.filter(post__owner=owner).aggregate(total=Sum("size_bytes"))["total"] or 0
+    if used + size > MAX_BYTES_PER_OWNER:
+        raise AttachmentRejected("계정 첨부 용량(10 MiB)을 넘습니다.")
+
+
+def precheck(owner, post_id, size):
+    """잠금 없는 사전 검사. 어차피 거절될 업로드를 내용 검사(PDF 분석) 전에 빨리 돌려보낸다.
+
+    결과는 잠금 없이 읽은 값이라 최종 판정이 아니다. 동시 업로드의 한도는 reserve()가 잠금 아래서 다시 지킨다.
+    """
+    post = Post.objects.filter(pk=post_id, owner=owner, status=Post.Status.ACTIVE).first()
+    if post is None:
+        return False
+    check_limits(owner, post, size)
+    return True
+
+
 def after_quota_check():
     """동시성 시험에서 검사와 예약 사이에 지연을 넣기 위한 자리(평소에는 아무것도 하지 않음)."""
 
@@ -162,12 +184,7 @@ def reserve(owner, post_id, name, size):
     )
     if post is None:
         return None
-    counted = Attachment.objects.filter(status__in=COUNTED_STATUSES)
-    if counted.filter(post=post).count() >= MAX_FILES_PER_POST:
-        raise AttachmentRejected("글 하나에 첨부는 3개까지입니다.")
-    used = counted.filter(post__owner=owner).aggregate(total=Sum("size_bytes"))["total"] or 0
-    if used + size > MAX_BYTES_PER_OWNER:
-        raise AttachmentRejected("계정 첨부 용량(10 MiB)을 넘습니다.")
+    check_limits(owner, post, size)
     after_quota_check()
     return Attachment.objects.create(post=post, original_name=name, size_bytes=size)
 
@@ -207,6 +224,8 @@ def upload(owner, post_id, uploaded):
     """업로드 전체. 성공하면 Attachment, 글이 없거나 권한이 없으면 None. 입력 문제는 AttachmentRejected."""
     name = validate_filename(uploaded.name)
     data = read_upload(uploaded)
+    if not precheck(owner, post_id, len(data)):  # 권한·개수·용량부터: 느린 PDF 분석 전에
+        return None
     content_type = detect_content_type(name, data)
     sha256 = hashlib.sha256(data).hexdigest()
 

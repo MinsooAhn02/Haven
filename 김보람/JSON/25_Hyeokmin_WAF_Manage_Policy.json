@@ -21,6 +21,7 @@
         "wafv2:ListWebACLs",
         "wafv2:ListAvailableManagedRuleGroups",
         "wafv2:DescribeManagedRuleGroup",
+        "wafv2:ListAvailableManagedRuleGroupVersions",
         "wafv2:CheckCapacity"
       ],
       "Resource": "*",
@@ -45,6 +46,15 @@
           "aws:RequestedRegion": "ap-northeast-2"
         }
       }
+    },
+    {
+      "Sid": "ManageHavenWAFLogGroup",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:PutRetentionPolicy"
+      ],
+      "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:aws-waf-logs-haven*"
     }
   ]
 }

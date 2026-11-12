@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-basic-upload-quota",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "UP-05-P1-LARGE-1",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_exact_2mib.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1의 2 MiB 업로드 #1 (정상 업로드 순서 의존)"
+    },
+    {
+      "case_id": "UP-05-P1-LARGE-2",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_exact_2mib.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1의 2 MiB 업로드 #2 (정상 업로드 순서 의존)"
+    },
+    {
+      "case_id": "UP-05-P1-LARGE-3",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_exact_2mib.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1의 2 MiB 업로드 #3 (정상 업로드 순서 의존)"
+    },
+    {
+      "case_id": "UP-05-P1-FOURTH-DENIED",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1 네번째 파일은 글당 개수 3개 초과로 400"
+    },
+    {
+      "case_id": "UP-05-P2-LARGE-1",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/2/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_exact_2mib.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P2의 2 MiB 업로드 #1; P1 6 MiB + P2 2 MiB"
+    },
+    {
+      "case_id": "UP-05-P2-LARGE-2",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/2/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_exact_2mib.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P2의 2 MiB 업로드 #2; P1 6 MiB + P2 4 MiB"
+    },
+    {
+      "case_id": "UP-05-OWNER-10MIB-PLUS1",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/2/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1 6MiB+P2 4MiB=계정 10MiB. P2는 2개뿐이지만 추가 업로드는 계정 용량 초과로 400"
+    }
+  ]
+}

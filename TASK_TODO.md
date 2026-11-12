@@ -18,11 +18,11 @@
 |---|---|---|---|---|
 | 1 | 안민수 | `Minsoo` | [안민수/TODO.md](안민수/TODO.md) | 레포 admin 지원 (11/11 조장·배포·백업 복원·메일·CI는 인수인계, 팀장은 이민성) |
 | 2 | 노푸른 | `Pureun` | [노푸른/TODO.md](노푸른/TODO.md) | 화면·Django Templates·CSS·사용자 흐름 시험 |
-| 3 | 권혁민 | `Hyeokmin` | [권혁민/TODO.md](권혁민/TODO.md) | 레드팀 시험·요청 재현 CLI·WAF·로그 검증·실제 SG 수집 대조 |
-| 4 | 김보람 | `Boram` | [김보람/TODO.md](김보람/TODO.md) | 계정 소유·IAM·개인별 접근·비용/자원 관리·SES 설정 |
-| 5 | 신요찬 | `Yochan` | [신요찬/TODO.md](신요찬/TODO.md) | Django 인증·모델·CRUD·공유·첨부·서버 인가·앱 PR 통합 시험·메일 발송 코드 |
-| 6 | 이민성 | `Minsung` | [이민성/TODO.md](이민성/TODO.md) | 팀장(조장)·서버 배포·백업/복원·AWS 네트워크·EC2·SSM·ALB/HTTPS·SG CLI |
-| 7 | 구민철 | `Minchul` (11/12 생성) | [구민철/TODO.md](구민철/TODO.md) | 미정 (11/12 합류, 조장이 배정 예정) |
+| 3 | 권혁민 | `Hyeokmin` | [권혁민/TODO.md](권혁민/TODO.md) | 레드팀 시험·요청 재현 CLI·WAF·로그 검증·실제 SG 수집 대조 · WAF Web ACL·규칙·전용 로그 구성(Count)과 Block 판단(4회차, 11/12 결정) |
+| 4 | 김보람 | `Boram` | [김보람/TODO.md](김보람/TODO.md) | 계정 소유·IAM·개인별 접근·비용/자원 관리·SES 설정 · WAF 쓰기 권한(혁민·민성)·구민철 SG 읽기 권한(11/12 결정) |
+| 5 | 신요찬 | `Yochan` | [신요찬/TODO.md](신요찬/TODO.md) | Django 인증·모델·CRUD·공유·첨부·서버 인가·앱 PR 통합 시험·메일 발송 코드 · 로그인 실패 제한 안(4회차, 11/12 결정) |
+| 6 | 이민성 | `Minsung` | [이민성/TODO.md](이민성/TODO.md) | 팀장(조장)·서버 배포·백업/복원·AWS 네트워크·EC2·SSM·ALB/HTTPS·SG CLI · WAF ALB 연결·Block 적용(4회차)·SG 점검 도구 live 모드(11/12 결정) |
+| 7 | 구민철 | `Minchul` (11/12 생성) | [구민철/TODO.md](구민철/TODO.md) | 독립 검증(QA)·SG 설정 실제 점검(실행·대조). 개인 회차 1회차 11/12~13, 2회차 11/16~20, 3회차 11/23~27, 4회차 11/30~12/02(제안) (조장 배정 11/12) |
 
 ## 바로 다음 공동 작업 · 2026-11-06
 

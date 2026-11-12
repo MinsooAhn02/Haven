@@ -278,7 +278,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 민성님 추가 요청: ALB·ACM 조회 접근 거부 해결, ACM 인증서 태그, ALB 수정·실패 시 정리용 삭제, ALB 서비스 연결 역할 생성 권한 추가.
 - [x] `AWSServiceRoleForElasticLoadBalancing` 역할을 IAM 역할 검색에서 찾지 못했다고 사용자 확인. 기존 정책에 조건부 `iam:CreateServiceLinkedRole`을 추가.
 - [x] 해당 고객 관리형 정책을 JSON으로 편집·저장 완료했다고 사용자 확인. AWS 권한 요약 화면에서 Certificate Manager, ELB/ELB v2, IAM, Route 53 항목 표시 확인.
-- [x] AWS에 입력·저장한 정책 JSON을 [18번 파일](JSON/18_Minsung_ALB_ACM_Route53_Policy.json)에 동일하게 기록.
+- [x] AWS에 입력·저장한 정책 JSON을 [18번 파일](JSON/18_Haven-Minsung-ALB-ACM-DNS-Policy.json)에 동일하게 기록.
 - **권한 범위:** ELB는 서울 `ap-northeast-2`, Haven 접두어 `haven-*`와 요청/리소스의 `Project=Haven` 태그를 조건으로 설정. ACM 요청은 `Project=Haven`, `Owner=minsung` 요청 태그 조건. Route 53 변경은 호스팅 영역 `Z08342321QNIZCEME3KGF`로 제한, 단 `route53:GetChange` 조회는 AWS change ARN 사용.
 - [ ] **민성님 실제 검증 대기:** ALB·ACM 읽기, 인증서 요청·태그, ALB 생성·리스너 생성, DNS 변경 권한, 서비스 연결 역할 자동 생성 성공/거부와 추가 오류 공유. 저장 성공만으로 모든 API 호출 성공을 보장하지 않음.
 - [ ] **삭제는 민수님 확인 후에만:** 권한에 ELB DeleteListener/TargetGroup/LoadBalancer를 포함했어도 실제 삭제 실행은 별도 승인 및 대상 식별 후 진행.

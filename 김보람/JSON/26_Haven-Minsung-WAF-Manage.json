@@ -1,0 +1,44 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageHavenWAF",
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:GetWebACL",
+        "wafv2:GetWebACLForResource",
+        "wafv2:UpdateWebACL",
+        "wafv2:AssociateWebACL"
+      ],
+      "Resource": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/webacl/haven-*/*"
+    },
+    {
+      "Sid": "ListWAFInSeoul",
+      "Effect": "Allow",
+      "Action": "wafv2:ListWebACLs",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2"
+        }
+      }
+    },
+    {
+      "Sid": "AssociateHavenALB",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:CreateWebACLAssociation",
+        "elasticloadbalancing:SetWebAcl",
+        "elasticloadbalancing:DeleteWebACLAssociation",
+        "elasticloadbalancing:GetLoadBalancerWebACL"
+      ],
+      "Resource": "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:loadbalancer/app/haven-alb/*"
+    },
+    {
+      "Sid": "DisassociateHavenALBWebACL",
+      "Effect": "Allow",
+      "Action": "wafv2:DisassociateWebACL",
+      "Resource": "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:loadbalancer/app/haven-alb/*"
+    }
+  ]
+}

@@ -26,6 +26,21 @@
       "Effect": "Allow",
       "Action": "logs:GetLogEvents",
       "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:/haven/web:log-stream:*"
+    },
+    {
+      "Sid": "ReadHavenWAFLogGroup",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogStreams",
+        "logs:FilterLogEvents"
+      ],
+      "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:aws-waf-logs-haven*"
+    },
+    {
+      "Sid": "ReadHavenWAFLogEvents",
+      "Effect": "Allow",
+      "Action": "logs:GetLogEvents",
+      "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:aws-waf-logs-haven*:log-stream:*"
     }
   ]
 }

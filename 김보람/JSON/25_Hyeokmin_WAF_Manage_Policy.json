@@ -1,0 +1,70 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "HavenWAFManage",
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:CreateWebACL",
+        "wafv2:UpdateWebACL",
+        "wafv2:DeleteWebACL",
+        "wafv2:GetWebACL",
+        "wafv2:TagResource",
+        "wafv2:PutLoggingConfiguration",
+        "wafv2:GetLoggingConfiguration"
+      ],
+      "Resource": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/webacl/haven-*/*"
+    },
+    {
+      "Sid": "ManageReferencedManagedRuleSets",
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:CreateWebACL",
+        "wafv2:UpdateWebACL"
+      ],
+      "Resource": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/managedruleset/*/*"
+    },
+    {
+      "Sid": "WAFReadAndRules",
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:ListWebACLs",
+        "wafv2:ListAvailableManagedRuleGroups",
+        "wafv2:DescribeManagedRuleGroup",
+        "wafv2:ListAvailableManagedRuleGroupVersions",
+        "wafv2:CheckCapacity"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2"
+        }
+      }
+    },
+    {
+      "Sid": "WAFCloudWatchLogging",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogDelivery",
+        "logs:PutResourcePolicy",
+        "logs:DescribeResourcePolicies",
+        "logs:DescribeLogGroups"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2"
+        }
+      }
+    },
+    {
+      "Sid": "ManageHavenWAFLogGroup",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:PutRetentionPolicy"
+      ],
+      "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:aws-waf-logs-haven*"
+    }
+  ]
+}

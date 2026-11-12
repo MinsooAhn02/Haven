@@ -54,19 +54,20 @@
 | 3 | 진행 중 (ALB·HTTPS 완료. SG 실제 수집은 11/12 결정으로 live 모드 구현=민성, 실행·대조=구민철) | 도메인 `orchestration-haven.cloud` 확정(11/11). Route 53 공개 호스팅 영역 1개, 네임서버 4개가 구글 DNS(8.8.8.8) 응답과 일치 확인. `infra/build-alb.sh` 작성(ACM DNS 검증 → 대상 그룹 /healthz → ALB → 443 TLS1.2+·80→301 → apex Alias → healthy·NET-01·01-b 확인). 가짜 시험 `test/alb-fake-test.sh` 39개(일부러 실패: ALB 중복·web-1 꺼짐·호스팅 영역 0/2개·기존 A 레코드·권한 없음·인증서 시간 초과/FAILED·unhealthy·302·가짜 도메인 리다이렉트). 시험이 실제로 버그를 잡는지 스크립트를 일부러 망가뜨려 확인(가드 3곳 제거 → 해당 시험 FAIL). 민성 Windows Git Bash 11:32: 가짜 시험 PASS 39 / FAIL 0, `DRY_RUN=1 bash build-alb.sh` 1/5~5/5 종료 0(실제 state ID로 명령만 출력). 권한: ELB·ACM 읽기부터 AccessDenied(11:1x) → 보람님 추가 → 11:36 1차 실행: 인증서 2초 만에 발급, 대상 그룹까지 만들고 ALB에서 `ec2:GetSecurityGroupsForVpc` 없음으로 멈춤 → 스크립트에 "이 스크립트가 만든 것(state 기록과 같은 ID)만 이어서 쓰기" 추가(가짜 시험 F1~F13) → 보람님 권한 추가 → 11:47 2차: 대상 그룹·인증서 재사용, ALB·리스너·도메인 연결, healthy, NET-01 OK, NET-01-b는 **Windows curl이 `/dev/null`을 몰라서** 확인 단계만 실패 → 고침(가짜 curl도 Windows처럼 바꿔 W1 시험 추가, 옛 코드로 되돌리면 13개 FAIL 확인) → 11:58 3차: 전부 재사용(새로 만든 것 없음), **NET-01 200 ok·인증서 OK, NET-01-b 301 → https, 실제 DNS 접속 OK**. 가짜 시험 최종 PASS 59 / FAIL 0(민성 Git Bash). 남은 것: live SG 읽기 수집·AUD 대조, WAF·ALB 접근 로그(설계 7절) | 증거: 연결확인표 NET-01·01-b, `~/alb-1111.log`(계정 번호·ARN 가려서 첨부). PR 작성 예정 | 노푸른: `https://orchestration-haven.cloud` 접속 가능(11/11 11:59~, 평일 09~21시, 밤에는 EC2가 꺼져 502/503). 안민수: ALB 켜 둠(11/11 결정), CSRF_TRUSTED_ORIGINS가 이 도메인인지 실제 로그인으로 확인 요청. 김보람: ALB 요금 시작(11:47~) 비용 확인 |
 | 4 | 미착수 | 미확인 | — | — |
 
-## 지금 할 일 (11/12 밤, 현황판 `TASK_TODO.html` 민성 카드 기준)
+## 지금 할 일 (11/12 17:40 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
 
 | 할 일 | 상태·선행 |
 |---|---|
-| PR #76 로그 수집(OUT-10)·NET-06 기록 | 최종 판 `cw-agent-setup.sh` web-1 재실행 → 결과 기록 → 짝 리뷰(보람) → 병합 |
-| #64 서버 쪽 PR: `안민수/server/requirements.txt`에 boto3·botocore, `deploy.sh`가 MAIL_FROM 있을 때 HAVEN_MAIL_BACKEND=ses·HAVEN_MAIL_FROM 같이 쓰기 → 같은 커밋 2번 배포 | #64 병합됨(fd67616), 진행 가능 |
+| ~PR #76 로그 수집(OUT-10)·NET-06 기록~ | ✅ 11/12 #76 병합, 최종 판 web-1 실행(14:44)·CloudWatch 도착 확인 |
+| ~#64 서버 쪽 PR (boto3, MAIL_FROM → 메일 환경변수) → 같은 커밋 2번 배포~ | ✅ 11/12 #78 병합(요찬 리뷰), `5bccce1` 2회 배포 + web-setup.sh 재실행 → `HAVEN_MAIL_BACKEND=ses` 등 3줄 (앱계약 E5·E6) |
+| 시험 메일 EXT-03(도착)·EXT-04(실패 표시) | 선행: 보람 Web Role `ses:SendEmail`(11/12 미확인). 서버 실행 민성, 판단 요찬, 수신 확인 보람 |
 | SG 점검 도구 live 모드 구현·시험·병합 → VPC ID·실행 방법을 구민철에게 전달 | 명세 5.1, boto3. 선행: 보람 읽기 권한 |
-| 백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번) | NET-06은 11/12 통과, 다음 순서 |
+| 백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번) | **11/13로 이관.** db-1 `/root/setup`에 backup.sh·restore.sh·common.sh 반입·sha256 일치(11/12 17:20). 11/13은 ①웹 멈추기부터 |
 | 15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부) | 보람 #47 |
 | ALB·WAF 밤 처리 결정 → destroy.sh 정리 순서 | #57 약 $4.55/주 |
-| WAF ALB 연결·Block 적용 | 4회차, 보람 WAF 쓰기 권한 뒤 |
+| WAF ALB 연결·Block 적용 | 4회차. 보람 #77 26번 정책 반영됨, ALB 연결 액션(`CreateWebACLAssociation` vs `SetWebAcl`)은 연결 시험 때 확인 → 거부되면 보람에게 |
 | 가상 운영 관리자 계정 생성(make_operator.py) | 4회차 APP-07·09 시험 직전에만, 끝나면 바로 비활성화 |
-| 로그인 실패 제한 수치 결정 | 요찬 안 받은 뒤 조장 결정 |
+| ~로그인 실패 제한 수치 결정~ | ✅ 11/12 결정: 15분·계정 5번·IP 30번(#75). 구현은 요찬(4회차) → 혁민 점검 → 배포. 실제 IP는 X-Forwarded-For 뒤에서 두 번째(nginx가 ALB IP를 붙임) |
 | OUT-10 db-1 범위 결정 (PostgreSQL 로그 수집 여부) | 미정 |
 | 조장 일: PR 확인·병합 → 7개 브랜치 동기화 → 현황판·운영기록 → 공지 | 매일 |
 | 21시 `night.sh` · 09시 `morning.sh` | 매일 (밤 작업 전 AWS 로그인 새로) |
@@ -166,3 +167,31 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - **수:** ALB · ACM(도메인은 화 수업 시작 때 민수가 정함) · HTTPS
 - **목:** ~실제 SG 읽기 수집 → AUD fixture 대조~ → 권혁민 담당으로 이관(11/11). 민성은 수집 명령(SG CLI)만 제공
 - **금:** 네트워크/SG 수정·재시험 · 최종 구성 정리
+
+## 민성's comment · 2026-11-12 · 오늘 한 일과 11/13로 미룬 일
+
+**오늘 한 일 (실제로 돌려 본 것만)**
+
+| 시각 | 한 일 | 결과·근거 |
+|---|---|---|
+| 21:14(11/11) → 09:03 | `night.sh` → `morning.sh` 뒤 NET-06·06-b 재시작 확인 | ✅ haven·nginx·postgresql active, healthz ok(안·밖), `db ok`. 11/11 밤 첫 시도는 AWS 로그인 만료로 멈췄고 다시 로그인 뒤 정상 |
+| 09:10~14:44 | web-1 CloudWatch Agent·로그 수집(OUT-10 web-1), 설치 스크립트 `infra/server/cw-agent-setup.sh`·가짜 시험 | ✅ #76 병합. 실서버에서 버그 3개 찾아 수정(상태 확인 파이프 141, 설정 원본 사라짐, 백업이 설정 폴더 안). 최종 판 web-1 실행 OK, CloudWatch 도착 1건씩·중복 없음, 보존 30일 |
+| 오후 | 조장 결정: 7번 구민철 합류·담당(독립 검증·SG 실제 점검 실행), SG live 모드는 민성 구현, WAF 분담(혁민 구성·판단, 민성 ALB 연결·Block 적용, 보람 권한), 로그인 실패 제한 15분·계정 5번·IP 30번(#75) | ✅ 운영기록·현황판 반영 |
+| 15:33 | 운영 사이트 최신화 배포 `74ae5eb` 2회 (#64 메일 코드·#66 화면) | ✅ OK deployed, migration 없음, healthz ok |
+| 15:40~16:45 | 메일 서버 설정 PR #78 (`site-lib.sh`·`deploy.sh`·`web-setup.sh`·requirements boto3, 가짜 시험 39개) → 요찬 리뷰 승인 → 병합 → `5bccce1` 배포 1회 → web-setup.sh 재실행(site.conf 기존 값 그대로 + MAIL_FROM) → 배포 2회 | ✅ boto3·botocore 1.43.120, haven.env `HAVEN_MAIL_BACKEND=ses`·`HAVEN_MAIL_FROM=noreply@orchestration-haven.cloud`·`HAVEN_SES_REGION=ap-northeast-2`, `DJANGO_HTTPS=1` 유지, static 경로 그대로 |
+| 17:20 | 백업 연습 준비: db-1 `/root/setup`에 backup.sh·restore.sh·common.sh 반입 | ✅ sha256 3개 일치 |
+| 17:33 | 재배포 `6c98b90` 2회 (#79~#82, 사이트 변경은 노푸른 base.html "현재 사용자" 1줄) | ✅ OK deployed, migration 없음, healthz ok, 메일 설정 유지 |
+
+**현재 운영 배포:** `6c98b90` (main, #82까지). 이전 `5bccce1`(16:45) → `74ae5eb`(15:33) → `21d01f7`(11/11).
+
+**11/13로 미룬 일**
+
+| 할 일 | 메모 |
+|---|---|
+| 백업 → 격리 복원 연습 | db-1 스크립트는 반입 끝. ① web-1 `systemctl stop haven` → ② db-1 `backup.sh` → ③ web-1 `backup-uploads.sh <시각>` → ④ `systemctl start haven` → ⑤ db-1 `restore.sh <시각>` → ⑥ web-1 `restore-uploads.sh <시각>`. 복원은 격리 DB·폴더(TARGET 지정 금지). 오전 권장 |
+| 시험 메일 EXT-03·EXT-04 | 보람 `ses:SendEmail` 확인 뒤, 요찬과 같이. 받는 주소는 기록에 "SES 등록 주소"로만 |
+| #77 26번 정책 의견 | ALB 연결 권한 `SetWebAcl`도 같이, 바꾸는 권한은 우리 ALB·Web ACL 이름으로 좁히기 (보람에게 코멘트) |
+| 15번 SG 삭제 실제 시험 | haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부 |
+| SG 점검 도구 live 모드 구현 | 명세 5.1, boto3. 구민철 실행은 3회차(11/23~)라 급하지 않음 |
+| ALB·WAF 밤 처리 결정 | 지금은 밤에도 유지 |
+| OUT-10 db-1 범위 결정 | 미정 |

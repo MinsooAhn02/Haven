@@ -47,7 +47,7 @@
 |---|---|---|---|---|
 | 1 | 로컬 검증 완료·PR 병합 완료 | Windows 11, Python 3.13.1 / `python -m pytest -q tests`: 45 passed in 14.74s / `python -m pytest -q tests -k probe`: 5 passed, 40 deselected in 6.57s / 실제 Django·AWS WAF 검증은 미실행 | 테스트 실행 출력 확인 | Django URL·폼·인증/CSRF·로그 계약 및 시험 데이터 초기화 방법 확인 후 앱 연동 시험 |
 | 2 | 로컬 Django HTTP 시험 완료·추가 검증 대기 | 2026-11-10 / Django + PostgreSQL (`haven_verify`) / `--phase 2`: 87개 논리 케이스, 109/109 HTTP 기대값 일치, 전체 137요청, 오류 0건, 복구 완료 | `시험결과/2026-11-10_로컬_02.md` 파일 확인. 세부내용은 로컬 `output_django_phase2_01/results.json`로 보관 | DB·브라우저 검증, 앱/WAF 로그 상관분석, AWS 환경 재시험 |
-| 3 | 로컬 Django HTTP 통합 완료·AWS 미검증 | 2026-11-11 / pytest 237 통과 / 1~3회차 통합 153개 케이스, HTTP 197/197 일치, 전체 요청 231건, 복구 완료·오류 0건 | `output_django_phase3_full_02/results.json` 로컬 보관, 보고서 작성 예정 | WAF Count·로그 상관분석, 저장소 잔여 파일 확인, AWS 재시험 |
+| 3 | 로컬 Django HTTP 통합 완료·AWS 미검증 | 2026-11-11 / 로컬 통합 시험 당시 pytest 237 통과. 이후 PR #62 리뷰 반영 후 pytest 251 통과. 통합 HTTP 시험 기록은 153개 논리 케이스·197/197 일치. / 1~3회차 통합 153개 케이스, HTTP 197/197 일치, 전체 요청 231건, 복구 완료·오류 0건 | `output_django_phase3_full_02/results.json` 로컬 보관, 보고서 작성 예정 | WAF Count·로그 상관분석, 저장소 잔여 파일 확인, AWS 재시험 |
 | 4 | 미착수 | 미확인 | — | — |
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.

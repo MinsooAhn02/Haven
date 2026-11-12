@@ -3773,3 +3773,467 @@ class TestPhase2Integration:
         monkeypatch.setattr(cli, "prep_login", lambda *args: pytest.fail("Unexpected login preparation"))
         assert cli.main(phase2_command_arguments(args) + ["--prompt-seed-password"]) == 2
         assert not args.output_dir.exists()
+
+    def test_cleanup_runs_before_delete_and_logout(
+        self, tmp_path, monkeypatch
+    ):
+        grant = phase2_make_case(
+            "GRANT",
+            method="POST",
+            path="/posts/1/shares/",
+            status=302,
+        )
+        grant["input_reference"] = "basic_share_grant.json"
+
+        delete = phase2_make_case(
+            "DELETE",
+            method="POST",
+            path="/posts/1/delete/",
+            status=302,
+            cleanup_before=True,
+        )
+
+        logout = phase2_make_case(
+            "LOGOUT",
+            method="POST",
+            path="/accounts/logout/",
+            status=302,
+        )
+
+        cleanup = phase2_make_case(
+            "CLEANUP-GRANT",
+            method="POST",
+            path="/posts/1/shares/{share_id}/revoke/",
+            status=302,
+            after_case="GRANT",
+            share_reference=phase2_reference(
+                allow_missing=True
+            ),
+        )
+
+        args = phase2_make_args(
+            tmp_path,
+            phase2_make_suite(
+                [grant, delete, logout],
+                cleanup_cases=[cleanup],
+            ),
+        )
+
+        seen = []
+
+        def fake_login(session, *args):
+            session.cookies.set("csrftoken", "test-csrf")
+
+        def fake_send(
+            session, method, target, path,
+            budget, request_id, **kwargs
+        ):
+            budget.begin()
+            seen.append((method, path))
+
+            if method == "GET" and path == "/posts/1/shares/":
+                return (
+                    phase2_detail(200),
+                    phase2_share_html(
+                        phase2_share_row(1, 77, "member_b")
+                    ),
+                )
+
+            return phase2_detail(302), None
+
+        monkeypatch.setattr(cli, "prep_login", fake_login)
+        monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+        assert cli.run(args) == 3
+
+        result = cli.load_json(
+            args.output_dir / "results.json"
+        )
+
+        assert seen == [
+            ("POST", "/posts/1/shares/"),
+            ("GET", "/posts/1/shares/"),
+            ("POST", "/posts/1/shares/77/revoke/"),
+            ("POST", "/posts/1/delete/"),
+            ("POST", "/accounts/logout/"),
+        ]
+
+        assert result["cleanup_complete"] is True
+        assert result["cleanup_http_requests"] == 2
+        assert result["preparation_http_requests"] == 0
+        assert result["test_http_requests"] == 3
+
+
+@pytest.mark.parametrize("location", [
+    "https://attacker.invalid/posts/10/",
+    "//attacker.invalid/posts/10/",
+    "///attacker.invalid/posts/10/",
+])
+def test_created_post_id_rejects_external_location(location):
+    with pytest.raises(cli.ExecutionError):
+        cli.extract_created_post_id(
+            location,
+            "http://127.0.0.1:8765",
+        )
+
+
+def test_failed_checkpoint_cleanup_stops_remaining_cases(
+    tmp_path, monkeypatch
+):
+    mutation = phase2_make_case(
+        "MUTATE",
+        method="POST",
+        path="/admin/accounts/2/status/",
+        role="operator",
+        status=302,
+    )
+
+    restore = phase2_make_case(
+        "RESTORE",
+        method="POST",
+        path="/admin/accounts/2/status/",
+        role="operator",
+        status=302,
+        after_case="MUTATE",
+    )
+
+    delete = phase2_make_case(
+        "DELETE",
+        method="POST",
+        path="/posts/1/delete/",
+        status=302,
+        cleanup_before=True,
+    )
+
+    logout = phase2_make_case(
+        "LOGOUT",
+        method="POST",
+        path="/accounts/logout/",
+        status=302,
+    )
+
+    args = phase2_make_args(
+        tmp_path,
+        phase2_make_suite(
+            [mutation, delete, logout],
+            cleanup_cases=[restore],
+        ),
+    )
+
+    sent = []
+
+    monkeypatch.setattr(
+        cli,
+        "prep_login",
+        lambda session, *args: session.cookies.set(
+            "csrftoken", "test-csrf"
+        ),
+    )
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        budget.begin()
+        sent.append(path)
+
+        # 두 번째 요청인 복구 요청을 실패시킨다.
+        status = 500 if len(sent) == 2 else 302
+        return phase2_detail(status), None
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    assert cli.run(args) == 2
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+
+    assert result["cleanup_complete"] is False
+    assert result["unexecuted_cases"] == 2
+
+    # DELETE와 LOGOUT은 실행하면 안 된다.
+    assert sent == [
+        "/admin/accounts/2/status/",
+        "/admin/accounts/2/status/",
+    ]
+
+
+# M2: post_reference는 허용된 경로에서만 사용
+@pytest.mark.parametrize("path", [
+    "/posts/{post_id}/",
+    "/posts/{post_id}/shares/",
+    "/posts/{post_id}/attachments/extra/",
+])
+def test_post_reference_rejects_unsupported_paths(path):
+    create = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        status=302,
+        capture_post_id=True,
+    )
+    use = phase2_make_case(
+        "USE",
+        method="POST",
+        path=path,
+        status=302,
+        post_reference="CREATE",
+    )
+
+    with pytest.raises(cli.ConfigError):
+        cli.validate_suite(
+            phase2_make_suite([create, use]),
+            ROOT / "fixtures",
+        )
+
+
+# M3: 게시글 ID 캡처는 POST /posts/new/ + 302만 허용
+@pytest.mark.parametrize("method,path,status", [
+    ("GET", "/posts/new/", 302),
+    ("POST", "/posts/1/", 302),
+    ("POST", "/posts/new/", 200),
+])
+def test_capture_post_id_rejects_invalid_config(
+    method, path, status
+):
+    case = phase2_make_case(
+        "CREATE",
+        method=method,
+        path=path,
+        status=status,
+        capture_post_id=True,
+    )
+
+    with pytest.raises(cli.ConfigError):
+        cli.validate_suite(
+            phase2_make_suite([case]),
+            ROOT / "fixtures",
+        )
+
+
+# M4: 서로 다른 생성 요청이 동일한 게시글 ID를 반환하면 중단
+def test_duplicate_created_post_id_stops_run(
+    tmp_path, monkeypatch
+):
+    cases = [
+        phase2_make_case(
+            name,
+            method="POST",
+            path="/posts/new/",
+            status=302,
+            capture_post_id=True,
+        )
+        for name in ("CREATE-A", "CREATE-B")
+    ]
+    cases.append(phase2_make_case("AFTER"))
+
+    args = phase2_make_args(
+        tmp_path, phase2_make_suite(cases)
+    )
+    sent = []
+
+    monkeypatch.setattr(
+        cli, "prep_login",
+        lambda session, *args: session.cookies.set(
+            "csrftoken", "test-csrf"
+        ),
+    )
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        budget.begin()
+        sent.append(path)
+        return phase2_detail(
+            302, "/posts/42/"
+        ), None
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    assert cli.run(args) == 2
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+    assert len(sent) == 2
+    assert result["unexecuted_cases"] == 1
+    assert result["results"][1]["transport_status"] == "ERROR"
+    assert "중복" in result["results"][1]["response_summary"]["error"]
+
+
+# M5: 게시글 생성 HTTP 기대값 불일치 시 후속 요청 중단
+def test_capture_post_id_mismatch_stops_run(
+    tmp_path, monkeypatch
+):
+    create = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        status=302,
+        capture_post_id=True,
+    )
+    dependent = phase2_make_case(
+        "DEPENDENT",
+        method="POST",
+        path="/posts/{post_id}/attachments/",
+        status=302,
+        post_reference="CREATE",
+    )
+
+    args = phase2_make_args(
+        tmp_path,
+        phase2_make_suite([create, dependent]),
+    )
+    sent = []
+
+    monkeypatch.setattr(
+        cli, "prep_login",
+        lambda session, *args: session.cookies.set(
+            "csrftoken", "test-csrf"
+        ),
+    )
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        budget.begin()
+        sent.append(path)
+        return phase2_detail(
+            400, "/posts/42/"
+        ), None
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    assert cli.run(args) == 2
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+    assert sent == ["/posts/new/"]
+    assert result["unexecuted_cases"] == 1
+    assert result["results"][0]["transport_status"] == "ERROR"
+    assert "기대값 불일치" in result["results"][0]["response_summary"]["error"]
+
+    row = result["results"][0]
+    assert row["http_status"] == 400
+    assert row["elapsed_ms"] == 0.1
+    assert row["http_expectation_match"] is False
+    assert row["response_summary"]["body_bytes"] == 0
+    assert "headers" in row["response_summary"]
+
+
+# M6: 복구 체크포인트는 하나만 허용
+def test_rejects_multiple_cleanup_checkpoints():
+    cases = [
+        phase2_make_case(
+            "CHECKPOINT-1", cleanup_before=True
+        ),
+        phase2_make_case(
+            "CHECKPOINT-2", cleanup_before=True
+        ),
+    ]
+
+    with pytest.raises(
+        cli.ConfigError, match="복구 체크포인트"
+    ):
+        cli.validate_suite(
+            phase2_make_suite(cases),
+            ROOT / "fixtures",
+        )
+
+
+# M7: 체크포인트 뒤에 있는 변경 요청을 복구 대상으로 지정 불가
+def test_rejects_cleanup_after_checkpoint():
+    checkpoint = phase2_make_case(
+        "CHECKPOINT",
+        cleanup_before=True,
+    )
+    mutation = phase2_make_case(
+        "MUTATE",
+        method="POST",
+        path="/posts/1/shares/",
+        status=302,
+    )
+    cleanup = phase2_make_case(
+        "RESTORE",
+        method="POST",
+        path="/posts/1/shares/",
+        status=302,
+        after_case="MUTATE",
+    )
+
+    suite = phase2_make_suite(
+        [checkpoint, mutation],
+        cleanup_cases=[cleanup],
+    )
+
+    with pytest.raises(
+        cli.ConfigError, match="체크포인트보다 먼저"
+    ):
+        cli.validate_suite(
+            suite,
+            ROOT / "fixtures",
+        )
+
+
+@pytest.mark.parametrize("value", [
+    True,
+    False,
+    float("inf"),
+    float("-inf"),
+    float("nan"),
+    10**100,
+    "2026-11-11T12:00:00",
+    "not-a-time",
+])
+def test_invalid_log_timestamp_is_unresolved(value):
+    assert cli.log_timestamp({"timestamp": value}) is None
+
+
+def test_log_timestamp_normalizes_explicit_timezone():
+    actual = cli.log_timestamp({
+        "ts": "2026-11-11T21:00:00+09:00"
+    })
+    assert actual == datetime(
+        2026, 11, 11, 12, 0, tzinfo=timezone.utc
+    )
+
+
+def test_plausible_event_rejects_naive_run_timestamp():
+    row = {
+        "run_id": "time-test",
+        "timestamp_utc": "2026-11-11T12:00:00",
+    }
+    event = {
+        "timestamp_utc": "2026-11-11T12:00:00+00:00"
+    }
+
+    assert cli.plausible_event(
+        event, row, "https://haven.example:443"
+    ) is False
+
+
+@pytest.mark.parametrize("expected", [
+    None,
+    {},
+    [],
+    {"http_status": "302"},
+])
+def test_capture_rejects_malformed_expected_app(expected):
+    case = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        status=302,
+        capture_post_id=True,
+    )
+    case["expected_app"] = expected
+
+    with pytest.raises(cli.ConfigError):
+        cli.validate_suite(
+            phase2_make_suite([case]),
+            ROOT / "fixtures",
+        )

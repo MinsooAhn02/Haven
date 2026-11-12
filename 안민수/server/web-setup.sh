@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # web-1에서 root로 실행: DB_HOST=<db-1 사설 IP> ALLOWED_HOSTS=<도메인 또는 ALB 이름[,..]> bash web-setup.sh
+#   선택: CSRF_TRUSTED_ORIGINS=https://<도메인>  MAIL_FROM=<SES 인증 발신 주소>(시험 메일, 비우면 보내지 않음)
+#   다시 실행할 때 기존 site.conf에 있던 CSRF_TRUSTED_ORIGINS·MAIL_FROM을 빠뜨리면 멈춘다(지우려면 ALLOW_CLEAR=1).
 # Python venv, 비root 실행 계정 haven, Gunicorn(systemd, 127.0.0.1:8000), Nginx(:80) 준비.
 # 앱 코드는 넣지 않는다(deploy.sh가 함). 여러 번 실행해도 같은 결과.
 source "$(dirname "$0")/common.sh"
+source "$(dirname "$0")/site-lib.sh"
 
 need DB_HOST
 need ALLOWED_HOSTS
@@ -12,6 +15,11 @@ STATIC_SUBDIR="${STATIC_SUBDIR:-노푸른/static}"
 HEALTH_HOST="${ALLOWED_HOSTS%%,*}"   # ALB 상태 검사는 Host가 서버 IP라 Django가 400을 낸다. 첫 허용 Host로 바꿔 넘긴다.
 [[ $HEALTH_HOST =~ ^[A-Za-z0-9.-]+$ ]] || die "first ALLOWED_HOSTS entry is not a host name: $HEALTH_HOST"
 H=/srv/haven
+MAIL_FROM="${MAIL_FROM:-}"
+# 아무것도 설치·변경하기 전에 입력부터 확인한다.
+mail_env_lines "$MAIL_FROM" "$AWS_REGION" >/dev/null || die "MAIL_FROM is not a valid address: $MAIL_FROM"
+keep_or_die CSRF_TRUSTED_ORIGINS "${CSRF_TRUSTED_ORIGINS:-}" /etc/haven/site.conf || die "stopped before changing anything"
+keep_or_die MAIL_FROM "$MAIL_FROM" /etc/haven/site.conf || die "stopped before changing anything"
 
 apt-get update -q
 DEBIAN_FRONTEND=noninteractive apt-get install -yq python3-venv nginx git curl
@@ -45,6 +53,7 @@ APP_SUBDIR=$APP_SUBDIR
 PARAM_PREFIX=$PARAM_PREFIX
 CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-}
 AWS_REGION=$AWS_REGION
+MAIL_FROM=$MAIL_FROM
 EOF
 chmod 640 /etc/haven/site.conf; chgrp haven /etc/haven/site.conf
 

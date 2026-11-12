@@ -307,6 +307,45 @@ class SizeAndQuotaTests(AttachmentBase):
         self.assertEqual(self.upload(client, self.p2, "one_more.txt", b"x").status_code, 400)
 
 
+class PrecheckOrderTests(AttachmentBase):
+    """어차피 거절될 업로드는 내용 검사(PDF 분석) 전에 돌려보낸다(#62 부하 시험 발견)."""
+
+    PDF = b"%PDF-1.4\n" + b"0" * 100
+
+    def test_full_post_rejected_before_content_check(self):
+        for i in range(3):
+            self.make_active(name=f"f{i}.txt")
+        with mock.patch.object(attachments, "detect_content_type", wraps=attachments.detect_content_type) as spy:
+            res = self.upload(self.as_user(self.a), self.p1, "doc.pdf", self.PDF)
+        self.assertEqual(res.status_code, 400)
+        self.assertContains(res, "글 하나에 첨부는 3개까지입니다.", status_code=400)
+        spy.assert_not_called()
+        self.assertEqual(Attachment.objects.filter(post=self.p1).count(), 3)
+
+    def test_owner_quota_rejected_before_content_check(self):
+        for _ in range(5):  # 2 MiB x 5 = 10 MiB, 남은 용량 0
+            post = Post.objects.create(owner=self.a, title="채움", body="b")
+            Attachment.objects.create(post=post, original_name="fill.txt", size_bytes=2_097_152,
+                                      status=Attachment.Status.ACTIVE,
+                                      content_type="text/plain; charset=utf-8", sha256="0" * 64)
+        with mock.patch.object(attachments, "detect_content_type", wraps=attachments.detect_content_type) as spy:
+            res = self.upload(self.as_user(self.a), self.p1, "doc.pdf", self.PDF)
+        self.assertContains(res, "계정 첨부 용량(10 MiB)을 넘습니다.", status_code=400)
+        spy.assert_not_called()
+
+    def test_content_still_checked_when_limits_ok(self):
+        with mock.patch.object(attachments, "detect_content_type", wraps=attachments.detect_content_type) as spy:
+            res = self.upload(self.as_user(self.a), self.p1, "doc.pdf", self.PDF)
+        self.assertContains(res, "PDF 파일을 확인해 주세요.", status_code=400)
+        spy.assert_called_once()
+        self.assertEqual(Attachment.objects.count(), 0)
+
+    def test_precheck_none_for_missing_or_foreign_post(self):
+        self.assertFalse(attachments.precheck(self.b, self.p1.pk, 1))
+        self.assertFalse(attachments.precheck(self.a, 999_999, 1))
+        self.assertTrue(attachments.precheck(self.a, self.p1.pk, 1))
+
+
 class PermissionTests(AttachmentBase):
     def test_up06_recipient_and_others_cannot_change(self):
         att = self.make_active()

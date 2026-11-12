@@ -30,8 +30,16 @@
 
 ### 4회차 · 7~8일차
 
-- [ ] 발견 문제의 수정 후 재시험과 정상 회귀를 확인한다. 검토한 규칙을 Block으로 전환해 같은 조건·확인용 집합으로 비교하고 오탐/차단/UNKNOWN/ERROR·분모·한계를 정리한다.
-- [ ] 검증 결과를 아래에 기록하고 main 통합용 PR 제출
+- [x] AWS WAF Web ACL 생성 및 관리형 규칙 3개 Count 모드 구성
+- [x] WAF 전용 CloudWatch 로그 그룹 생성 및 30일 보존 설정
+- [x] WAF 로깅 연동 및 민감 헤더 마스킹 설정
+- [x] IAM 권한 검증 (CloudWatch·EC2·WAF 조회, SSM 접속 거부)
+- [ ] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석
+- [ ] WAF·Nginx·Django 로그 상관분석
+- [ ] AWS 환경에서 보안 fixture 재실행
+- [ ] Count 결과를 바탕으로 Block 전환 대상 선정
+- [ ] Block 적용 전후 정상 기능 및 차단 결과 비교
+- [ ] 최종 시험 결과 보고서 작성 및 PR 제출
 
 ## 인계·완료 기준
 
@@ -48,7 +56,7 @@
 | 1 | 로컬 검증 완료·PR 병합 완료 | Windows 11, Python 3.13.1 / `python -m pytest -q tests`: 45 passed in 14.74s / `python -m pytest -q tests -k probe`: 5 passed, 40 deselected in 6.57s / 실제 Django·AWS WAF 검증은 미실행 | 테스트 실행 출력 확인 | Django URL·폼·인증/CSRF·로그 계약 및 시험 데이터 초기화 방법 확인 후 앱 연동 시험 |
 | 2 | 로컬 Django HTTP 시험 완료·추가 검증 대기 | 2026-11-10 / Django + PostgreSQL (`haven_verify`) / `--phase 2`: 87개 논리 케이스, 109/109 HTTP 기대값 일치, 전체 137요청, 오류 0건, 복구 완료 | `시험결과/2026-11-10_로컬_02.md` 파일 확인. 세부내용은 로컬 `output_django_phase2_01/results.json`로 보관 | DB·브라우저 검증, 앱/WAF 로그 상관분석, AWS 환경 재시험 |
 | 3 | 로컬 Django HTTP 통합 완료·AWS 미검증 | 2026-11-11 / 로컬 통합 시험 당시 pytest 237 통과. 이후 PR #62 리뷰 반영 후 pytest 251 통과. 통합 HTTP 시험 기록은 153개 논리 케이스·197/197 일치. / 1~3회차 통합 153개 케이스, HTTP 197/197 일치, 전체 요청 231건, 복구 완료·오류 0건 | `output_django_phase3_full_02/results.json` 로컬 보관, 보고서 작성 예정 | WAF Count·로그 상관분석, 저장소 잔여 파일 확인, AWS 재시험 |
-| 4 | 미착수 | 미확인 | — | — |
+| 4 | WAF 초기 구성 완료·ALB 연결 대기 | 미확인 | — | — |
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
 
@@ -172,3 +180,17 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
   2. 구민철에게 AUD fixture와 판정 기준 설명(SG 점검 도구 live 모드는 민성이 구현, 구민철 3회차 11/23~).
   3. 보람의 WAF 쓰기 권한이 오면 WAF 구성(Count) 시작.
   4. 개인 항목: 저장형 XSS 실제 시험, AWS 배포 후 fixture 재실행, request_id 로그 대조 도구.
+
+## 민성's comment · 2026-11-12 밤 · 오늘 한 일과 남은 일 (현황판 기준)
+
+- **병합됨:** #80(WAF Web ACL Count 구성과 로그 연동), #79 짝 점검(명백한 취약점 없음, 병합 가능). #80은 정리된 출력 요약이 첨부됐고 원본은 아니다. 샘플 요청 off는 의도로 확인했다. 조장이 #77에서 `DeleteWebACL`(`haven-*`)을 승인했다.
+- **#80 후속(조장 코멘트 참고)**
+  1. TODO의 "IAM 권한 검증(CloudWatch·EC2·WAF 조회, SSM 접속 거부)" 체크 항목의 근거(명령과 결과)를 남긴다.
+  2. 기존 항목 "발견 문제의 수정 후 재시험과 정상 회귀를 확인한다"가 새 목록에서 빠졌다. 일부러 뺀 것이면 이유를, 아니면 다시 넣는다.
+  3. 다음 확인 때 `get-web-acl` 원본(쓴 명령 포함)을 붙인다.
+- **남은 일(순서대로)**
+  1. 로그 조회 시험: `hyeokmin` 계정 로그인(CLI `aws login` 실제 성공은 아직 미확인), 비밀번호 변경, MFA 등록, 로그 목록·읽기·검색, `ssm:StartSession` 거부, EC2·WAF 조회.
+  2. 민성이 Web ACL을 ALB에 연결한 뒤 WAF Count 로그 수집·오탐 분석, WAF·Nginx·Django 로그 상관분석. ALB 연결 전에는 요청 동작을 볼 수 없다.
+  3. 로그인 실패 제한 구현 PR 점검(요찬 PR이 오면). 안 7장 계산으로는 요청 CLI 묶음이 한 번에 로그인 실패 9번(같은 아이디 최대 2번)이라, AWS에서 15분 안에 3번째로 다시 돌리면 계정 기준 5번에 걸려 429가 난다. 반복할 때는 15분 간격을 둔다.
+  4. AWS 시험 참여: 분산 시험(서로 다른 IP의 팀원 3명 이상)과 IP 기준 시험(요청 CLI로 천천히).
+  5. 구민철에게 AUD fixture와 판정 기준 설명, 개인 항목(저장형 XSS 실제 시험, AWS 배포 후 fixture 재실행, request_id 로그 대조 도구).

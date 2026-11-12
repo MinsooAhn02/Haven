@@ -15,6 +15,15 @@
       "Resource": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/webacl/haven-*/*"
     },
     {
+      "Sid": "ManageReferencedManagedRuleSets",
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:CreateWebACL",
+        "wafv2:UpdateWebACL"
+      ],
+      "Resource": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/managedruleset/*/*"
+    },
+    {
       "Sid": "WAFReadAndRules",
       "Effect": "Allow",
       "Action": [

@@ -58,7 +58,7 @@
 
 | 할 일 | 상태·선행 |
 |---|---|
-| PR #73 로그 수집(OUT-10)·NET-06 기록 | 최종 판 `cw-agent-setup.sh` web-1 재실행 → 결과 기록 → 짝 리뷰(보람) → 병합 |
+| PR #76 로그 수집(OUT-10)·NET-06 기록 | 최종 판 `cw-agent-setup.sh` web-1 재실행 → 결과 기록 → 짝 리뷰(보람) → 병합 |
 | #64 서버 쪽 PR: `안민수/server/requirements.txt`에 boto3·botocore, `deploy.sh`가 MAIL_FROM 있을 때 HAVEN_MAIL_BACKEND=ses·HAVEN_MAIL_FROM 같이 쓰기 → 같은 커밋 2번 배포 | #64 병합됨(fd67616), 진행 가능 |
 | SG 점검 도구 live 모드 구현·시험·병합 → VPC ID·실행 방법을 구민철에게 전달 | 명세 5.1, boto3. 선행: 보람 읽기 권한 |
 | 백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번) | NET-06은 11/12 통과, 다음 순서 |

@@ -311,7 +311,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 정책 JSON을 [19번 민성 SES 조회 정책](JSON/19_Minsung_SES_GetAccount_Read_Policy.json)에 기록. **허용 액션은 `ses:GetAccount`, `ses:ListRecommendations`, `ses:ListEmailIdentities`, `ses:GetEmailIdentity` 4개**이며, 이메일 자격 증명 상세 조회는 서울 리전의 SES identity ARN으로 제한. 메일 발송·SES 설정 변경 권한은 포함하지 않음.
 - [x] **민성님 실제 시험 결과(11/11):** `ses:ListEmailIdentities` 15:16 목록 조회 성공, `ses:GetEmailIdentity` 15:17 CLI 조회 성공. `ses:GetAccount`·`ses:ListRecommendations`는 SES 콘솔 첫 화면 접속으로 간접 확인(각 API 직접 호출 결과는 별도 미확인). 15:51 `ses:SendEmail` AccessDenied 거부 시험 성공(발송 권한 없음). PR #60 코멘트 근거.
 - [x] 11/11 민성님이 `ses:ListRecommendations` 추가 누락 오류 보고 → 보람이 동일 고객 관리형 정책에 조회 액션 추가·저장(정책 버전 2, AWS 권한 요약에 읽기 2개 표시). 추가 정책 연결은 불필요.
-- [x] 11/11 민성님 추가 요청 `ses:ListEmailIdentities`·`ses:GetEmailIdentity` → 보람이 같은 정책에 추가·저장, 정책 버전 3 확인(권한 요약: SES v2 / Pinpoint Email의 나열·읽기). 실제 API 재시험은 대기.
+- [x] 11/11 민성님 추가 요청 `ses:ListEmailIdentities`·`ses:GetEmailIdentity` → 보람이 같은 정책에 추가·저장, 정책 버전 3 확인(권한 요약: SES v2 / Pinpoint Email의 나열·읽기). **민성님 실제 AWS CLI 재시험 성공:** 15:16 `ses:ListEmailIdentities` 목록 조회, 15:17 `ses:GetEmailIdentity` 상세 조회(PR #60 코멘트 근거).
 - **구분:** 보람이 민성에게 조회 권한을 연결한 것과, 보람 자신의 SES 권한·`#58` DKIM 등록 후 인증 완료 여부는 **별도 확인** 대상.
 
 ### 다음 TODO (2026-11-11 기준)

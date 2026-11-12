@@ -16,6 +16,7 @@
           {% if user.is_authenticated %}
             <li><a class="nav-link" href="{% url 'posts:list' %}">내 기록</a></li>
             <li><a class="nav-link" href="{% url 'posts:shared' %}">공유받은 기록</a></li>
+            <li><span class="nav-link">현재 사용자: {{ user.username }}</span></li>
             <li>
               <form method="post" action="{% url 'accounts:logout' %}" class="inline-form">
                 {% csrf_token %}

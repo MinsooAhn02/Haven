@@ -235,5 +235,7 @@ bash test/cw-fake-test.sh
 | 2026-11-12 | (이민성 작성, 리눅스) | 수정 판 PASS 22 / FAIL 0 |
 | 2026-11-12 12:42 | 이민성 (web-1 실제 실행, 수정 판, sha256 대조 OK) | **1회차 OK**: 설치·rsyslog·logrotate 그대로, Agent 설정을 새 위치에 쓰고 적용(재시작) → running·오류 없음·표시 요청 도착. **2회차 OK**: 모든 단계 그대로, "재시작 안 함" → 다시 돌려도 안전 확인. 내 PC 조회: 2회차 표시가 `app`·`nginx-access`에 1건씩 도착, 아침 표시(out10)도 1건씩 = 재시작으로 중복 전송 없음 |
 | 2026-11-12 | (이민성 작성, 리눅스) | 더블 체크 판(백업 위치를 `/var/backups/haven-cw/`로, C22 추가) PASS 23 / FAIL 0. web-1 재실행 기록은 아래에 추가 |
+| 2026-11-12 14:44 | 이민성 (web-1 실제 실행, **최종 판** `76bf5d28…0093a2`, sha256 대조 OK) | **OK**: 이미 설치됨(1/5 건너뜀), rsyslog·logrotate·Agent 설정 모두 그대로, 설정이 같고 Agent running이라 **재시작 안 함**, 5/5 Agent running·이번 실행 오류 없음·표시 요청 `cws-1794462291`이 app.log에 도착. 내 PC `aws logs filter-log-events`: `<web-1 ID>/app` 1건, `<web-1 ID>/nginx-access` 1건. 예전 백업(`30-haven.conf.bak-…`)을 `/var/backups/haven-cw/`로 옮겨 `/etc/rsyslog.d/`에 .bak 없음(20-ufw, 21-cloudinit, 30-haven, 50-default만) |
+| 2026-11-12 오후 | 이민성 PC (Git Bash) | **최종 판** PASS 23 / FAIL 0 (`bash test/cw-fake-test.sh`, 서버 스크립트·시험 스크립트 `bash -n` 문법 OK) |
 
 > 11/12 web-1 설치는 같은 명령을 SSM 세션에서 손으로 실행했다(OUT-10 기록). 스크립트 수정 판은 11/12 12:42 web-1에서 두 번 끝까지 통과했다(위 표).

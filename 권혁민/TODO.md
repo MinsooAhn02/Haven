@@ -30,8 +30,16 @@
 
 ### 4회차 · 7~8일차
 
-- [ ] 발견 문제의 수정 후 재시험과 정상 회귀를 확인한다. 검토한 규칙을 Block으로 전환해 같은 조건·확인용 집합으로 비교하고 오탐/차단/UNKNOWN/ERROR·분모·한계를 정리한다.
-- [ ] 검증 결과를 아래에 기록하고 main 통합용 PR 제출
+- [x] AWS WAF Web ACL 생성 및 관리형 규칙 3개 Count 모드 구성
+- [x] WAF 전용 CloudWatch 로그 그룹 생성 및 30일 보존 설정
+- [x] WAF 로깅 연동 및 민감 헤더 마스킹 설정
+- [x] IAM 권한 검증 (CloudWatch·EC2·WAF 조회, SSM 접속 거부)
+- [ ] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석
+- [ ] WAF·Nginx·Django 로그 상관분석
+- [ ] AWS 환경에서 보안 fixture 재실행
+- [ ] Count 결과를 바탕으로 Block 전환 대상 선정
+- [ ] Block 적용 전후 정상 기능 및 차단 결과 비교
+- [ ] 최종 시험 결과 보고서 작성 및 PR 제출
 
 ## 인계·완료 기준
 
@@ -48,7 +56,7 @@
 | 1 | 로컬 검증 완료·PR 병합 완료 | Windows 11, Python 3.13.1 / `python -m pytest -q tests`: 45 passed in 14.74s / `python -m pytest -q tests -k probe`: 5 passed, 40 deselected in 6.57s / 실제 Django·AWS WAF 검증은 미실행 | 테스트 실행 출력 확인 | Django URL·폼·인증/CSRF·로그 계약 및 시험 데이터 초기화 방법 확인 후 앱 연동 시험 |
 | 2 | 로컬 Django HTTP 시험 완료·추가 검증 대기 | 2026-11-10 / Django + PostgreSQL (`haven_verify`) / `--phase 2`: 87개 논리 케이스, 109/109 HTTP 기대값 일치, 전체 137요청, 오류 0건, 복구 완료 | `시험결과/2026-11-10_로컬_02.md` 파일 확인. 세부내용은 로컬 `output_django_phase2_01/results.json`로 보관 | DB·브라우저 검증, 앱/WAF 로그 상관분석, AWS 환경 재시험 |
 | 3 | 로컬 Django HTTP 통합 완료·AWS 미검증 | 2026-11-11 / 로컬 통합 시험 당시 pytest 237 통과. 이후 PR #62 리뷰 반영 후 pytest 251 통과. 통합 HTTP 시험 기록은 153개 논리 케이스·197/197 일치. / 1~3회차 통합 153개 케이스, HTTP 197/197 일치, 전체 요청 231건, 복구 완료·오류 0건 | `output_django_phase3_full_02/results.json` 로컬 보관, 보고서 작성 예정 | WAF Count·로그 상관분석, 저장소 잔여 파일 확인, AWS 재시험 |
-| 4 | 미착수 | 미확인 | — | — |
+| 4 | WAF 초기 구성 완료·ALB 연결 대기 | 미확인 | — | — |
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
 

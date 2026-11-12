@@ -1,0 +1,45 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadEC2InSeoul",
+      "Effect": "Allow",
+      "Action": "ec2:Describe*",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2"
+        }
+      }
+    },
+    {
+      "Sid": "QueryHavenWebLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:StartQuery",
+        "logs:GetQueryResults"
+      ],
+      "Resource": [
+        "arn:aws:logs:ap-northeast-2:ACCOUNT_ID_MASKED:log-group:/haven/web",
+        "arn:aws:logs:ap-northeast-2:ACCOUNT_ID_MASKED:log-group:/haven/web:*"
+      ]
+    },
+    {
+      "Sid": "ListWAFInSeoul",
+      "Effect": "Allow",
+      "Action": "wafv2:ListWebACLs",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2"
+        }
+      }
+    },
+    {
+      "Sid": "ReadWAFInSeoul",
+      "Effect": "Allow",
+      "Action": "wafv2:GetWebACL",
+      "Resource": "arn:aws:wafv2:ap-northeast-2:ACCOUNT_ID_MASKED:regional/webacl/*/*"
+    }
+  ]
+}

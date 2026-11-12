@@ -32,7 +32,7 @@
 
 ## 3. 1회차 · 11/12 ~ 11/13 — 온보딩과 공유 흐름 시작
 
-- [ ] GitHub 저장소 접근 확인(초대 완료), 브랜치 `Minchul`로 전환(`git checkout Minchul`), `git pull`로 최신 `main` 확인 `main`에 직접 커밋하지 않는다
+- [x] GitHub 저장소 접근 확인(초대 완료), 브랜치 `Minchul`로 전환(`git checkout Minchul`), `git pull`로 최신 `main` 확인 `main`에 직접 커밋하지 않는다
 - [ ] 위 "먼저 읽을 것" 1~6번을 읽고, 모르는 용어를 이 문서 끝 "질문"에 적는다
 - [ ] 로컬 시험 실행: 혁민 CLI(`권혁민/`에서 `python -m pytest tests`, 통과 수 기록), `이민성/sg_audit`의 fixture 시험 5개(AWS 불필요)
 - [ ] 가상 일반 회원 A·B·C를 `https://orchestration-haven.cloud`에서 직접 가입한다(비밀번호는 입력으로만 다루고 어디에도 적지 않는다)

@@ -1,0 +1,30 @@
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample_valid.pdf",
+          "filename": "valid_document.pdf",
+          "content_type": "application/pdf"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample_exact_2mib.txt",
+          "filename": "exact_limit.txt",
+          "content_type": "text/plain"
+        }
+      }
+    }
+  ]
+}

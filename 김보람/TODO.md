@@ -47,10 +47,10 @@
 
 | 회차 | 상태 | 실제 진행·검증 결과 | 관련 문서·PR | 다음 작업·인계 |
 |---|---|---|---|---|
-| 1 | 부분 완료 | 루트·시험용 IAM 사용자 MFA 확인, 서울 리전 자원 조회, 크레딧·비용 알림 확인, 일부 허용·거부 시험 | [1회차](1회차.md), [결정현황](민수_인계_결정현황.md), PR #8(병합) | 남은 계정 복구/타 리전 확인 및 운영 결정 반영 |
-| 2 | 권한·버킷 구성 완료 / 실환경 검증 대기 | 11/09 IAM·예산 설정, 11/10 민성 EC2 시작/중지 기존 권한 확인·SSM 조회 추가, IAM 허용/거부 시뮬레이터 4건 확인, minsoo Session Manager 정책 연결, 서울 S3 백업 버킷 생성. 실제 EC2 구축/SSM 접속/백업 복원 시험은 담당자 대기 | [2회차 작업 기록](2회차.md), [IAM 파일](IAM/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 민성: CLI/MFA·EC2 시작/중지 실제 시험 / 민수: Session Manager 접속·S3 백업 복원 시험 / 보람: 결과 반영·권한 재점검 |
-| 3 | 미착수 | 미확인 | — | 3회차 권한·WAF·로그 보완 |
-| 4 | 미착수 | 미확인 | — | 최종 권한/비용·자원 종료 검토 |
+| 1 | 부분 완료 | **11/06:** 시험용 IAM 사용자 MFA·재로그인, 비용 조회 허용/정보 조회 거부 시험, 서울 리전 자원·크레딧 확인.<br>**11/08:** 루트 MFA·복구 연락처 확인. | [1회차](1~4회차/1회차.md), [결정 현황](민수_인계_결정현황.md), [PR #8](https://github.com/MinsooAhn02/Haven/pull/8) | 예비 MFA·복구 시험, 타 리전 자원 확인 |
+| 2 | IAM·S3 구성 완료 / 실환경 시험 대기 | **11/09:** 민수·민성 IAM 계정, 역할·SSM·PassRole 권한 및 AWS 예산·알림 설정.<br>**11/10:** EC2·VPC 권한 보완, IAM 시뮬레이터 허용/거부 4건 확인, 민수 Session Manager 정책 연결, S3 백업 버킷 생성, 시험용 EC2 삭제 권한 범위 제한. | [2회차](1~4회차/2회차.md), [JSON 정책](JSON/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 민성: EC2·SSM 실환경 시험 / 민수: 접속·백업 복원 시험 / 보람: 결과에 따른 IAM 보완 |
+| 3 | 진행 중 / 일부 시험 대기 | **11/11:** SG 삭제 권한 제한, 민성 Route 53·ALB·ACM·SES 조회 권한 보완, SES 테스트 메일 확인, 도메인 DKIM 인증 결과 인계, AWS 자원·종료 확인 목록 및 비용 기록.<br>**11/12:** AWS 누적 사용 요금 $2.72 확인(크레딧 등 차감 후 청구 화면 $0.00). | [3회차 상세 기록](1~4회차/3회차.md), [SES 인증](SES_도메인_DKIM_인증_2026-11-11.md), [자원 현황](AWS_자원현황_종료확인목록_2026-11-11.md), [비용 기록](비용/AWS_비용실적_2026-11-12.md) | Django 메일 연동 시험, WAF·로그 권한 점검, 담당자 실환경 시험 결과 반영 |
+| 4 | 미착수 | 완료된 작업 기록 없음 | — | 권한·비용 최종 확인 및 자원 보존·종료 인계 |
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
 
@@ -64,7 +64,7 @@
 - [x] `Haven-Minsung-Infra-Policy` 생성 및 `minsung`에게 연결 확인 (11/09 IAM 화면)
 - [x] EC2 Role에 `ssm:GetParameter`(서울 리전 `/haven/*`) 인라인 읽기 권한 생성·연결
 - [x] IAM 설계·정책 JSON 초안 제출([PR #29](https://github.com/MinsooAhn02/Haven/pull/29))
-- [x] [2회차 상세 작업 기록](2회차.md) 작성 및 오늘 상태 반영
+- [x] [2회차 상세 작업 기록](1~4회차/2회차.md) 작성 및 오늘 상태 반영
 
 ### 미완료·다음에 진행
 - [x] AWS `minsung` 사용자에 `Haven-Minsung-Infra-Policy` 연결 확인 (4개 정책 화면)
@@ -72,19 +72,19 @@
 - [x] `minsung` 사용자에 본인 MFA 등록용 인라인 정책 `Haven-Minsung-Self-MFA-Policy` 연결 확인(11/09 사용자 제공 IAM 화면)
 - [ ] 민성님 실제 MFA 등록·최초 로그인·IAM 허용/거부 시험 기록
 - [x] IAM 사용자 `minsoo` 생성 및 `Haven-Minsoo-SSM-Policy` 인라인 정책 연결(서울 `/haven/*` 읽기·쓰기, 사용자 작업 완료 보고)
-- [x] [08_Minsoo_SSM_Parameters_Policy.json](IAM/08_Minsoo_SSM_Parameters_Policy.json) GitHub 정책 템플릿 기록
+- [x] [08_Minsoo_SSM_Parameters_Policy.json](JSON/08_Minsoo_SSM_Parameters_Policy.json) GitHub 정책 템플릿 기록
 - [x] 민수님 최초 IAM 콘솔 로그인 성공 보고 (MFA 등록 및 CloudShell 권한 부족 확인)
-- [x] [09_IAM_Self_MFA_Password_Policy.json](IAM/09_IAM_Self_MFA_Password_Policy.json) 본인 MFA/비밀번호 정책 초안 작성 및 [10_Minsoo_CloudShell_권한안내.md](IAM/10_Minsoo_CloudShell_권한안내.md) 추가
+- [x] [09_IAM_Self_MFA_Password_Policy.json](JSON/09_IAM_Self_MFA_Password_Policy.json) 본인 MFA/비밀번호 정책 초안 작성 및 [10_Minsoo_CloudShell_권한안내.md](JSON/10_Minsoo_CloudShell_권한안내.md) 추가
 - [x] AWS `minsoo` 사용자에 `Haven-IAM-Self-MFA-Password-Policy`, `AWSCloudShellFullAccess`, `Haven-Minsoo-SSM-Policy`, `IAMUserChangePassword` 총 4개 정책 연결 확인 (11/09 사용자 제공 IAM 화면)
 - [ ] 민수님 본인 MFA 등록·비밀번호 변경·CloudShell 서울 리전 생성 및 SSM 허용/거부 시험
-- [x] [06_DB_S3_Backup_Policy.json](IAM/06_DB_S3_Backup_Policy.json)에 `s3:PutObject`·`s3:GetObject` 초안 반영, 확정 버킷 이름 규칙 `haven-backup-${AWS_ACCOUNT_ID}` 반영
+- [x] [06_DB_S3_Backup_Policy.json](JSON/06_DB_S3_Backup_Policy.json)에 `s3:PutObject`·`s3:GetObject` 초안 반영, 확정 버킷 이름 규칙 `haven-backup-${AWS_ACCOUNT_ID}` 반영
 - [x] AWS 공통 EC2 Role에 `Haven-EC2-S3-Backup-Restore` 인라인 정책 연결(권한 정책 생성·연결 화면 확인)
 - [ ] 실제 S3 버킷 생성 여부, 백업·복원 동작 및 Web/DB 공통 Role의 접근 범위 검증
-- [x] AWS에 적용한 EC2 SSM 읽기 인라인 정책을 [07_EC2_SSM_Parameter_Read_Policy.json](IAM/07_EC2_SSM_Parameter_Read_Policy.json) 템플릿으로 기록해 PR #29 반영 (계정 ID 변수는 실제 적용 전 치환)
+- [x] AWS에 적용한 EC2 SSM 읽기 인라인 정책을 [07_EC2_SSM_Parameter_Read_Policy.json](JSON/07_EC2_SSM_Parameter_Read_Policy.json) 템플릿으로 기록해 PR #29 반영 (계정 ID 변수는 실제 적용 전 치환)
 - [ ] 민성님에게 서버 Role/프로파일 및 적용·검증 상태 인계
 - [ ] 서버 구축 후 실제 허용·거부 시험, 다른 리전/잔여 과금 자원 확인
 
-**상태 구분:** IAM 정책 *생성*은 실제 사용자 *권한 연결* 및 *정상 작동 검증*과 다름. 완료되지 않은 작업은 완료 표시하지 않음. 11/09 Discord 일일 보고 시 위 현황과 [2회차 상세 기록](2회차.md)을 참조.
+**상태 구분:** IAM 정책 *생성*은 실제 사용자 *권한 연결* 및 *정상 작동 검증*과 다름. 완료되지 않은 작업은 완료 표시하지 않음. 11/09 Discord 일일 보고 시 위 현황과 [2회차 상세 기록](1~4회차/2회차.md)을 참조.
 
 ## 민수's comment · 2026-11-06
 
@@ -200,14 +200,14 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [ ] 민수: S3 백업/복원 실제 시험 및 경로·권한 오류 결과 공유
 - [ ] 보람: 시험 결과를 받아 IAM 정책 보완·필요시 재시험 및 프로젝트 종료 자원 목록 정리
 
-세부 내용은 [2회차 11/10 추가 기록](2회차.md) 참조. **구성 성공과 실제 서비스 접속 시험 성공을 혼동하지 않는다.**
+세부 내용은 [2회차 11/10 추가 기록](1~4회차/2회차.md) 참조. **구성 성공과 실제 서비스 접속 시험 성공을 혼동하지 않는다.**
 
 ## 2026-11-10 오후 추가 IAM 인계
 
-- [x] 민성님 실환경 `build.sh`와 IAM 권한 조건 대조: VPC 생성 오류 후 `Haven-Minsung-Infra-Policy` 수정, 서울 리전 인프라 작업 권한 보완. [12번 JSON](IAM/12_Minsung_Infra_Policy.json), PR #39(main 병합).
+- [x] 민성님 실환경 `build.sh`와 IAM 권한 조건 대조: VPC 생성 오류 후 `Haven-Minsung-Infra-Policy` 수정, 서울 리전 인프라 작업 권한 보완. [12번 JSON](JSON/12_Minsung_Infra_Policy.json), PR #39(main 병합).
 - [x] 민성님 `RunInstances` 시험 결과 확인: 태그 없는 요청 거부, 공인 IP 자동 할당 명시적 거부, 기본 SG의 Haven 태그 부재에 따른 접근 거부 확인. **시험 명령과 실제 구축 스크립트의 조건을 구분함.**
 - [x] 민성님·민수님 역할 전달 설정 확인: `minsung`에 `iam:PassRole` 정책 연결, EC2용 역할 `haven-ec2-ssm-role` 및 `haven-ec2-ssm-profile` 연결, 역할에 `AmazonSSMManagedInstanceCore` 적용 확인.
-- [x] 추가 요청 정책 2개를 개인 브랜치에 문서화하고 [PR #42](https://github.com/MinsooAhn02/Haven/pull/42)에 함께 제출: [13번 EC2 종료(삭제) 권한](IAM/13_Minsung_TerminateInstances_Policy.json), [14번 민성 SSM 세션 접속 권한](IAM/14_Minsung_SessionManager_Policy.json).
+- [x] 추가 요청 정책 2개를 개인 브랜치에 문서화하고 [PR #42](https://github.com/MinsooAhn02/Haven/pull/42)에 함께 제출: [13번 EC2 종료(삭제) 권한](JSON/13_Minsung_TerminateInstances_Policy.json), [14번 민성 SSM 세션 접속 권한](JSON/14_Minsung_SessionManager_Policy.json).
 - [ ] **AWS 실적용 확인:** 위 13·14번 정책이 `minsung`에게 실제 연결·저장됐는지 확인. GitHub PR만으로 AWS 정책은 바뀌지 않음.
 - [ ] **담당자 검증 대기:** 민성님의 Haven 서버 SSM 접속·비대상 접근 거부 시험, EC2 종료 권한 시험(실제 영구 삭제 전 민수님 승인), 21시 NAT/EIP 정리 결과 및 비용 확인.
 - **권한 범위 주의:** `TerminateInstances` 정책은 서울 리전 `Project=Haven`, `Owner=minsung` 태그가 모두 붙은 서버에만 허용하지만, 시험 서버뿐 아니라 실제 Haven 서버도 삭제할 수 있음.
@@ -215,8 +215,8 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 ## 2026-11-10 민성 추가 권한 오류 및 SG 삭제 요청
 
 - [x] 민성님 `haven-test` EC2의 `Project=Haven`, `Owner=minsung` 태그 확인 보고 수신. `ec2:TerminateInstances`는 여전히 `UnauthorizedOperation` 보고됨.
-- [x] 13번 [민성 EC2 삭제 IAM 정책](IAM/13_Minsung_TerminateInstances_Policy.json)의 태그 조건 재확인. 정책 JSON 조건은 일치하나 **AWS 사용자 실제 연결 여부는 미확인**.
-- [x] 민성님 요청 `haven-sg-test` SG 정리용 `ec2:DeleteSecurityGroup` 정책을 [15번 JSON](IAM/15_Minsung_DeleteSecurityGroup_Policy.json)으로 추가. 서울 리전, `Project=Haven` 태그 SG만 허용하도록 제한.
+- [x] 13번 [민성 EC2 삭제 IAM 정책](JSON/13_Minsung_TerminateInstances_Policy.json)의 태그 조건 재확인. 정책 JSON 조건은 일치하나 **AWS 사용자 실제 연결 여부는 미확인**.
+- [x] 민성님 요청 `haven-sg-test` SG 정리용 `ec2:DeleteSecurityGroup` 정책을 [15번 JSON](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)으로 추가. 서울 리전, `Project=Haven` 태그 SG만 허용하도록 제한.
 - [x] 위 추가 작업을 [PR #42](https://github.com/MinsooAhn02/Haven/pull/42)에 기록. AWS IAM 변경은 콘솔에서 별도 적용 필요.
 - [ ] AWS `minsung` 사용자에게 13·14·15번 인라인 정책 연결 여부 확인 후 실환경 `--dry-run` 허용/거부 시험 결과 민성님에게 요청.
 - [ ] SG에는 `Project=Haven` 태그 존재 여부를 확인하고, 실제 삭제는 민수님 승인 후 시험용 `haven-sg-test` 대상으로만 수행. 다른 Haven SG도 태그만 맞으면 정책상 삭제 가능하므로 주의.
@@ -225,7 +225,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 
 - [x] **AWS 적용 확인:** IAM 사용자 `minsung` 권한 목록에 고객 관리형 정책 `Haven-Minsung-Delete-Policy` 연결됨(11/10 콘솔 캡처).
 - [x] **AWS JSON 저장 확인:** EC2 종료(`ec2:TerminateInstances`) 조건에 `Project=Haven`, `Owner=minsung`, `Name StringLike haven-test*` 적용(11/10 정책 JSON 조회 캡처). 이 조건이 없는 이전 13번 정책보다 범위를 좁힘.
-- [x] GitHub [13번 TerminateInstances 정책](IAM/13_Minsung_TerminateInstances_Policy.json)을 해당 Name 조건에 맞춰 갱신. [15번 SG 삭제 정책](IAM/15_Minsung_DeleteSecurityGroup_Policy.json)은 `Project=Haven` 조건 유지. GitHub에서는 파일을 나눠 기록하지만 AWS 실제 정책 `Haven-Minsung-Delete-Policy`에는 두 작업이 한 정책에 포함됨.
+- [x] GitHub [13번 TerminateInstances 정책](JSON/13_Minsung_TerminateInstances_Policy.json)을 해당 Name 조건에 맞춰 갱신. [15번 SG 삭제 정책](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)은 `Project=Haven` 조건 유지. GitHub에서는 파일을 나눠 기록하지만 AWS 실제 정책 `Haven-Minsung-Delete-Policy`에는 두 작업이 한 정책에 포함됨.
 - [ ] **민성님 실제 검증 대기:** `haven-test*` 시험용 EC2 삭제 허용, `web-1`·`db-1` 삭제 거부(안전한 DryRun으로 확인), 시험용 SG `haven-sg-test` 삭제 권한 시험 결과 공유.
 - [ ] 실제 시험용 EC2를 삭제할 때만 대상 Name·Instance ID 확인 후 해당 ID **하나만** 종료. `bash destroy.sh --delete` **사용 금지**.
 - [ ] 매일 21시 운영 종료는 별도 `bash night.sh`만 사용(EC2 중지 + NAT 삭제 + EIP 해제). 실제 실행 및 비용 결과는 민성님 확인.
@@ -236,7 +236,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] AWS 고객 관리형 정책 `Haven-Minsung-Delete-Policy` JSON을 콘솔에서 수정하고 **업데이트 성공** 메시지 확인(사용자 제공 화면).
 - [x] EC2 시험용 서버 영구 삭제 조건(`Project=Haven`, `Owner=minsung`, `Name=haven-test*`)은 유지.
 - [x] SG 삭제 허용(`ec2:DeleteSecurityGroup`)은 `Project=Haven` **및** `Name=haven-sg-test` **리소스 태그 둘 다 있는 대상**으로 좁힘. 기존 운영용 `haven-sg-web`, `haven-sg-db`, `haven-sg-alb` 이름만으로 허용하지 않음.
-- [x] GitHub [15번 SG 삭제 정책](IAM/15_Minsung_DeleteSecurityGroup_Policy.json)에 새로운 태그 조건 반영. 이 파일은 15번 부분의 기록이며, 실제 AWS 고객 관리형 정책에는 EC2 종료 권한과 SG 삭제 권한이 **함께** 있음.
+- [x] GitHub [15번 SG 삭제 정책](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)에 새로운 태그 조건 반영. 이 파일은 15번 부분의 기록이며, 실제 AWS 고객 관리형 정책에는 EC2 종료 권한과 SG 삭제 권한이 **함께** 있음.
 - [ ] **실행 시험 대기:** 민성님이 새 정책으로 시험용 SG 삭제 허용·운영용 SG 삭제 거부 결과 확인. 시험용 `haven-sg-test`는 11/11 서울 리전 목록에 없었으며, 재생성은 확인되지 않음.
 - [ ] **추가 안전 확인:** 다른 IAM 정책의 삭제 허용 및 SG 태그 수정 가능 범위를 점검해야 운영용 SG 삭제가 완전히 불가능하다고 결론 내릴 수 있음.
 - **주의:** 이 기록은 IAM **설정 저장 성공** 확인이며 실제 삭제 허용/거부 시험 완료로 간주하지 않음. 이미 삭제된 SG나 실제 AWS SG 자체는 수정하지 않음.
@@ -246,7 +246,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 ### 민성 Route 53 호스팅 영역 생성 권한
 - [x] 민성님이 `route53:CreateHostedZone` 실행 시 **identity-based policy 미허용(AccessDenied)** 오류를 공유함.
 - [x] AWS IAM 사용자 `minsung` 권한 목록에서 **`Haven-Minsung-Route53-...` 인라인 정책 연결** 확인(11/11 사용자 제공 IAM 콘솔 캡처).
-- [x] 요청에 맞는 최소 생성 액션 `route53:CreateHostedZone`, `Resource: "*"` **정책 예시**를 [16번 JSON](IAM/16_Minsung_Route53_CreateHostedZone_Policy.json)에 기록. **콘솔에서 실제 저장된 정책 전문은 캡처로 확인하지 못했으므로 JSON과의 완전 일치는 미검증**.
+- [x] 요청에 맞는 최소 생성 액션 `route53:CreateHostedZone`, `Resource: "*"` **정책 예시**를 [16번 JSON](JSON/16_Minsung_Route53_CreateHostedZone_Policy.json)에 기록. **콘솔에서 실제 저장된 정책 전문은 캡처로 확인하지 못했으므로 JSON과의 완전 일치는 미검증**.
 - [ ] **민성님 실제 재시험 대기:** Route 53 호스팅 영역 생성 성공/실패 결과와 중복 생성 여부 확인. DNS 레코드 관리, ACM 검증 등에 추가 IAM 권한이 필요하면 구체적인 거부 오류를 받아 별도 검토.
 - **담당 구분:** 도메인·DNS·ALB 연결은 민성님, 계정 IAM·추가 비용 기록은 보람 담당. 기존 도메인과 DNS 설정을 보람이 직접 수정하지 않음.
 
@@ -266,7 +266,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 민성님 요청: 호스팅 영역 생성 뒤 조회 오류 발생. AWS 오류에 `route53:GetHostedZoneCount` 미허용 명시됨.
 - [x] 기존 `minsung` 인라인 정책 수정 시 사용자 인라인 정책 합계 **2,048자 제한 초과** 오류 확인. 기존 인라인 정책은 변경하지 않음.
 - [x] 별도 **고객 관리형 정책** `Haven-Minsung-Route53-Read` 생성 성공 및 IAM 사용자 `minsung`에게 **직접 정책 연결** 완료(사용자 확인).
-- [x] [17번 Route 53 조회 정책](IAM/17_Minsung_Route53_Read_Policy.json)에 AWS에 입력한 JSON 기록. `GetHostedZoneCount`, `ListHostedZones`, `ListHostedZonesByName` 및 특정 호스팅 영역 `HOSTED_ZONE_ID_MASKED`에 대한 `GetHostedZone`, `ListResourceRecordSets` 조회만 허용. DNS 레코드 변경·삭제 권한은 추가하지 않음.
+- [x] [17번 Route 53 조회 정책](JSON/17_Minsung_Route53_Read_Policy.json)에 AWS에 입력한 JSON 기록. `GetHostedZoneCount`, `ListHostedZones`, `ListHostedZonesByName` 및 특정 호스팅 영역 `HOSTED_ZONE_ID_MASKED`에 대한 `GetHostedZone`, `ListResourceRecordSets` 조회만 허용. DNS 레코드 변경·삭제 권한은 추가하지 않음.
 - [x] 민성님이 **호스팅 영역 생성 완료**, Route 53 네임서버 4개를 공유했다고 보고함(11/11 10:42). 도메인 등록업체 NS 위임 및 외부 DNS 정상 응답까지 완료했다는 의미는 아님.
 - [ ] **담당자 검증 대기:** 민성님이 `GetHostedZoneCount` 및 호스팅 영역 조회를 다시 수행한 결과/추가 거부 오류 공유. 생성 완료 보고와 개별 API 조회 권한 시험을 구분함.
 - **담당:** 민성님=호스팅 영역·DNS 후속 설정 및 검증 / 보람=권한 생성·연결·기록.
@@ -278,7 +278,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 민성님 추가 요청: ALB·ACM 조회 접근 거부 해결, ACM 인증서 태그, ALB 수정·실패 시 정리용 삭제, ALB 서비스 연결 역할 생성 권한 추가.
 - [x] `AWSServiceRoleForElasticLoadBalancing` 역할을 IAM 역할 검색에서 찾지 못했다고 사용자 확인. 기존 정책에 조건부 `iam:CreateServiceLinkedRole`을 추가.
 - [x] 해당 고객 관리형 정책을 JSON으로 편집·저장 완료했다고 사용자 확인. AWS 권한 요약 화면에서 Certificate Manager, ELB/ELB v2, IAM, Route 53 항목 표시 확인.
-- [x] 정책 JSON을 [18번 파일](IAM/18_Minsung_ALB_ACM_Route53_Policy.json)에 기록(사용자에게 제공한 편집용 JSON 기준). AWS JSON 본문을 다시 조회하여 파일과 직접 대조한 것은 아님.
+- [x] 정책 JSON을 [18번 파일](JSON/18_Minsung_ALB_ACM_Route53_Policy.json)에 기록(사용자에게 제공한 편집용 JSON 기준). AWS JSON 본문을 다시 조회하여 파일과 직접 대조한 것은 아님.
 - **권한 범위:** ELB는 서울 `ap-northeast-2`, Haven 접두어 `haven-*`와 요청/리소스의 `Project=Haven` 태그를 조건으로 설정. ACM 요청은 `Project=Haven`, `Owner=minsung` 요청 태그 조건. Route 53 변경은 호스팅 영역 `HOSTED_ZONE_ID_MASKED`로 제한, 단 `route53:GetChange` 조회는 AWS change ARN 사용.
 - [ ] **민성님 실제 검증 대기:** ALB·ACM 읽기, 인증서 요청·태그, ALB 생성·리스너 생성, DNS 변경 권한, 서비스 연결 역할 자동 생성 성공/거부와 추가 오류 공유. 저장 성공만으로 모든 API 호출 성공을 보장하지 않음.
 - [ ] **삭제는 민수님 확인 후에만:** 권한에 ELB DeleteListener/TargetGroup/LoadBalancer를 포함했어도 실제 삭제 실행은 별도 승인 및 대상 식별 후 진행.
@@ -289,7 +289,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 민성님: ACM 인증서·대상 그룹 생성까지 진행한 뒤 ALB `CreateLoadBalancer`에서 `AccessDenied: ec2:GetSecurityGroupsForVpc` 발생(11:37:22 오류 공유).
 - [x] AWS 고객 관리형 정책 `Haven-Minsung-Infra-Policy`의 `ReadEC2InSeoul`에 `ec2:GetSecurityGroupsForVpc`를 추가. 기존 `ec2:Describe*` 및 `aws:RequestedRegion=ap-northeast-2` 조건 유지(보람 AWS JSON 편집 화면 확인).
 - [x] AWS 정책 편집 후 권한 요약 화면 확인(보람 제공 캡처). **저장 완료는 보람의 확인 기준으로 기록**, 실제 EC2 조회·ALB 생성 성공은 민성님 시험이 필요.
-- [x] GitHub [12번 인프라 정책](IAM/12_Minsung_Infra_Policy.json)에 동일 변경 반영. 이미 `minsung`에게 연결된 고객 관리형 정책이므로 새 연결 작업은 필요하지 않음.
+- [x] GitHub [12번 인프라 정책](JSON/12_Minsung_Infra_Policy.json)에 동일 변경 반영. 이미 `minsung`에게 연결된 고객 관리형 정책이므로 새 연결 작업은 필요하지 않음.
 - [ ] **민성님 재시험 대기:** `CreateLoadBalancer` 재시도 및 결과 공유. 추가 오류가 있으면 정확한 거부 액션을 확인 후 최소 권한으로 보완.
 - **참고:** 기존 `ec2:Describe*`에 `ec2:DescribeAccountAttributes`·`ec2:DescribeInternetGateways`·`ec2:DescribeAddresses`가 포함되므로 별도 추가하지 않음.
 
@@ -308,7 +308,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 민성님이 `ses:GetAccount` 호출 시 `AccessDenied` 오류 보고: IAM 사용자 `minsung`에 해당 조회 권한이 없음.
 - [x] 보람이 AWS IAM에서 고객 관리형 정책 `Haven-Minsung-SES-Read` 생성 완료 보고.
 - [x] IAM 사용자 `minsung`에 해당 정책 직접 연결 완료 보고.
-- [x] 정책 JSON을 [19번 민성 SES 조회 정책](IAM/19_Minsung_SES_GetAccount_Read_Policy.json)에 기록. **허용 액션은 `ses:GetAccount`, `ses:ListRecommendations`, `ses:ListEmailIdentities`, `ses:GetEmailIdentity` 4개**이며, 이메일 자격 증명 상세 조회는 서울 리전의 SES identity ARN으로 제한. 메일 발송·SES 설정 변경 권한은 포함하지 않음.
+- [x] 정책 JSON을 [19번 민성 SES 조회 정책](JSON/19_Minsung_SES_GetAccount_Read_Policy.json)에 기록. **허용 액션은 `ses:GetAccount`, `ses:ListRecommendations`, `ses:ListEmailIdentities`, `ses:GetEmailIdentity` 4개**이며, 이메일 자격 증명 상세 조회는 서울 리전의 SES identity ARN으로 제한. 메일 발송·SES 설정 변경 권한은 포함하지 않음.
 - [x] **민성님 실제 시험 결과(11/11):** `ses:ListEmailIdentities` 15:16 목록 조회 성공, `ses:GetEmailIdentity` 15:17 CLI 조회 성공. `ses:GetAccount`·`ses:ListRecommendations`는 SES 콘솔 첫 화면 접속으로 간접 확인(각 API 직접 호출 결과는 별도 미확인). 15:51 `ses:SendEmail` AccessDenied 거부 시험 성공(발송 권한 없음). PR #60 코멘트 근거.
 - [x] 11/11 민성님이 `ses:ListRecommendations` 추가 누락 오류 보고 → 보람이 동일 고객 관리형 정책에 조회 액션 추가·저장(정책 버전 2, AWS 권한 요약에 읽기 2개 표시). 추가 정책 연결은 불필요.
 - [x] 11/11 민성님 추가 요청 `ses:ListEmailIdentities`·`ses:GetEmailIdentity` → 보람이 같은 정책에 추가·저장, 정책 버전 3 확인(권한 요약: SES v2 / Pinpoint Email의 나열·읽기). 실제 API 재시험은 대기.
@@ -332,6 +332,6 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 
 ## 민성's comment · 2026-11-12 · 4회차 추가 업무 (조장 결정)
 
-- **WAF 쓰기 권한(새 일, 4회차 시작 전 = 11/13 오전까지):** 혁민(Web ACL 생성·수정, 규칙, 로그 설정)과 민성(ALB 연결, Block 적용을 위한 Web ACL 수정)에게 필요한 최소 권한을 정책으로 만들어 적용한다. 지금 민성 정책(12·18번)에 `wafv2` 권한이 없고 혁민은 조회만 가능하다. 범위는 Haven Web ACL·서울 리전으로 제한하고, 삭제 권한은 넣지 않는다. WAF 로그를 CloudWatch Logs로 보내는 데 필요한 로그 권한도 함께 검토한다(정확한 액션 목록은 AWS 문서로 확인).
+- **WAF 쓰기 권한(새 일, WAF 구축 시작 전, 4회차 초반):** 혁민(Web ACL 생성·수정, 규칙, 로그 설정)과 민성(ALB 연결, Block 적용을 위한 Web ACL 수정)에게 필요한 최소 권한을 정책으로 만들어 적용한다. 지금 민성 정책(12·18번)에 `wafv2` 권한이 없고 혁민은 조회만 가능하다. 범위는 Haven Web ACL·서울 리전으로 제한하고, 삭제 권한은 넣지 않는다. WAF 로그를 CloudWatch Logs로 보내는 데 필요한 로그 권한도 함께 검토한다(정확한 액션 목록은 AWS 문서로 확인).
 - **구민철 SG 점검용 읽기 권한(2회차 시작 전 = 11/16 전까지):** 구민철에게 AWS IAM 사용자를 만들고 SG 읽기 전용 권한(예: EC2 조회)과 MFA 등록 권한을 부여한다. root 사용 금지. 인계서는 `구민철/SG_실제점검_인계.md`.
 - 정책마다 이번처럼 콘솔 JSON과 저장소 JSON 대조 결과를 PR에 남긴다.

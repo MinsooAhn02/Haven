@@ -83,6 +83,7 @@
       <a class="button button-secondary" href="{% url 'posts:list' %}">내 기록 목록</a>
       {% if is_owner %}
         <a class="button button-primary" href="{% url 'posts:edit' pk=post.pk %}">수정</a>
+        <a class="button button-secondary" href="{% url 'posts:shares' pk=post.pk %}">공유 설정</a>
         <a class="button button-danger" href="{% url 'posts:delete' pk=post.pk %}">삭제</a>
       {% endif %}
     </div>

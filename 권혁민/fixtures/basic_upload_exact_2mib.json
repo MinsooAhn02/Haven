@@ -1,0 +1,10 @@
+{
+  "csrf_mode": "valid",
+  "fields": {},
+  "file": {
+    "field_name": "attachment",
+    "local_fixture_path": "sample_exact_2mib.txt",
+    "filename": "exact_limit.txt",
+    "content_type": "text/plain"
+  }
+}

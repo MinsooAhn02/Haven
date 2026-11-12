@@ -40,10 +40,10 @@
 |---|---|---|---|
 | 앱 PR 통합 시험 | 안민수 | 앱·화면 PR이 오면 main과 합친 상태에서 로컬 PostgreSQL로 `check` → `makemigrations --check --dry-run` → `migrate` → `manage.py test`(Python 3.12·3.13). 명령과 통과 수를 PR에 남긴다 → 민성 병합. 앱 PR과 화면 PR이 서로 필요하면 둘을 같이 합쳐서 시험한다(`01_조장_업무절차.md` 2-2) | 바로 시작. 지금 열린 앱·화면 PR 없음 |
 | CI 유지 (`ci.yml`) | 안민수 | 없음. GitHub Actions는 11/11 12:20부터 꺼져 있다(무료 사용량 소진). 대신 위 로컬 시험 결과를 PR 본문에 남긴다. 혁민 CLI 시험 234개를 CI job으로 넣는 일(#45 리뷰에서 내가 제안)은 하지 않는다 | Actions를 다시 켜게 되면 닫힌 #53(main push·PR만 실행, 문서만 바뀌면 건너뜀)을 참고 |
-| `안민수/앱통합_초안/` (requirements·`.env.example`·`require_tests_ran.sh`) | 안민수 | 고칠 일이 생길 때만 PR. `.env.example`에 `DJANGO_HTTPS`·`HAVEN_UPLOAD_DIR`가 빠져 있어 메일 PR 때 메일 환경변수와 같이 넣는다 | 메일 PR에서 |
+| `안민수/앱통합_초안/` (requirements·`.env.example`·`require_tests_ran.sh`) | 안민수 | 고칠 일이 생길 때만 PR. `.env.example`에 `DJANGO_HTTPS`·`HAVEN_UPLOAD_DIR`와 메일 환경변수가 빠져 있다. 넣을 줄을 메일 PR 본문에 적었고, 파일 수정은 조장 확인 뒤 별도 PR로 한다 | 조장 확인 대기 |
 | `안민수/dev-db-setup.ps1` | 안민수 | 손댈 일 없음. 팀원 PC에서 문제가 생기면 내가 본다 | 요청 없음 |
-| 시험 메일 (명세 6.5, EXT-03·EXT-04, 운영결정 6번 SES API 443) | 안민수(목) | 앱 발송 코드. SES 설정·발신 주소 인증·IAM 권한은 김보람 | 코드·시험 작성함, PR 전 |
-| 짝 리뷰 (그대로) | — | 혁민 PR 리뷰, 푸른 화면 PR context 대조. 내 PR은 혁민 보안 점검 | 혁민 브랜치에 PR 전 커밋 4개 있음 |
+| 시험 메일 (명세 6.5, EXT-03·EXT-04, 운영결정 6번 SES API 443) | 안민수(목) | 앱 발송 코드. SES 설정·발신 주소 인증·IAM 권한은 김보람 | 앱 코드·시험 PR 올림(Ran 208 OK). 실제 발송 시험은 11/12 |
+| 짝 리뷰 (그대로) | — | 혁민 PR 리뷰, 푸른 화면 PR context 대조. 내 PR은 혁민 보안 점검 | #62 리뷰 코멘트 남김(11/11 16:21) |
 
 같이 정할 판단은 이제 민성에게 묻는다(조장 이민성). 민수는 레포 admin 지원만 한다.
 
@@ -56,22 +56,24 @@
 - [x] 푸른 재배포 뒤 확인 완료: 로그인, 게시글 작성·삭제, 첨부 업로드, 목록 파일명·크기, 다운로드. 오류 화면(400·403·404)은 보고에 없다.
 - [ ] 이 TODO 갱신을 PR로 올린다 (조장 저녁 정리 ① 개인 TODO 단계 전에).
 - [ ] 시험 메일 PR 준비
-  - [ ] 김보람과 정식 발신 주소 확정 (보람 TODO "정식 서비스 발신 주소 미확정"). 보람이 SES에 올린 도메인은 `orchestration-haven.cloud`(#58).
-  - [ ] 문서를 최신 main(#51 포함) 기준으로 정리: `앱계약.md` v1.5(1.2 환경변수 `HAVEN_MAIL_BACKEND`·`HAVEN_MAIL_FROM`·`HAVEN_SES_REGION`, 1.2.2 메일 동작, 8장 E5), 검증기록
-  - [ ] 서버 쪽에 필요한 것을 PR에 적어 요청한다. ① 서버 의존성 `boto3`(`안민수/server/requirements.txt`, 결정 E5) ② `deploy.sh`가 메일 환경변수를 `/etc/haven/haven.env`에 쓰기(민성) ③ Web EC2 Role에 발신 주소로 제한한 `ses:SendEmail`(보람). `deploy.sh`가 바뀌는 커밋은 같은 커밋으로 배포를 2번 해야 새 동작이 반영된다(조장 결정 11/11, `docs/인수인계/03`)는 점도 PR에 적는다.
-  - [ ] 통합 시험 결과(Python 3.12·3.13)와 일부러 실패시킨 거부 시험을 PR 본문에 → 혁민 보안 점검 → 민성 병합
+  - [x] 정식 발신 주소 확정: `noreply@orchestration-haven.cloud` (11/11 이민성). 받는 주소는 보람이 SES에 등록한 1개만 가능하고, 다른 주소는 보람에게 등록을 요청한다(개인 주소라 여기 적지 않음).
+  - [x] 문서를 최신 main(#51 포함) 기준으로 정리: `앱계약.md` v1.5(1.2 환경변수 `HAVEN_MAIL_BACKEND`·`HAVEN_MAIL_FROM`·`HAVEN_SES_REGION`, 1.2.2 메일 동작, 8장 E5), 검증기록
+  - [x] 서버 쪽에 필요한 것을 PR에 적어 요청한다. ① 서버 의존성 `boto3`(`안민수/server/requirements.txt`, 결정 E5) ② `deploy.sh`가 메일 환경변수를 `/etc/haven/haven.env`에 쓰기(민성) ③ Web EC2 Role에 발신 주소로 제한한 `ses:SendEmail`(보람). `deploy.sh`가 바뀌는 커밋은 같은 커밋으로 배포를 2번 해야 새 동작이 반영된다(조장 결정 11/11, `docs/인수인계/03`)는 점도 PR에 적는다.
+  - [x] 통합 시험 결과(Python 3.12·3.13 Ran 208 OK)와 일부러 실패시킨 거부 시험(14개)을 PR 본문에
+  - [ ] 혁민 보안 점검 → 민성 병합
 
 ### 11/12 (목) — 3회차
 
 - [ ] 김보람과 실제 Django 발송·수신·실패 확인 (EXT-03·EXT-04, `안민수/공통실행.md` "시험 메일")
   - 기록할 것 세 가지를 따로: API 성공, 메시지 식별자, 수신함 실제 도착
   - 실패 시 사용자·운영자에게 성공으로 표시하지 않는지
-  - 승인된 가상 수신처 하나에만. 반복 발송·실사용자 주소·운영 Secret은 쓰지 않는다
-  - SES 샌드박스 제한 여부 확인(샌드박스면 받는 주소도 인증 필요)
-  - **막힐 수 있는 곳:** #58은 보람 SES 권한 부족으로 보류 중이다(조장 운영기록 11/11 저녁 2). 권한 해소 → 민성 Route 53에 DKIM CNAME 3개 등록 → SES 도메인 Verified 순서가 끝나야 도메인 주소로 보낼 수 있다. 그 전에는 보람이 이미 인증한 시험용 발신 주소로 먼저 확인할 수 있는지 보람과 정한다.
-- [ ] #51 실제 HTTPS 결과 중 남은 것 받기: 혁민 Set-Cookie(csrftoken·sessionid에 Secure·HttpOnly·SameSite=Lax), `http://` Origin POST 403, 출처 없는 POST 403, 끈 상태 헤더 위조 불가. (민성 `DJANGO_HTTPS=1`·푸른 브라우저 흐름은 11/11 확인됨.) 앱 문제가 나오면 내가 고친다.
+  - 받는 주소는 보람이 SES에 등록한 1개만(11/11 이민성 안내). 반복 발송·운영 Secret은 쓰지 않는다
+  - 실패 표시(EXT-04)는 SES에 등록하지 않은 주소로 한 번 보내 `MessageRejected`로 실패하는지 확인한다(sandbox라 거부될 것으로 예상)
+  - [x] SES 도메인 인증: #58 병합(`b54d77b`, 11/11 15:46). 민성 Route 53 DKIM CNAME 3개, `VerifiedForSendingStatus=True`, DKIM `SUCCESS`. `orchestration-haven.cloud` 주소로 보낼 수 있다.
+  - **남은 것:** 보람 Web Role `ses:SendEmail`(발신 주소 `noreply@orchestration-haven.cloud`로 제한), 민성 서버 `boto3`·환경 파일·배포 2번.
+- [x] #51 실제 HTTPS 확인 (11/11): 권혁민 #62 `시험결과/2026-11-11_AWS_01.md`(배포 `21d01f7`): `csrftoken`·`sessionid` 모두 Secure·HttpOnly·SameSite=Lax, `http://` Origin POST 403, Origin·Referer 없는 POST 403, 정상 HTTPS Origin 로그인 POST는 CSRF 통과 후 400(로그인 실패, 계약대로), AWS smoke fixture 2/2 일치. 신요찬이 직접 돌린 것은 아니고 보고서 기준이다.
 - [ ] `3회차_앱_검증기록.md` 9장 "미실행" 3건을 결과가 오는 대로 채운다: 실제 AWS(web-1) 업로드·권한·백업 묶음, 실제 HTTPS 쿠키·Origin(DEP-03), ALB `X-Amzn-Trace-Id`가 앱 로그에 남는지.
-- [ ] 혁민 PR이 오면 짝 리뷰. 지금 `Hyeokmin` 브랜치에만 있는 것: 3회차 업로드 보안·부하 시험(`pdf_upload_stress_local.py`), `request_verify.py` 수정, 1~3회차 통합 보고서(144건 HTTP 기대값 일치, 앱 결함 보고 없음). 보고서의 정리 단계 오류 2건(공유 해제 전 목록 조회가 302)이 앱 문제가 아닌지 확인한다(혁민 14:25 "정리 순서 개선" 커밋).
+- [x] #62(혁민 3회차 통합 시험·AWS HTTPS) 리뷰 코멘트 (11/11 16:21): main과 합쳐 pytest 237 passed(3.12·3.13), template 전체를 실제 Django에 돌려 197/197 일치 재현, 앱 결함 없음. 요청: 새 CLI 기능(게시글 ID 캡처·복구 체크포인트) 시험 보강(결함 8개를 넣어도 모두 통과), `start_verify.ps1`의 `HAVEN_UPLOAD_DIR`·Python 경로, `.bak` 파일. 혁민 수정 뒤 다시 확인한다.
 - [ ] 푸른 화면 PR이 오면 context 대조 + 통합 시험.
 
 ### 11/13 (금) — 4회차, 17:30 판정
@@ -103,7 +105,7 @@
 |---|---|---|---|---|
 | 1 | 완료 | Windows 3.13.17·Linux 3.11~3.13, PostgreSQL 16. `python manage.py test accounts posts` → Ran 65, OK. 결함 15개 주입 중 동작을 바꾸는 14개 FAILED로 잡음. 권혁민 정적 보안 검토: 인증·인가·IDOR·CSRF 취약점 없음 | PR #25 (`c524d05` 병합), `신요찬/1회차_앱_검증기록.md` | 안민수: 앱 CI 연결 시 `APP_DIR=신요찬/app`. 권혁민: fixture 실제 앱 시험 |
 | 2 | 완료 (PR #33 병합, `3153d8f`) | Windows 3.13.17·Linux 3.12/3.13 `python manage.py test accounts posts adminpanel` → Ran 126, OK. 결함 50개 주입 중 동작을 바꾸는 46개 FAILED. `haven_app` 실제 서버 41개 항목·Windows 브라우저 12개 흐름 확인. APP-11은 권혁민 CLI로 302/302/413. 11/10 운영자 판정을 명세 3.2(전용 권한)대로 수정 | PR #33, `신요찬/2회차_앱_검증기록.md`, `신요찬/앱계약.md` v1.2 | 노푸른: 2회차 템플릿 3개, 메뉴 조건 변경(`앱계약.md` 5장). 안민수: D2·D3·D5 결정(`앱계약.md` 8장), Nginx 글 경로 8,192바이트. 권혁민: #33 보안 점검, 2회차 fixture 실제 앱 시험 |
-| 3 | 완료 (PR #38 병합, `b068ba5`). HTTPS 쿠키·프록시 설정은 PR #51 병합(`21d01f7`, 11/11). 권혁민 #51 코멘트(11/11 14:04, 정적 분석): 명백한 취약점 없음·병합 가능. 11/11 14:41 재배포, 푸른 흐름 확인. 실제 쿠키·Origin 확인은 혁민 결과 대기 | Linux 3.12/3.13 `python manage.py test accounts posts adminpanel` → Ran 192, OK (CI 방식 포함, UP-13 끊김 보강·요청 로그 D5·권혁민 리뷰 정리 동시성·HTTPS 설정 포함). 결함 47개 주입 중 동작을 바꾸는 45개 FAILED(2개는 시험 보강 후). 요청 로그는 권혁민 CLI correlate로 MATCH 확인. 동시 업로드 시험 정상 5/5 OK·잠금 제거 5/5 FAILED. `haven_app` 실제 서버 29개 항목 + 업로드 끊김 7개 확인. Windows 3.13.17 Ran 176 OK·브라우저 10개 흐름·요청 로그 확인 | PR #38, `신요찬/3회차_앱_검증기록.md`, `신요찬/앱계약.md` v1.3 | 안민수: E1·E3·E4 반영 완료(`ccf4201`), D2·D3 확정. 첫 배포 때 업로드·정리 타이머 실제 확인. 노푸른: 상세 화면 첨부 목록·업로드 폼(`앱계약.md` 5장). 권혁민: 첨부 fixture(UP-01~09) |
+| 3 | 완료 (PR #38 병합, `b068ba5`). HTTPS 쿠키·프록시 설정은 PR #51 병합(`21d01f7`, 11/11). 권혁민 #51 코멘트(11/11 14:04, 정적 분석): 명백한 취약점 없음·병합 가능. 11/11 14:41 재배포, 푸른 흐름 확인, 혁민 실제 HTTPS 쿠키·Origin 확인(#62 `AWS_01`). 시험 메일 앱 코드는 별도 PR(Linux 3.12/3.13 Ran 208 OK, 실제 발송 미실행) | Linux 3.12/3.13 `python manage.py test accounts posts adminpanel` → Ran 192, OK (CI 방식 포함, UP-13 끊김 보강·요청 로그 D5·권혁민 리뷰 정리 동시성·HTTPS 설정 포함). 결함 47개 주입 중 동작을 바꾸는 45개 FAILED(2개는 시험 보강 후). 요청 로그는 권혁민 CLI correlate로 MATCH 확인. 동시 업로드 시험 정상 5/5 OK·잠금 제거 5/5 FAILED. `haven_app` 실제 서버 29개 항목 + 업로드 끊김 7개 확인. Windows 3.13.17 Ran 176 OK·브라우저 10개 흐름·요청 로그 확인 | PR #38, `신요찬/3회차_앱_검증기록.md`, `신요찬/앱계약.md` v1.3 | 안민수: E1·E3·E4 반영 완료(`ccf4201`), D2·D3 확정. 첫 배포 때 업로드·정리 타이머 실제 확인. 노푸른: 상세 화면 첨부 목록·업로드 폼(`앱계약.md` 5장). 권혁민: 첨부 fixture(UP-01~09) |
 | 4 | 미착수 | 미확인 | — | — |
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
@@ -194,9 +196,9 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 ## 요찬 답변 · 2026-11-11 · 재배치 반영
 
 - 재배치 확인했습니다. 앱 PR 통합 시험과 시험 메일 발송 코드를 맡습니다. CI 유지는 Actions가 꺼져 없어진 것으로 이해했습니다. 넘겨받은 일과 날짜별 남은 일은 위 "11/11 재배치로 넘겨받은 일", "남은 일"에 정리했습니다.
-- **#51:** 병합 확인했습니다(`21d01f7`). 참고로 #51에는 권혁민 님 점검 코멘트가 11/11 14:04에 올라와 있습니다(정적 분석, "병합 가능"). 운영기록에는 "점검 기록 없음"으로 적혀 있어 알려 드립니다. 14:41 재배포와 푸른 님 흐름 확인까지 기록에서 확인했고, 혁민 님 Set-Cookie·거부 시험 결과를 받겠습니다.
-- **시험 메일:** 앱 코드와 시험은 작성했습니다(로컬 Linux·PostgreSQL 16, 최신 main에 얹어 Ran 207 OK = 기존 192 + 메일 15). 서버에서 `HAVEN_MAIL_BACKEND=ses`일 때만 SES API로 보내고 기본값은 보내지 않습니다. 정식 발신 주소를 보람 님과 정한 뒤 PR을 올립니다. 서버 쪽에 `boto3`, `haven.env` 메일 환경변수, Web Role `ses:SendEmail`이 필요합니다.
-- **막힐 수 있는 것:** #58(SES 도메인 인증)이 보류 중이라 11/12 실제 발송이 늦어질 수 있습니다.
+- **#51:** 병합 확인했습니다(`21d01f7`). 참고로 #51에는 권혁민 님 점검 코멘트가 11/11 14:04에 올라와 있습니다(정적 분석, "병합 가능"). 운영기록에는 "점검 기록 없음"으로 적혀 있어 알려 드립니다. 14:41 재배포, 푸른 님 흐름 확인, 혁민 님 실제 HTTPS 쿠키·Origin 확인(#62 `AWS_01`)까지 끝났습니다.
+- **시험 메일:** 앱 코드와 시험은 작성했습니다(로컬 Linux·PostgreSQL 16, 최신 main에 얹어 Ran 208 OK = 기존 192 + 메일 16). 서버에서 `HAVEN_MAIL_BACKEND=ses`일 때만 SES API로 보내고 기본값은 보내지 않습니다. 정식 발신 주소를 보람 님과 정한 뒤 PR을 올립니다. 서버 쪽에 `boto3`, `haven.env` 메일 환경변수, Web Role `ses:SendEmail`이 필요합니다.
+- **SES 도메인:** #58 병합으로 `orchestration-haven.cloud` 인증이 끝났습니다(11/11 15:46). 발신 주소는 `noreply@orchestration-haven.cloud`로 확정됐습니다(민성 님). 실제 발송에 남은 것은 Web Role `ses:SendEmail`, 서버 `boto3`·환경 파일입니다.
 
 ## 민성's comment · 2026-11-12 · 4회차 추가 업무 (조장 결정)
 

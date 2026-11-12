@@ -1,4 +1,3 @@
-
 {
   "variants": [
     {
@@ -50,6 +49,97 @@
           "local_fixture_path": "sample.txt",
           "filename": "harmless.txt.php",
           "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P05",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample_invalid_utf8.txt",
+          "filename": "invalid_utf8.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P06",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample_control_chars.txt",
+          "filename": "nul_control.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P07",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample_empty.txt",
+          "filename": "empty_file.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P08",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample_valid.pdf",
+          "filename": "pdf_disguised.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P09",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample_encrypted.pdf",
+          "filename": "encrypted.pdf",
+          "content_type": "application/pdf"
+        }
+      }
+    },
+    {
+      "id": "P10",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "harmless.html",
+          "content_type": "text/html"
+        }
+      }
+    },
+    {
+      "id": "P11",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample.txt",
+          "filename": "harmless.svg",
+          "content_type": "image/svg+xml"
         }
       }
     }

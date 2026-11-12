@@ -172,8 +172,19 @@ STATIC_URL = "static/"
 # 노푸른 static 폴더가 생기기 전에는 등록하지 않는다(없는 폴더를 등록하면 check 경고가 난다).
 STATICFILES_DIRS = [STATIC_SOURCE_DIR] if STATIC_SOURCE_DIR.is_dir() else []
 
-# 1회차에는 메일 기능이 없다. 로컬·CI에서 실제로 보내지 않는다. 메일 설정은 3회차에 정한다.
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# 시험 메일 (3회차, 명세 6.5·EXT-03·04, AWS 운영결정 6번 SES API, 앱계약.md 1.2.2).
+# 기본(로컬·CI)은 콘솔이라 실제로 보내지 않는다. 서버에서 HAVEN_MAIL_BACKEND=ses일 때만 SES로 보낸다.
+# SES는 AWS 키 없이 Web EC2 Role로 호출한다(키를 환경변수·파일에 두지 않는다).
+HAVEN_MAIL_BACKEND = env_optional("HAVEN_MAIL_BACKEND", "console").lower()
+if HAVEN_MAIL_BACKEND not in {"console", "ses"}:
+    raise ImproperlyConfigured("환경변수 HAVEN_MAIL_BACKEND는 console 또는 ses여야 합니다.")
+HAVEN_SES_REGION = env_optional("HAVEN_SES_REGION", "ap-northeast-2")  # 서울(김보람 SES 설정 리전)
+if HAVEN_MAIL_BACKEND == "ses":
+    EMAIL_BACKEND = "config.mail.SesEmailBackend"
+    DEFAULT_FROM_EMAIL = env_required("HAVEN_MAIL_FROM")  # SES에서 인증한 발신 주소
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    DEFAULT_FROM_EMAIL = env_optional("HAVEN_MAIL_FROM", "haven-test@example.invalid")
 
 # 첨부 (3회차, 명세 3.4). 서버는 /srv/haven/uploads(안민수 web-setup.sh, systemd ReadWritePaths).
 # static·코드 밖, 공개 URL 없음. 다운로드는 앱이 권한을 확인한 뒤 직접 보낸다.
@@ -198,5 +209,6 @@ LOGGING = {
     },
     "loggers": {
         "haven.request": {"handlers": ["stdout"], "level": "WARNING" if _TESTING else "INFO", "propagate": False},
+        "haven.mail": {"handlers": ["stdout"], "level": "WARNING" if _TESTING else "INFO", "propagate": False},
     },
 }

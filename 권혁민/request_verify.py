@@ -233,8 +233,33 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                     f"{cid}: B 세션 기준 요청이 먼저 필요합니다"
                 )
         validate_path(item["path"])
+        capture = item.get("capture_post_id", False)
+
+        if type(capture) is not bool:
+            raise ConfigError(f"{cid}: capture_post_id 형식 오류")
+
+        post_ref = item.get("post_reference")
+
+        if post_ref is not None:
+            if (
+                not isinstance(post_ref, str)
+                or not re.fullmatch(r"[A-Za-z0-9_-]{2,64}", post_ref)
+                or not re.fullmatch(
+                    r"/posts/\{post_id\}/(?:attachments/|delete/)",
+                    item["path"],
+                )
+            ):
+                raise ConfigError(f"{cid}: post_reference 설정 오류")
+
+        elif "{post_id}" in item["path"]:
+            raise ConfigError(f"{cid}: post_id 참조가 없습니다")
         if "critical" in item and type(item["critical"]) is not bool:
             raise ConfigError(f"{cid}: critical은 bool이어야 합니다")
+
+        if "cleanup_before" in item:
+            if type(item["cleanup_before"]) is not bool or _cleanup:
+                raise ConfigError(f"{cid}: cleanup_before 설정 오류")
+            
         share_ref = item.get("share_reference")
         if share_ref is not None:
             if (not isinstance(share_ref, dict)
@@ -270,6 +295,13 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
         status = expected["http_status"]
         if not (isinstance(status, int) and not isinstance(status, bool) and 100 <= status <= 599):
             raise ConfigError(f"{cid}: http_status는 100~599 정수여야 합니다")
+        if capture and (
+            _cleanup
+            or item["method"] != "POST"
+            or item["path"] != "/posts/new/"
+            or item["expected_app"]["http_status"] != 302
+        ):
+            raise ConfigError(f"{cid}: 게시글 ID 캡처 설정 오류")
         if "redirect_path" in expected:
             validate_path(expected["redirect_path"])
         if "sha256" in expected and (not isinstance(expected["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", expected["sha256"])):
@@ -301,6 +333,13 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                     if len(expanded_id) > 64:
                         raise ConfigError(f"{cid}: 확장된 case_id가 너무 깁니다")
 
+    checkpoints = [
+        i for i, case in enumerate(cases)
+        if case.get("cleanup_before") is True
+    ]
+    if len(checkpoints) > 1:
+        raise ConfigError("복구 체크포인트는 하나만 지정할 수 있습니다")
+
     cleanup = suite.get("cleanup_cases", [])
     if not isinstance(cleanup, list) or (_cleanup and cleanup):
         raise ConfigError("cleanup_cases는 중첩되지 않은 목록이어야 합니다")
@@ -315,6 +354,40 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                     or case["method"] != "POST" or by_id[source]["method"] != "POST"
                     or "checkpoint_before" in case):
                 raise ConfigError(f"{case['case_id']}: cleanup after_case/phase/POST 설정 오류")
+
+        if checkpoints:
+            positions = {
+                case["case_id"]: i
+                for i, case in enumerate(cases)
+            }
+            for cleanup_case in cleanup:
+                if positions[cleanup_case["after_case"]] >= checkpoints[0]:
+                    raise ConfigError(
+                        f"{cleanup_case['case_id']}: 복구 대상은 체크포인트보다 먼저 실행되어야 합니다"
+                    )
+
+    if not _cleanup:
+        creators = {}
+        for case in cases:
+            ref = case.get("post_reference")
+            if ref is not None:
+                source = creators.get(ref)
+                if source is None or source["auth_role"] != case["auth_role"]:
+                    raise ConfigError(
+                        f"{case['case_id']}: 게시글 생성 선행조건 오류"
+                    )
+
+            if case.get("capture_post_id"):
+                creators[case["case_id"]] = case
+
+        for cleanup_case in cleanup:
+            ref = cleanup_case.get("post_reference")
+            if ref is not None:
+                source = creators.get(ref)
+                if source is None or source["auth_role"] != cleanup_case["auth_role"]:
+                    raise ConfigError(
+                        f"{cleanup_case['case_id']}: 복구 게시글 참조 오류"
+                    )
 
 
 def select_phase(suite: dict, phase: int | None) -> dict:
@@ -989,6 +1062,21 @@ def same_origin_redirect_path(location: str | None, target_origin: str | None) -
     return None
 
 
+def extract_created_post_id(location: str | None, target: str) -> int:
+    """신규 글 생성 응답의 Location에서 게시글 ID를 안전하게 추출한다."""
+    path = same_origin_redirect_path(location, target)
+
+    match = re.fullmatch(r"/posts/([1-9]\d{0,18})/", path or "")
+    if match is None:
+        raise ExecutionError("신규 글 생성 Location에서 게시글 ID를 확인하지 못했습니다")
+
+    post_id = int(match.group(1))
+    if post_id > 2**63 - 1:
+        raise ExecutionError("게시글 ID가 허용 범위를 초과했습니다")
+
+    return post_id
+
+
 def check_http_expected(detail: dict, expected: dict, *, target_origin: str | None = None) -> bool:
     """응답 코드·리다이렉트·길이·해시·헤더의 명시적 기대값을 비교."""
     ok = detail["status"] == expected["http_status"]
@@ -1062,9 +1150,10 @@ def get_exit_code(records: list, *, incomplete: bool) -> int:
 
 def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: dict,
                     target: str, budget: RequestBudget, run_id: str, prep_events: list,
-                    fixture_root: Path, max_response_bytes: int, results: list) -> bool:
+                    fixture_root: Path, max_response_bytes: int, results: list, created_post_ids: dict | None = None) -> bool:
     """시도한 변경의 복구만 같은 전역 예산 안에서 수행한다. 한 복구 오류가 다른 복구를 막지 않는다."""
     complete = True
+    created_post_ids = created_post_ids or {}
     for source in cases:
         case = dict(source)
         record = base_record(run_id, case)
@@ -1081,6 +1170,16 @@ def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: d
             if role != "anonymous" and not prepped.get(role):
                 prep_login(session, target, budget, role, run_id, prep_events, max_response_bytes)
                 prepped[role] = True
+            if "post_reference" in case:
+                post_id = created_post_ids.get(case["post_reference"])
+
+                if post_id is None:
+                    raise ExecutionError("복구 대상 게시글 ID를 확인하지 못했습니다")
+
+                case["path"] = case["path"].replace(
+                    "{post_id}", str(post_id)
+                )
+                record["path"] = safe_path_log(case["path"])
             if "share_reference" in case:
                 share_id = resolve_share_id(case, sessions, prepped, target, budget,
                                             run_id, prep_events, max_response_bytes)
@@ -1267,13 +1366,61 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
     )
     records = []
     attempted = set()
+    created_post_ids = {}
     failed = False
+    
+    cleanup_done = False
+    cleanup_http_requests = 0
+
+    def perform_cleanup_once():
+        nonlocal cleanup_done, cleanup_http_requests
+
+        if cleanup_done:
+            return
+
+        started = budget.count
+        try:
+            state["cleanup_complete"] = execute_cleanup(
+                cleanup_cases, attempted, sessions, prepped,
+                target, budget, run_id, prep_events,
+                root, args.max_response_bytes,
+                state["cleanup_results"],
+                created_post_ids=created_post_ids,
+            )
+        finally:
+            cleanup_http_requests += budget.count - started
+            state["cleanup_http_requests"] = cleanup_http_requests
+            cleanup_done = True
+
     try:
         for source_case in suite["cases"]:
+            if source_case.get("cleanup_before") is True:
+                perform_cleanup_once()
+
+                if not state["cleanup_complete"]:
+                    failed = True
+                    state["stopped_reason"] = (
+                        f"cleanup before {source_case['case_id']} incomplete"
+                    )
+                    break
+
             case = dict(source_case)
             record = base_record(run_id, case)
             role = case["auth_role"]
             try:
+                if "post_reference" in case:
+                    ref = case["post_reference"]
+                    post_id = created_post_ids.get(ref)
+
+                    if post_id is None:
+                        raise ExecutionError(
+                            f"{case['case_id']}: 선행 게시글 ID를 찾을 수 없습니다"
+                        )
+
+                    case["path"] = case["path"].replace(
+                        "{post_id}", str(post_id)
+                    )
+                    record["path"] = safe_path_log(case["path"])
                 # 역할별 세션을 유지하되, 익명 로그인 POST는
                 # 케이스마다 독립된 세션을 사용한다.
                 isolate_login = (
@@ -1362,26 +1509,53 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                         timestamp_utc=timestamp, request_attempted=True
                     ),
                 )
+                
                 record.update(http_status=detail["status"], elapsed_ms=detail["elapsed_ms"],
                               redirect_target=safe_location(detail["location"]),
                               response_summary={"request_body_bytes": detail["request_body_bytes"], "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],
                                                 "headers": detail["headers"]}, transport_status="OK", request_attempted=True,
                               http_expectation_match=check_http_expected(detail, case["expected_app"], target_origin=target))
+
+                if case.get("capture_post_id"):
+                    if not check_http_expected(
+                        detail, case["expected_app"], target_origin=target
+                    ):
+                        raise ExecutionError("게시글 생성 HTTP 기대값 불일치")
+
+                    post_id = extract_created_post_id(
+                        detail["location"], target
+                    )
+
+                    if post_id in created_post_ids.values():
+                        raise ExecutionError("중복된 생성 게시글 ID입니다")
+
+                    created_post_ids[case["case_id"]] = post_id
+                
                 # No WAF/app log evidence in run: do not invent a pass based on HTTP 403.
                 record["verdict"] = "UNKNOWN"
                 if case.get("critical") and not record["http_expectation_match"]:
                     failed = True
             except (ExecutionError, ConfigError, KeyboardInterrupt) as exc:
-                record.update(transport_status="ERROR", verdict="ERROR",
-                              response_summary={"error": ("KeyboardInterrupt" if isinstance(exc, KeyboardInterrupt)
-                                                          else str(exc))})
+                record.update(
+                    transport_status="ERROR",
+                    verdict="ERROR",
+                )
+
+                if record.get("response_summary") is None:
+                    record["response_summary"] = {}
+
+                record["response_summary"]["error"] = (
+                    "KeyboardInterrupt"
+                    if isinstance(exc, KeyboardInterrupt)
+                    else str(exc)
+                )
                 failed = True
             # 4) 성공/실패마다 즉시 기록: 중단돼도 부분 증거를 보존한다.
             records.append(record)
             if record["request_attempted"]:
                 attempted.add(case.get("parent_case_id", case["case_id"]))
             state["test_http_requests"] = sum(row["request_attempted"] for row in records)
-            state["preparation_http_requests"] = budget.count - state["test_http_requests"]
+            state["preparation_http_requests"] = (budget.count - state["test_http_requests"] - cleanup_http_requests)
             state["http_responses_received"] = budget.responses_received
             state["unexecuted_cases"] = len(suite["cases"]) - len(records)
             state["total_http_requests_including_preparation"] = budget.count
@@ -1394,21 +1568,27 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
             if failed:
                 break
     finally:
-        cleanup_started_count = budget.count
         try:
-            state["cleanup_complete"] = execute_cleanup(
-                cleanup_cases, attempted, sessions, prepped, target, budget, run_id, prep_events,
-                root, args.max_response_bytes, state["cleanup_results"])
+            perform_cleanup_once()
         finally:
             for s in sessions.values():
                 s.close()
-            state["cleanup_http_requests"] = budget.count - cleanup_started_count
-            state["test_http_requests"] = sum(row["request_attempted"] for row in records)
-            state["preparation_http_requests"] = cleanup_started_count - state["test_http_requests"]
+
+            state["cleanup_http_requests"] = cleanup_http_requests
+            state["test_http_requests"] = sum(
+                row["request_attempted"] for row in records
+            )
+            state["preparation_http_requests"] = (
+                budget.count
+                - state["test_http_requests"]
+                - cleanup_http_requests
+            )
             state["http_responses_received"] = budget.responses_received
             state["total_http_requests_including_preparation"] = budget.count
             state["ended_utc"] = utc_now()
-            state["unexecuted_cases"] = len(suite["cases"]) - len(records)
+            state["unexecuted_cases"] = (
+                len(suite["cases"]) - len(records)
+            )
             save_results(args.output_dir, state, records)
     print(f"run 결과: {args.output_dir / 'results.json'}", file=sys.stderr)
     print_run_summary(state)
@@ -1562,21 +1742,33 @@ def event_matches_run(event: dict, row: dict) -> bool:
 
 
 def log_timestamp(event: dict) -> datetime | None:
-    """ISO UTC 또는 AWS 밀리초 epoch를 UTC datetime으로 정규화."""
+    """시간대가 명시된 시각 또는 epoch만 UTC로 정규화한다."""
     val = event.get("timestamp_utc")
     if val is None:
         val = event.get("ts")
     if val is None:
         val = event.get("timestamp")
-    if isinstance(val, (float, int)):
-        if val > 10**11:  # AWS WAF epoch millis
-            val /= 1000
-        return datetime.fromtimestamp(val, timezone.utc)
-    if isinstance(val, str):
-        try:
-            return datetime.fromisoformat(val.replace("Z", "+00:00")).astimezone(timezone.utc)
-        except ValueError:
+
+    try:
+        if isinstance(val, bool):
             return None
+
+        if isinstance(val, (int, float)):
+            if val > 10**11:
+                val /= 1000
+            return datetime.fromtimestamp(val, timezone.utc)
+
+        if isinstance(val, str):
+            parsed = datetime.fromisoformat(
+                val.replace("Z", "+00:00")
+            )
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                return None
+            return parsed.astimezone(timezone.utc)
+
+    except (ValueError, TypeError, OverflowError, OSError):
+        return None
+
     return None
 
 
@@ -1587,11 +1779,15 @@ def plausible_event(event: dict, row: dict, origin: str) -> bool:
     if event.get("target_origin") not in {None, origin}:
         return False
     t1 = log_timestamp(event)
-    try:
-        t2 = datetime.fromisoformat(row["timestamp_utc"])
-    except (ValueError, TypeError):
-        return False
-    return t1 is not None and abs((t1 - t2).total_seconds()) <= 120
+    t2 = log_timestamp({
+        "timestamp_utc": row.get("timestamp_utc")
+    })
+
+    return (
+        t1 is not None
+        and t2 is not None
+        and abs((t1 - t2).total_seconds()) <= 120
+    )
 
 
 def correlate(args) -> int:

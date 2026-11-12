@@ -1979,6 +1979,520 @@
       "note": "실제 .php 파일이 아님. dummy TXT 내용의 filename 확장자만 조작"
     },
     {
+      "case_id": "UP-06-A-GRANT-B",
+      "phase": 3,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/1/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_grant.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전 조건: A가 P1을 B에게 공유. B의 읽기 전용 접근 시험에 사용"
+    },
+    {
+      "case_id": "UP-06-B-READ-ALLOWED",
+      "phase": 3,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받은 B가 P1을 읽을 수 있는지 사전 확인"
+    },
+    {
+      "case_id": "UP-01-A-TXT-UPLOAD",
+      "phase": 3,
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A의 정상 TXT 업로드. DB ACTIVE, 파일 내용·sha256 별도 검증"
+    },
+    {
+      "case_id": "UP-01-04-A-VALID-EXTRA",
+      "phase": 3,
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_valid_extra.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 2,
+      "verification_mode": "manual_required",
+      "note": "A의 정상 PDF 및 정확히 2 MiB TXT 업로드. 이 케이스 완료 후 P1의 첨부 수는 3개"
+    },
+    {
+      "case_id": "UP-05-P1-FOURTH-DENIED",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1에서 3개를 업로드한 후 4번째 첨부는 400이어야 함"
+    },
+    {
+      "case_id": "UP-04-OVER-2MIB",
+      "phase": 3,
+      "category": "upload_size",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_oversize.json",
+      "expected_app": {
+        "http_status": 413
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "파일 실크기 2,097,153바이트: 게시글 첨부 수가 가득 찬 상태여도 파일 크기 검사로 413"
+    },
+    {
+      "case_id": "UP-01-A-P2-TXT-UPLOAD",
+      "phase": 3,
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/2/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A 소유의 두번째 글 P2에도 정상 TXT 업로드 가능"
+    },
+    {
+      "case_id": "UP-02-INVALID-FORMATS",
+      "phase": 3,
+      "category": "upload_validation",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_invalid_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 11,
+      "verification_mode": "manual_required",
+      "note": "미지원 확장자·MIME 위장·손상 PDF·UTF-8 오류·NUL·빈 파일·암호화 PDF 거부"
+    },
+    {
+      "case_id": "UP-03-INVALID-FILENAMES",
+      "phase": 3,
+      "category": "upload_validation",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_filename_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 6,
+      "verification_mode": "manual_required",
+      "note": "경로 구분자·상위 경로·이중 점·공백·방향 제어문자 포함 원본 이름 거부"
+    },
+    {
+      "case_id": "UP-02-NO-FILE",
+      "phase": 3,
+      "category": "upload_validation",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "multipart 첨부 필드가 없는 POST는 400, DB 변경 없음"
+    },
+    {
+      "case_id": "UP-06-B-UPLOAD-DENIED",
+      "phase": 3,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_b",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B는 P1 읽기 공유를 받았더라도 첨부 업로드 불가"
+    },
+    {
+      "case_id": "UP-06-C-UPLOAD-DENIED",
+      "phase": 3,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_c",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1 미공유 C의 첨부 업로드 거부"
+    },
+    {
+      "case_id": "UP-06-OP-UPLOAD-DENIED",
+      "phase": 3,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "operator",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "운영 관리자도 타인 P1 첨부를 업로드할 수 없음"
+    },
+    {
+      "case_id": "UP-06-C-READ-DENIED",
+      "phase": 3,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/1/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1 미공유 C는 글 상세 조회도 404"
+    },
+    {
+      "case_id": "UP-13-CSRF-INVALID",
+      "phase": 3,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_csrf_variants.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "CSRF 누락·오류 및 다른 Origin 업로드 거부"
+    },
+    {
+      "case_id": "UP-13-ANON-VALID-CSRF",
+      "phase": 3,
+      "category": "authentication",
+      "method": "POST",
+      "path": "/posts/1/attachments/",
+      "auth_role": "anonymous",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "CSRF 유효해도 비로그인 업로드는 로그인으로 리다이렉트"
+    },
+    {
+      "case_id": "UP-09-DIRECT-MEDIA",
+      "phase": 3,
+      "category": "file_access",
+      "method": "GET",
+      "path": "/media/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공개 media 경로와 디렉터리 목록 미노출. 실제 AWS 프록시는 별도 검증"
+    },
+    {
+      "case_id": "UP-09-DIRECT-UPLOADS",
+      "phase": 3,
+      "category": "file_access",
+      "method": "GET",
+      "path": "/uploads/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공개 uploads 경로와 디렉터리 목록 미노출. 실제 AWS 프록시는 별도 검증"
+    },
+    {
+      "case_id": "UP-SETUP-B-P1",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_b",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "critical": true,
+      "capture_post_id": true,
+      "note": "3회차 독립 업로드 시험용 member_b 게시글 생성; Location의 동적 ID를 후속 시험에 사용"
+    },
+    {
+      "case_id": "UP-SETUP-B-P2",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_b",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "critical": true,
+      "capture_post_id": true,
+      "note": "3회차 독립 업로드 시험용 member_b 게시글 생성; Location의 동적 ID를 후속 시험에 사용"
+    },
+    {
+      "case_id": "UP-05-P1-LARGE-1",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_b",
+      "input_reference": "basic_upload_exact_2mib.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "[member_b의 독립 시험 글 P1] P1의 2 MiB 업로드 #1 (정상 업로드 순서 의존)",
+      "post_reference": "UP-SETUP-B-P1"
+    },
+    {
+      "case_id": "UP-05-P1-LARGE-2",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_b",
+      "input_reference": "basic_upload_exact_2mib.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "[member_b의 독립 시험 글 P1] P1의 2 MiB 업로드 #2 (정상 업로드 순서 의존)",
+      "post_reference": "UP-SETUP-B-P1"
+    },
+    {
+      "case_id": "UP-05-P1-LARGE-3",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_b",
+      "input_reference": "basic_upload_exact_2mib.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "[member_b의 독립 시험 글 P1] P1의 2 MiB 업로드 #3 (정상 업로드 순서 의존)",
+      "post_reference": "UP-SETUP-B-P1"
+    },
+    {
+      "case_id": "UP-05-B-P1-FOURTH-DENIED",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_b",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "[member_b의 독립 시험 글 P1] P1 네번째 파일은 글당 개수 3개 초과로 400",
+      "post_reference": "UP-SETUP-B-P1"
+    },
+    {
+      "case_id": "UP-05-P2-LARGE-1",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_b",
+      "input_reference": "basic_upload_exact_2mib.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "[member_b의 독립 시험 글 P2] P2의 2 MiB 업로드 #1; P1 6 MiB + P2 2 MiB",
+      "post_reference": "UP-SETUP-B-P2"
+    },
+    {
+      "case_id": "UP-05-P2-LARGE-2",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_b",
+      "input_reference": "basic_upload_exact_2mib.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "[member_b의 독립 시험 글 P2] P2의 2 MiB 업로드 #2; P1 6 MiB + P2 4 MiB",
+      "post_reference": "UP-SETUP-B-P2"
+    },
+    {
+      "case_id": "UP-05-OWNER-10MIB-PLUS1",
+      "phase": 3,
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_b",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "[member_b의 독립 시험 글 P2] P1 6MiB+P2 4MiB=계정 10MiB. P2는 2개뿐이지만 추가 업로드는 계정 용량 초과로 400",
+      "post_reference": "UP-SETUP-B-P2"
+    },
+    {
+      "case_id": "UP-SETUP-C-P1",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_c",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "critical": true,
+      "capture_post_id": true,
+      "note": "3회차 독립 업로드 시험용 member_c 게시글 생성; Location의 동적 ID를 후속 시험에 사용"
+    },
+    {
+      "case_id": "UP-SETUP-C-P2",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_c",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "critical": true,
+      "capture_post_id": true,
+      "note": "3회차 독립 업로드 시험용 member_c 게시글 생성; Location의 동적 ID를 후속 시험에 사용"
+    },
+    {
+      "case_id": "UP-PDF-PERF-P1",
+      "phase": 3,
+      "category": "pdf_performance",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_c",
+      "input_reference": "basic_upload_pdf_perf_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "[member_c의 독립 시험 글 P1] P1: 정상 PDF(1페이지), 중간(250페이지), 복잡(1500페이지) 구조 PDF 각 1개를 순차 업로드. 각 응답 elapsed_ms 비교. 테스트 시작 시 해당 글에 첨부 0개, 계정 전체 사용량 10MiB 미만이어야 함.",
+      "post_reference": "UP-SETUP-C-P1"
+    },
+    {
+      "case_id": "UP-PDF-PERF-P2",
+      "phase": 3,
+      "category": "pdf_performance",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_c",
+      "input_reference": "basic_upload_pdf_perf_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "[member_c의 독립 시험 글 P2] P2: 정상 PDF(1페이지), 중간(250페이지), 복잡(1500페이지) 구조 PDF 각 1개를 순차 업로드. 각 응답 elapsed_ms 비교. 테스트 시작 시 해당 글에 첨부 0개, 계정 전체 사용량 10MiB 미만이어야 함.",
+      "post_reference": "UP-SETUP-C-P2"
+    },
+    {
       "case_id": "APP-02-OWNER-DELETE",
       "phase": 1,
       "category": "crud",
@@ -1992,6 +2506,7 @@
       "expected_waf": "NOT_APPLICABLE",
       "max_requests": 1,
       "verification_mode": "manual_required",
+      "cleanup_before": true,
       "note": "최후반 파괴적 시험: P2는 A가 소유한 삭제 전용 테스트 글. POST 후 P2 접근 차단/DB 정리 확인"
     },
     {
@@ -2142,6 +2657,101 @@
         "lookup_role": "member_a",
         "allow_missing": true
       }
+    },
+    {
+      "case_id": "UP-06-CLEANUP-REVOKE-B",
+      "phase": 3,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/1/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "시험에서 추가한 A→B 공유 관계 제거. DB와 실제 파일은 별도 초기화 필요",
+      "after_case": "UP-06-A-GRANT-B",
+      "share_reference": {
+        "post_id": 1,
+        "recipient": "member_b",
+        "lookup_role": "member_a",
+        "allow_missing": true
+      }
+    },
+    {
+      "case_id": "UP-CLEANUP-B-P1",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "auth_role": "member_b",
+      "post_reference": "UP-SETUP-B-P1",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "UP-SETUP-B-P1",
+      "note": "동적 글 ID를 이용해 UP-SETUP-B-P1 시험용 게시글 및 첨부를 정리"
+    },
+    {
+      "case_id": "UP-CLEANUP-B-P2",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "auth_role": "member_b",
+      "post_reference": "UP-SETUP-B-P2",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "UP-SETUP-B-P2",
+      "note": "동적 글 ID를 이용해 UP-SETUP-B-P2 시험용 게시글 및 첨부를 정리"
+    },
+    {
+      "case_id": "UP-CLEANUP-C-P1",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "auth_role": "member_c",
+      "post_reference": "UP-SETUP-C-P1",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "UP-SETUP-C-P1",
+      "note": "동적 글 ID를 이용해 UP-SETUP-C-P1 시험용 게시글 및 첨부를 정리"
+    },
+    {
+      "case_id": "UP-CLEANUP-C-P2",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "auth_role": "member_c",
+      "post_reference": "UP-SETUP-C-P2",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "UP-SETUP-C-P2",
+      "note": "동적 글 ID를 이용해 UP-SETUP-C-P2 시험용 게시글 및 첨부를 정리"
     }
   ]
 }

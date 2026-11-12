@@ -13,16 +13,25 @@
       }
     },
     {
-      "Sid": "QueryHavenWebLogs",
+      "Sid": "QueryHavenWebAndWAFLogs",
       "Effect": "Allow",
-      "Action": [
-        "logs:StartQuery",
-        "logs:GetQueryResults"
-      ],
+      "Action": "logs:StartQuery",
       "Resource": [
         "arn:aws:logs:ap-northeast-2:777171525040:log-group:/haven/web",
-        "arn:aws:logs:ap-northeast-2:777171525040:log-group:/haven/web:*"
+        "arn:aws:logs:ap-northeast-2:777171525040:log-group:/haven/web:*",
+        "arn:aws:logs:ap-northeast-2:777171525040:log-group:aws-waf-logs-haven*"
       ]
+    },
+    {
+      "Sid": "GetLogQueryResults",
+      "Effect": "Allow",
+      "Action": "logs:GetQueryResults",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2"
+        }
+      }
     },
     {
       "Sid": "ListWAFInSeoul",

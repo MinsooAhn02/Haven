@@ -5,7 +5,7 @@
   <header class="page-heading">
     <p class="intro">현재 위치: 내 기록 &gt; 기록 상세 &gt; 공유 관리</p>
     <h1>공유 관리</h1>
-    <p class="intro">이 기록을 읽을 수 있는 공유 대상을 확인하고 관리합니다.</p>
+    <p class="intro">이 기록을 읽을 수 있는 공유 대상을 확인하고 관리합니다. 공유받은 사람은 기록을 읽고 첨부파일을 다운로드할 수 있지만, 기록을 수정하거나 첨부파일을 올리거나 삭제할 수 없습니다.</p>
   </header>
 
   <section class="panel" aria-labelledby="record-heading">
@@ -16,7 +16,7 @@
 
   <section class="panel" aria-labelledby="share-list-heading">
     <h2 id="share-list-heading">현재 공유 대상</h2>
-    <p class="intro">활성 일반 회원의 정확한 아이디를 대상으로 공유합니다. 목록은 공유 시각 최신순입니다.</p>
+    <p class="intro">활성 일반 회원의 정확한 아이디를 대상으로 공유합니다. 목록은 공유 시각 최신순입니다. 대상을 바꾸려면 현재 공유를 해제한 뒤 새 대상을 추가하세요.</p>
     {% if shares %}
       <ul class="record-list" aria-label="현재 공유 대상 목록">
         {% for share in shares %}

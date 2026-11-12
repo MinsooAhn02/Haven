@@ -1,4 +1,4 @@
-# 가짜 시험 설명 (test/ec2-fake-test.sh, test/alb-fake-test.sh)
+# 가짜 시험 설명 (test/ec2-fake-test.sh, test/alb-fake-test.sh, test/cw-fake-test.sh)
 
 EC2 중지·시작 스크립트(`ec2-stop.sh`, `ec2-start.sh`, `night.sh`, `morning.sh`)가
 예외 상황에서도 의도대로 움직이는지, **진짜 AWS 없이** 확인하는 시험이다.
@@ -158,3 +158,82 @@ PASS 판정은 ① 종료 코드 ② 로그 문구 ③ **ALB가 만들어졌는�
 
 > 시험 스크립트·build-alb.sh는 AI 보조로 작성, 실행은 직접. 진짜 AWS 실행 결과는 연결확인표 NET-01·01-b.
 > 교훈: Linux에서만 시험한 코드가 Windows에서 깨졌다(`/dev/null`). 가짜 시험은 실제 환경 차이까지 흉내 내야 의미가 있다.
+
+---
+
+# 로그 수집 설정 가짜 시험 (test/cw-fake-test.sh)
+
+`server/cw-agent-setup.sh`(web-1 CloudWatch Agent·앱 로그 파일·logrotate)가 예외 상황에서 멈추고, 망가진 설정을 되돌리는지 **서버·AWS 없이** 확인한다.
+
+## 실행
+
+```bash
+cd 이민성/infra
+bash test/cw-fake-test.sh
+```
+
+마지막 줄이 `결과: PASS 23 / FAIL 0`이면 통과.
+
+## 안전장치
+
+- 가짜 `id`·`curl`·`dpkg`·`systemctl`·`rsyslogd`·`logrotate`·`chown`·`sleep`을 먼저 부르게 한다. 가짜 `dpkg`가 가짜 Agent 제어 명령을 만든다.
+- 서버 경로(`/etc`, `/var`, `/opt`)는 임시 폴더 아래로 바꿔 쓴다(`CWS_TEST=1 CWS_ROOT=…`). `CWS_TEST=1` 없이 `CWS_ROOT`만 주면 스크립트가 멈춘다(C5).
+- 가짜 Agent는 진짜처럼 동작한다(11/12 web-1에서 확인한 것): 상태를 여러 번 나눠 출력하고 읽는 쪽이 먼저 끝나면 141로 끝남, 설정 적용 시 Agent 폴더의 `amazon-cloudwatch-agent.json`을 없앰.
+
+## 시험 목록 (23개)
+
+| 번호 | 상황 | 기대 |
+|---|---|---|
+| C1 | 처음 설치 | 끝까지 OK. rsyslog 규칙·logrotate 7일·Agent 설정(로그 그룹 3곳 `/haven/web`, 스트림 3개, 보존 기간 없음) 확인 |
+| C1-b | 같은 실행 | 내 PC 확인 명령(OUT-10) 안내 |
+| C2 | 한 번 더 실행 | 내려받기·dpkg·rsyslog 재시작·Agent 재시작 없음, 파일 3개 "그대로", .bak 없음 |
+| C21 | 설정은 같은데 Agent가 꺼져 있음 | 설정을 다시 적용해서 켬 |
+| C3 | root 아님 | 아무것도 안 쓰고 멈춤 |
+| C4 | `/etc/haven/haven.env` 없음 (db-1 등) | 멈춤 |
+| C5 | 시험 표시 없이 경로 바꾸기 | 멈춤 (실서버 보호) |
+| C6 | Agent 내려받기 실패 | dpkg 안 부르고 멈춤 |
+| C7 | 빈 파일 받음 | 멈춤 |
+| C8 | dpkg 실패 | 멈춤 |
+| C9 | rsyslog 규칙 검사 실패 (새 파일) | 파일 지우고 rsyslog 재시작 안 함 |
+| C10 | rsyslog 규칙 검사 실패 (기존 파일 있음) | 예전 내용 그대로 복구 |
+| C11 | rsyslog가 active 아님 | 멈춤 |
+| C12 | logrotate 규칙 오류 | 파일 지우고 Agent 설정 전에 멈춤 |
+| C13 | Agent 설정 적용 실패 | 멈춤 |
+| C14 | Agent가 running 안 됨 | 멈춤 |
+| C15 | Agent 로그에 AccessDenied | 권한 안내(김보람)와 함께 멈춤 |
+| C16 | Agent 로그에 다른 오류(E!) | 멈춤 |
+| C17 | 이번 실행 **전**에 있던 오류 | 무시하고 OK |
+| C18 | 표시 요청이 app.log에 안 들어옴 | 멈춤 (rsyslog 규칙 문제) |
+| C19 | healthz 요청 실패 | 멈춤 |
+| C20 | 다른 Agent 설정이 이미 있음 | `.bak-<시각>`에 남기고 바꿈 |
+| C22 | 다른 logrotate 규칙이 이미 있음 | 백업을 `/var/backups/haven-cw/`에 둠 (설정 폴더 안에 두면 logrotate가 백업까지 읽어 같은 로그에 규칙이 2개가 됨) |
+
+## 시험이 정말 버그를 잡는지 (일부러 망가뜨리기)
+
+스크립트에서 아래를 하나씩 지우고 시험을 돌렸다. 모두 해당 시험이 FAIL로 바뀌었다(원래대로 되돌린 뒤 PASS 23).
+
+| 지운 것 | FAIL로 바뀐 시험 |
+|---|---|
+| (11/12 실서버 버그 되살리기) Agent 상태를 파이프(`ctl \| grep -q`)로 확인 | C1·C2·C15~C21 등 10개 |
+| (11/12 실서버 버그 되살리기) 설정 원본을 Agent 폴더에 둠 | C1, C2, C20 |
+| 설정이 같아도 Agent가 꺼져 있으면 다시 켜기 | C21 |
+| 백업을 설정 폴더 밖에 두기 (원래 폴더에 두게 되돌림) | C22 |
+| 검사 실패 시 되돌리기 | C9, C10, C12 |
+| 이번 실행 전 오류 구분 | C17 |
+| 같은 내용이면 건너뛰기 | C2 |
+| root 확인 | C3 |
+| 표시 요청 도착 확인 | C18 |
+| 빈 파일 확인 | C7 |
+
+## 실행 기록
+
+| 날짜 | 실행한 사람 | 결과 |
+|---|---|---|
+| 2026-11-12 | 이민성 작성 | PASS 21 / FAIL 0 (수정 전 판) |
+| 2026-11-12 12:13 | 이민성 (Git Bash) | PASS 21 / FAIL 0 (수정 전 판) |
+| 2026-11-12 12:24 | 이민성 (web-1 실제 실행, 수정 전 판) | **5/5에서 멈춤**: Agent는 running이었는데(`status` rc=0, `systemctl` active, 로그 3종 전송 중) 스크립트가 아니라고 판단. 원인 ① 상태 확인을 파이프로 해서 `pipe-rc=141` ② 설정 원본을 Agent 폴더에 두어 적용 뒤 사라짐(재실행 때 "그대로" 불가). 가짜 시험이 못 잡은 이유: 가짜 Agent가 한 번에 짧게 출력하고 파일을 안 지움 → 가짜를 진짜처럼 고치고 두 버그를 시험에 추가 |
+| 2026-11-12 | 이민성 작성 | 수정 판 PASS 22 / FAIL 0 |
+| 2026-11-12 12:42 | 이민성 (web-1 실제 실행, 수정 판, sha256 대조 OK) | **1회차 OK**: 설치·rsyslog·logrotate 그대로, Agent 설정을 새 위치에 쓰고 적용(재시작) → running·오류 없음·표시 요청 도착. **2회차 OK**: 모든 단계 그대로, "재시작 안 함" → 다시 돌려도 안전 확인. 내 PC 조회: 2회차 표시가 `app`·`nginx-access`에 1건씩 도착, 아침 표시(out10)도 1건씩 = 재시작으로 중복 전송 없음 |
+| 2026-11-12 | 이민성 작성 | 더블 체크 판(백업 위치를 `/var/backups/haven-cw/`로, C22 추가) PASS 23 / FAIL 0. web-1 재실행 기록은 아래에 추가 |
+
+> 11/12 web-1 설치는 같은 명령을 SSM 세션에서 손으로 실행했다(OUT-10 기록). 스크립트 수정 판은 11/12 12:42 web-1에서 두 번 끝까지 통과했다(위 표).

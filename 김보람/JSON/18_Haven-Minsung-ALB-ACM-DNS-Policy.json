@@ -1,0 +1,150 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ELBandACMRead",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:Describe*",
+        "acm:ListCertificates"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2"
+        }
+      }
+    },
+    {
+      "Sid": "ReadACMCertificate",
+      "Effect": "Allow",
+      "Action": "acm:DescribeCertificate",
+      "Resource": "arn:aws:acm:ap-northeast-2:777171525040:certificate/*"
+    },
+    {
+      "Sid": "RequestACMCertificate",
+      "Effect": "Allow",
+      "Action": "acm:RequestCertificate",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2",
+          "aws:RequestTag/Project": "Haven",
+          "aws:RequestTag/Owner": "minsung"
+        }
+      }
+    },
+    {
+      "Sid": "TagACMCertificate",
+      "Effect": "Allow",
+      "Action": "acm:AddTagsToCertificate",
+      "Resource": "arn:aws:acm:ap-northeast-2:777171525040:certificate/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "Haven",
+          "aws:RequestTag/Owner": "minsung"
+        }
+      }
+    },
+    {
+      "Sid": "CreateTaggedHavenALBAndTG",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:CreateLoadBalancer",
+        "elasticloadbalancing:CreateTargetGroup"
+      ],
+      "Resource": [
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:loadbalancer/app/haven-*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:targetgroup/haven-*/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "Haven"
+        }
+      }
+    },
+    {
+      "Sid": "CreateListenerOnHavenALB",
+      "Effect": "Allow",
+      "Action": "elasticloadbalancing:CreateListener",
+      "Resource": "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:loadbalancer/app/haven-*/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Project": "Haven"
+        }
+      }
+    },
+    {
+      "Sid": "TagHavenALBResources",
+      "Effect": "Allow",
+      "Action": "elasticloadbalancing:AddTags",
+      "Resource": [
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:loadbalancer/app/haven-*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:targetgroup/haven-*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:listener/app/haven-*/*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:listener-rule/app/haven-*/*/*/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "Haven"
+        }
+      }
+    },
+    {
+      "Sid": "ManageTaggedHavenALBResources",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:RegisterTargets",
+        "elasticloadbalancing:DeregisterTargets",
+        "elasticloadbalancing:ModifyListener",
+        "elasticloadbalancing:ModifyLoadBalancerAttributes",
+        "elasticloadbalancing:ModifyTargetGroupAttributes",
+        "elasticloadbalancing:ModifyTargetGroup",
+        "elasticloadbalancing:SetSecurityGroups",
+        "elasticloadbalancing:SetSubnets",
+        "elasticloadbalancing:CreateRule",
+        "elasticloadbalancing:ModifyRule",
+        "elasticloadbalancing:DeleteListener",
+        "elasticloadbalancing:DeleteTargetGroup",
+        "elasticloadbalancing:DeleteLoadBalancer"
+      ],
+      "Resource": [
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:loadbalancer/app/haven-*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:targetgroup/haven-*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:listener/app/haven-*/*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:listener-rule/app/haven-*/*/*/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Project": "Haven"
+        }
+      }
+    },
+    {
+      "Sid": "HavenDNSRecords",
+      "Effect": "Allow",
+      "Action": [
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets"
+      ],
+      "Resource": "arn:aws:route53:::hostedzone/Z08342321QNIZCEME3KGF"
+    },
+    {
+      "Sid": "DNSChangeStatus",
+      "Effect": "Allow",
+      "Action": "route53:GetChange",
+      "Resource": "arn:aws:route53:::change/*"
+    },
+    {
+      "Sid": "CreateELBServiceRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "arn:aws:iam::777171525040:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": "elasticloadbalancing.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

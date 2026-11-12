@@ -3,6 +3,7 @@
 # 지정 commit을 releases/<sha>에 풀고 → 의존성 → migrate(haven_owner) → 전환 → /healthz 확인.
 # 확인 실패 시 이전 release로 되돌린다. DB migration은 되돌리지 않는다(되돌릴 땐 백업 복원).
 source "$(dirname "$0")/common.sh"
+source "$(dirname "$0")/site-lib.sh"
 
 SHA="${1:-}"
 [[ $SHA =~ ^[0-9a-f]{40}$ ]] || die "usage: deploy.sh <full 40-char commit sha>"
@@ -33,6 +34,9 @@ OWNER_PW=$(secret db/owner_password)
 # HTTPS 도메인(https:// origin)이 있으면 앱이 ALB의 X-Forwarded-Proto를 믿고 쿠키에 Secure를 붙인다
 # (요찬 #51, 앱계약 1.2.1). 없으면(로컬·HTTP 시험) 0. 값을 항상 써서 무엇으로 떴는지 파일에서 보이게 한다.
 HTTPS_ON=0; [[ ${CSRF_TRUSTED_ORIGINS:-} == https://* ]] && HTTPS_ON=1
+# 시험 메일(앱계약 1.2·결정 E6): site.conf에 MAIL_FROM이 있으면 ses·발신 주소·리전을 같이 쓰고, 없으면 console(보내지 않음).
+# 주소 형식이 이상하면 아무것도 바꾸기 전에 멈춘다.
+MAIL_LINES=$(mail_env_lines "${MAIL_FROM:-}" "$AWS_REGION") || die "MAIL_FROM in /etc/haven/site.conf is invalid (nothing switched)"
 umask 027
 cat > /etc/haven/haven.env.new <<EOF
 DJANGO_SECRET_KEY=$SECRET_KEY
@@ -45,6 +49,7 @@ DB_HOST=$DB_HOST
 HAVEN_UPLOAD_DIR=$H/uploads
 ${CSRF_TRUSTED_ORIGINS:+DJANGO_CSRF_TRUSTED_ORIGINS=$CSRF_TRUSTED_ORIGINS}
 DJANGO_HTTPS=$HTTPS_ON
+$MAIL_LINES
 EOF
 chgrp haven /etc/haven/haven.env.new && mv /etc/haven/haven.env.new /etc/haven/haven.env
 umask 022

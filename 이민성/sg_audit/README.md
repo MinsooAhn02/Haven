@@ -1,7 +1,7 @@
 # SG 설정 점검 CLI (이민성)
 
 `network/설계.md` 4장의 SG 연결표를 기준으로, 실제(또는 가짜) SG 규칙이 설계와 맞는지 판정하는 읽기 전용 점검 도구.
-명세: `docs/구현명세/기본프로젝트_구현명세.md` 5장. 최종 경로(`scripts/network_audit.py`)는 통합 때 안민수가 맞춘다.
+명세: `docs/구현명세/기본프로젝트_구현명세.md` 5장. 최종 경로(`scripts/network_audit.py`)는 통합 때 조장(이민성)이 맞춘다(11/11 조장 인계).
 
 ## 파일 구성
 
@@ -9,9 +9,12 @@
 |---|---|
 | `baseline.json` | 정답지. 서버 역할별로 허용하는 규칙 목록(허용 목록에 없으면 위반) |
 | `fixtures/*.json` | 가짜 AWS 응답(답안지). AWS 없이 판정 로직을 시험할 때 사용 |
-| `network_audit.py` | 판정 프로그램 (fixture 모드, live 모드는 11/13 구현) |
+| `network_audit.py` | 판정 프로그램 (fixture 모드, live 모드 11/13 구현·명세 5.1 맞춤) |
 | `test_network_audit.py` | fixture 모드 회귀 시험(unittest). 1회차 PR 리뷰에서 팀장 보완 시 추가, 11/13 1개 추가 |
-| `test_live.py` | live 모드 시험 21개(가짜 AWS 클라이언트, boto3 없이). 설계 L1~L15 + 추가 경우 |
+| `test_live.py` | live 모드 시험(가짜 EC2·STS, boto3 없이). L1~L20 + 명령 형식 시험 |
+| `make_evidence.py` | 결과 폴더로 공개용 증거 묶음 `evidence/<run-id>/`을 만든다(명세 9장) |
+| `test_evidence.py` | 증거 묶음 시험(가림·manifest·전후 비교·덮어쓰기 금지) |
+| `baseline.live.json` | (Git 제외) live용 baseline. `baseline.json`을 복사해 실제 SG ID를 넣는다 |
 
 코드가 어떻게 판정하는지는 [코드설명.md](코드설명.md)를 본다.
 
@@ -114,7 +117,7 @@
 | `schema_version` | 형식 버전. 현재 1 |
 | `assets[].asset_id` | 서버 이름 (예: `web-1`) |
 | `assets[].asset_role` | 서버 역할: `alb`, `web`, `db` |
-| `assets[].expected_sg_ids` | 그 서버에 붙어 있어야 하는 SG ID. fixture 모드용 가짜 ID(`sg-fixture-...`). live 모드는 실제 ID를 파일에 적지 않고 `expected_sg_names`(SG 이름, 3회차 추가 예정)로 찾는다(아래 "live 모드 설계") |
+| `assets[].expected_sg_ids` | 그 서버에 붙어 있어야 하는 SG ID. `baseline.json`은 fixture용 가짜 ID(`sg-fixture-...`). live는 이 파일을 복사한 `baseline.live.json`에 실제 ID를 넣어 쓴다(명세 5.1: "assets는 expected_sg_ids로 실제 자산 역할을 매핑"). 실제 ID가 든 파일은 `.gitignore`로 Git에서 뺀다 |
 | `allowed_rules[].direction` | `ingress`(들어옴) / `egress`(나감) |
 | `allowed_rules[].protocol`, `from_port`, `to_port` | 프로토콜과 포트 범위 |
 | `allowed_rules[].source_type` | `cidr`(IP 범위) 또는 `sg_role`(해당 역할의 SG) |
@@ -152,8 +155,8 @@
 | SG-03 | Web TCP 80의 출발지가 ALB SG가 아님 | FAIL |
 | SG-04 | DB TCP 5432의 출발지가 Web SG가 아님 | FAIL |
 | SG-05 | 그 외 baseline에 없는 규칙 / baseline 규칙이 실제로 없음 / 기대 SG 미연결 | FAIL |
-| SG-06 | baseline에 없는 자산, baseline 자산의 수집 결과 없음, 연결되지 않은 SG, 역할을 모르는 SG 참조, SG 규칙 수집 결과 없음 | UNKNOWN |
-| SG-07 | (live만) VPC의 `default` SG에 규칙이 하나라도 있음. 비어 있으면 PASS. default SG는 SG-06 "연결되지 않은 SG"에서 뺀다 | FAIL |
+| SG-06 | baseline에 없는 자산(live: 기대 SG가 없는 ENI), baseline 자산의 수집 결과 없음, 연결되지 않은 SG, 역할을 모르는 SG 참조, SG 규칙 수집 결과 없음, 한 ENI에 여러 자산의 기대 SG(역할 미확정), ENI 수집 실패로 자산 접근 결과를 모름 | UNKNOWN |
+| SG-07 | (live `--vpc-id`만) VPC의 `default` SG에 규칙이 하나라도 있음. 비어 있으면 PASS. default SG는 SG-06 "연결되지 않은 SG"에서 뺀다 | FAIL |
 
 - baseline 규칙과 정확히 일치하는 규칙은 PASS로 기록한다.
 - fixture에 `errors`가 있으면 수집된 개별 finding은 보존하고 전체 판정은 ERROR로 끝낸다. baseline의 기대 자산이 수집 결과에서 누락되면 UNKNOWN으로 남긴다.
@@ -184,26 +187,60 @@ echo $LASTEXITCODE
 
 ### live 모드 실행 (실제 AWS, 읽기 전용)
 
-AWS에 IAM 사용자로 로그인한 터미널에서 `sg_audit` 폴더로 가서 실행한다. Describe* API만 부르고 아무것도 바꾸지 않는다.
+명세 5.1 형식. AWS에 IAM 사용자로 로그인한 터미널에서 `sg_audit` 폴더로 가서 실행한다. Describe* API와 STS `GetCallerIdentity`(누구로 로그인했는지 확인)만 부르고 아무것도 바꾸지 않는다.
+
+처음 한 번: live용 baseline을 만든다(Git에 안 올라감).
 
 ```bash
 cd 이민성/sg_audit
-python network_audit.py live --baseline baseline.json --output-dir out/live-$(date +%Y%m%d-%H%M)
+cp baseline.json baseline.live.json
+# baseline.live.json을 열어 alb·web-1·db-1의 expected_sg_ids를 실제 SG ID(sg-...)로 바꾼다
+```
+
+실행(둘 중 하나):
+
+```bash
+# VPC 전체
+python network_audit.py live --region ap-northeast-2 --profile default --vpc-id <VPC ID> --baseline baseline.live.json --output-dir out/live-$(date +%Y%m%d-%H%M)
+# SG 지정(여러 개면 --sg-id를 반복)
+python network_audit.py live --region ap-northeast-2 --profile default --sg-id <SG ID> --baseline baseline.live.json --output-dir out/live-$(date +%Y%m%d-%H%M)
 echo $?
 ```
 
 | 옵션 | 뜻 |
 |---|---|
-| `--baseline` | 정답지. 자산마다 `expected_sg_names`(SG 이름)가 있어야 한다 |
-| `--output-dir` | 결과를 저장할 새 폴더. 차 있으면 **AWS를 읽기 전에** ERROR(2) |
-| `--region` | 기본 `ap-northeast-2` |
-| `--project` | 점검할 VPC의 `Project` 태그 값. 기본 `Haven` |
-| `--alb-name` | ALB 이름. 기본 `haven-alb` |
+| `--region` | (필수) AWS 리전 |
+| `--profile` | (필수) AWS CLI 프로필 이름. 따로 만든 적 없으면 `default` (`aws configure list-profiles`로 확인) |
+| `--baseline` | (필수) 실제 SG ID가 든 baseline(`baseline.live.json`). `sg-fixture-...`가 남아 있으면 AWS를 읽기 전에 ERROR(2) |
+| `--output-dir` | (필수) 결과를 저장할 새 폴더. 차 있으면 **AWS를 읽기 전에** ERROR(2) |
+| `--vpc-id` | 점검할 VPC. 그 VPC의 SG·ENI를 전부 읽는다. `--sg-id`와 같이 쓰면 안 된다 |
+| `--sg-id` | 점검할 SG(반복 가능). 그 SG가 붙은 ENI와, **같은 ENI에 붙은 다른 SG까지** 읽어 합집합으로 판정한다. default SG 판정(SG-07)은 하지 않는다 |
 
-- 필요한 권한: `ec2:DescribeVpcs`·`DescribeSecurityGroups`·`DescribeInstances`·`DescribeNetworkInterfaces`(보람 27번 `Haven-Minchul-SG-Read` 범위).
-- 설치: `python -m pip install --user "boto3[crt]==1.43.120"`. AWS CLI에 `aws login`(브라우저 로그인)으로 들어가 있으면 `[crt]`가 꼭 필요하다. 없으면 `MissingDependencyException` ERROR(2)로 멈춘다.
-- 결과의 계정 번호는 앞 4자리만 남긴다. **SG·VPC ID는 결과 파일에 그대로 남는다**(대조용). 결과를 PR·단톡·증거로 옮길 때는 ID를 가린다.
+- 시작할 때 `대상 계정: 1234********  리전: ...  범위: ...`을 찍는다. 계정이 예상과 다르면 결과를 쓰지 말고 다시 로그인한다.
+- 필요한 권한: `ec2:DescribeVpcs`·`DescribeSecurityGroups`·`DescribeNetworkInterfaces`(보람 27번 `Haven-Minchul-SG-Read` 범위). `DescribeInstances`는 0.3.0부터 쓰지 않는다. `sts:GetCallerIdentity`는 IAM 권한 없이 된다.
+- 설치: `python -m pip install --user "boto3[crt]==1.43.120"`. AWS CLI에 `aws login`(브라우저 로그인)으로 들어가 있으면 `[crt]`가 꼭 필요하다. 없으면 `MissingDependencyException` ERROR(2).
+- 결과의 계정 번호는 앞 4자리만 남긴다. **SG·VPC·ENI ID는 결과 파일에 그대로 남는다**(대조용, `out/`은 Git 제외). 공개할 때는 아래 증거 묶음을 쓴다.
 - AWS 오류는 코드(예: `UnauthorizedOperation`)만 남기고 원문은 남기지 않는다(원문에 ARN·계정 번호가 들어 있음).
+
+### 증거 묶음 만들기 (명세 9장)
+
+```bash
+python make_evidence.py --results-dir out/live-YYYYMMDD-HHMM --baseline baseline.live.json [--before out/<이전 실행>] [--omission "알려진 누락"]
+```
+
+`evidence/<run-id>/`에 아래 6개 파일을 만든다. 같은 run-id 폴더가 있으면 덮어쓰지 않고 ERROR(2).
+
+| 파일 | 내용 |
+|---|---|
+| `manifest.json` | commit(커밋 안 된 변경 여부 포함), 환경(Python·OS·boto3), 도구 버전, 규칙 버전(baseline SHA-256), 대상 범위, 실행 시각, 알려진 누락 |
+| `masking.json` | 가림 설정: ARN·`sg-`/`vpc-`/`eni-`/`i-` 등 ID·IPv4·IPv6를 `<종류>-#<해시 8자>`로 바꿈. 계정 번호는 앞 4자리도 남기지 않고 `account-masked`(경우의 수가 적어 해시로는 되찾을 수 있음). `0.0.0.0/0`·`::/0`은 판정 근거라 그대로 |
+| `results.json`, `findings.csv` | 가린 시험 결과 |
+| `masking_log.json` | 종류별로 몇 개 가렸는지(원래 값은 없음) |
+| `comparison.md` | `--before`를 주면 판정이 바뀐 항목 표(예: SG-07 FAIL → PASS). 범위가 다르면 경고 |
+
+- 같은 값은 언제나 같은 가림 값이 되어 전후 비교가 된다. 원래 값 ↔ 가림 값 대응표(`masking_map.json`)는 공개 묶음이 아니라 `--results-dir`(raw 위치)에 둔다.
+- 가린 뒤에도 ID·IP 모양이 남아 있으면 묶음을 만들지 않고 ERROR(2)로 멈춘다.
+- 알려진 누락은 자동으로 채운다: SG 허용만 본 결과라 실제 인터넷 도달은 별도 시험, `--sg-id` 범위면 VPC 전체 아님, 수집 오류, UNKNOWN 개수.
 
 ## 시험 결과
 
@@ -249,9 +286,71 @@ python -B -m unittest discover -s 이민성/sg_audit -p "test_*.py" -v
 
 ## live 모드 설계·실행 (2026-11-13)
 
-**구현 상태(11/13):** `network_audit.py` 0.2.0에 live 모드 구현, `test_live.py` 21개. 일부러 코드를 망가뜨린 12가지 경우(다음 페이지 안 읽기, 재시도 안 함, default SG 무시, 계정 번호 안 가림, ALB 중복 안 없앰, VPC 2개 허용, 종료된 서버 포함, AWS 오류 원문 저장 등)를 시험이 모두 잡음(뮤테이션 확인). boto3 없이 실행하면 `Boto3NotInstalled` ERROR(2)로 끝나는 것도 확인.
+명세 5.1. 실제 AWS에서 SG를 **읽기만** 해서 fixture와 같은 모양으로 바꾼 뒤, 기존 판정 코드(`audit`)로 baseline과 비교한다. AWS 설정은 바꾸지 않는다.
 
-### 실행 기록 (11/13, 민성 PC Windows Git Bash, IAM 사용자 minsung)
+- 실행 주체: 구현·첫 실행 이민성, 3회차 실행·대조 구민철(보람 27번 `Haven-Minchul-SG-Read`).
+- 필요 패키지: `boto3[crt]`(live 모드만). fixture 모드와 시험은 boto3 없이 돈다.
+
+### 0.2.0 → 0.3.0: 명세 5.1에 맞춤 (11/13 17시)
+
+0.2.0은 VPC를 `Project=Haven` 태그로, 서버를 `Name` 태그로, SG를 이름(`expected_sg_names`)으로 찾았다. 명세 5.1과 어긋나 고쳤다.
+
+| 명세 5.1 | 0.2.0 | 0.3.0 |
+|---|---|---|
+| `--region`·`--profile`·`--baseline`·`--output-dir` 필수, `--vpc-id`와 반복 `--sg-id` 중 하나만 | `--profile`·`--vpc-id`·`--sg-id` 없음, `--project`·`--alb-name` | 명세 형식 그대로(둘 다 주거나 둘 다 빼면 명령 오류 2) |
+| STS로 대상 계정 확인 후 리전·범위와 함께 시작 시 출력 | 없음 | `GetCallerIdentity` → `대상 계정: 1234****…` 출력. 실패하면 EC2를 읽지 않고 ERROR |
+| assets는 `expected_sg_ids`로 실제 자산 역할을 매핑 | `expected_sg_names`(이름) | `baseline.live.json`의 `expected_sg_ids`(Git 제외) |
+| 이름/태그만으로 자산 역할을 추정하지 않음 | `Name` 태그·ALB 이름·SG 이름으로 추정 | 기대 SG ID가 붙은 ENI를 그 자산으로 본다. 이름·태그는 보지 않는다(이름만 같은 SG는 무시) |
+| SG ID 선택 시 같은 자산의 추가 SG도 합집합 검사 | 해당 없음 | `--sg-id` → 그 SG가 붙은 ENI의 다른 SG까지 읽음 |
+| 연결 정보가 없으면 SG 규칙 결과와 자산 접근 결과를 나누고 후자는 UNKNOWN | 해당 단계 ERROR만 | ENI 수집 실패 시 기대 SG 규칙만 판정 + 자산마다 UNKNOWN + ERROR |
+
+### 수집 순서 (27번 권한 안에서만)
+
+| 순서 | API | `--vpc-id` | `--sg-id` | 실패하면 |
+|---|---|---|---|---|
+| 0 | `sts:GetCallerIdentity` | 계정 확인 | 계정 확인 | ERROR, EC2는 안 읽음 |
+| 1 | `ec2:DescribeVpcs` | 지정 VPC 1개(없거나 다른 계정 것이면 ERROR) | 부르지 않음 | ERROR |
+| 2 | `ec2:DescribeNetworkInterfaces` | 그 VPC의 ENI 전부, 모든 페이지 | 지정 SG가 붙은 ENI | ERROR + 자산 UNKNOWN(SG 규칙은 판정) |
+| 3 | `ec2:DescribeSecurityGroups` | 그 VPC의 SG 전부, 모든 페이지 | 지정 SG + 같은 ENI의 다른 SG | ERROR |
+
+자산 연결 판정:
+- ENI에 붙은 SG 중 baseline `expected_sg_ids`에 있는 것으로 주인 자산을 정하고, 그 ENI의 SG 전부를 그 자산의 연결로 본다(ALB ENI 2개처럼 여러 개면 합침).
+- 한 ENI에 서로 다른 자산의 기대 SG가 같이 있으면 **역할 미확정 UNKNOWN**(SG-06).
+- 기대 SG가 하나도 없는 ENI(VPC 엔드포인트, 새로 바뀐 SG 등)는 `eni:<ID>` 자산으로 두어 **baseline에 없는 자산 UNKNOWN**.
+- default SG는 AWS가 정한 이름 `default`로 찾는다(역할 추정이 아니라 AWS 고정값). SG-07은 `--vpc-id`에서만 판정한다.
+- 요청 제한(Throttling)·일시 오류는 3번까지 시도하고, 그래도 실패하면 ERROR. 결과의 계정 번호는 앞 4자리만 남긴다.
+
+### 일부러 실패시키는 시험 (`test_live.py`, 가짜 EC2·STS, boto3 없이)
+
+| ID | 상황 | 기대 |
+|---|---|---|
+| L1 | 설계대로 + default SG 비어 있음 | PASS (0), 시작 줄에 가린 계정·리전·범위 |
+| L2 | default SG에 기본 규칙 있음 | FAIL SG-07 (1) |
+| L3 | `DescribeSecurityGroups` 권한 거부 | ERROR (2), PASS 0개 |
+| L4 | `DescribeNetworkInterfaces`만 거부 | ERROR (2), SG 규칙 결과는 남고 자산 3개는 UNKNOWN |
+| L5 / L5-b / L5-c | 로그인 만료(STS 실패) / boto3 없음 / 없는 프로필 | ERROR (2), EC2 안 읽음, Traceback 없음 |
+| L6 | 지정 VPC 없음 / 다른 계정 VPC | ERROR (2), 더 읽지 않음 |
+| L7 / L8 | web-1 ENI 없음 / ALB ENI 없음 | UNKNOWN (3) |
+| L9 | SG·ENI가 여러 페이지 | 마지막 페이지까지 읽고 PASS |
+| L10 | 지우는 걸 잊은 SG | UNKNOWN SG-06 (3) |
+| L11 | 한 ENI에 web·db SG가 같이 | 역할 미확정 UNKNOWN (3) |
+| L11-b | SG 이름이 바뀜 + 이름만 같은 가짜 SG | 판정 그대로(PASS 11), 가짜는 연결 없음 UNKNOWN |
+| L12 | Throttling 2번 후 성공 / 계속 | PASS / 3번 시도 후 ERROR |
+| L13 | IPv6 `::/0` 22번·prefix list | FAIL SG-01 / SG-05 |
+| L14 | 출력 폴더가 이미 차 있음 | STS·EC2 모두 읽기 전에 ERROR (2) |
+| L15 | ALB ENI 2개(같은 SG) | 중복 없이 판정 |
+| L16 / L16-b / L16-c | `--sg-id` web: 같은 ENI의 22번 공개 SG / 정상 / default SG가 같이 붙음 | FAIL SG-01(합집합, AUD-11) / PASS 4 / SG-07 판정 안 함 |
+| L17 | 없는 `--sg-id` | ERROR (2) |
+| L18 | `sg-fixture-...` baseline 그대로 | AWS 읽기 전 ERROR (2) |
+| L19 | db SG가 새 SG로 바뀜 | db-1 UNKNOWN + 모르는 ENI UNKNOWN (PASS 아님) |
+| L20 | VPC 엔드포인트 ENI | UNKNOWN `eni:...` |
+| CLI 4개 | `--profile`·`--region` 빠짐 / 범위 없음 / `--vpc-id`+`--sg-id` | 명령 오류 (2) |
+
+- 뮤테이션 확인(11/13, 0.3.0): 합집합 안 읽기, 역할 미확정 무시, VPC 소유 계정 무시, 모르는 ENI 무시, `--sg-id` 범위 밖 자산을 UNKNOWN으로 셈, ENI 실패를 PASS로, SG 범위에서 SG-07 판정, 계정 번호 안 가림, fixture baseline 허용 — 9가지 모두 시험이 잡음.
+
+### 실행 기록 — 0.2.0 (11/13, 민성 PC Windows Git Bash, IAM 사용자 minsung)
+
+0.2.0(태그·이름으로 찾던 방식)으로 실행한 기록이다. 판정 대상 규칙은 같지만 명세 5.1 형식이 아니라 0.3.0으로 다시 실행한다(아래).
 
 | 시각 | 한 일 | 결과 |
 |---|---|---|
@@ -266,59 +365,5 @@ python -B -m unittest discover -s 이민성/sg_audit -p "test_*.py" -v
 
 - 기록에는 계정 번호·VPC·SG ID를 적지 않는다(결과 파일 `out/live-*`에는 남아 있고 `out/`은 Git 제외).
 - 되돌리기: 같은 두 규칙을 `authorize-security-group-ingress`·`authorize-security-group-egress`로 다시 넣는다.
-- 남은 범위: 명세 9장 `evidence/<run-id>/` 증거 폴더·가림 처리(3회차 증거 제출 전), 구민철 계정(27번)으로 3회차 실행·대조.
+- default SG 규칙 삭제(16:15)는 AWS 설정 변경이라 0.3.0으로 다시 실행해도 그대로 유지된다.
 
-명세 5.1. 실제 AWS에서 SG를 **읽기만** 해서 fixture와 같은 모양으로 바꾼 뒤, 기존 판정 코드(`audit`)로 baseline과 비교한다. AWS 설정은 바꾸지 않는다.
-
-실행(예정):
-
-```bash
-python network_audit.py live --baseline baseline.json --output-dir out/live-YYYYMMDD --region ap-northeast-2
-```
-
-- 실행 주체: 구현·첫 실행 이민성, 3회차 실행·대조 구민철(보람 27번 `Haven-Minchul-SG-Read`).
-- 필요 패키지: `boto3`(live 모드만). fixture 모드와 시험은 boto3 없이 돈다.
-
-### 수집 순서 (27번 권한 안에서만)
-
-| 순서 | API | 조건 | 얻는 것 | 실패하면 |
-|---|---|---|---|---|
-| 1 | `ec2:DescribeVpcs` | 태그 `Project=Haven` | 점검할 VPC 1개 | 0개·2개 이상이면 ERROR |
-| 2 | `ec2:DescribeSecurityGroups` | 그 VPC, 모든 페이지 | SG와 규칙 전부 | ERROR |
-| 3 | `ec2:DescribeInstances` | 태그 `Name=web-1`·`db-1`, 종료된 것 제외(중지 상태 포함) | 서버별 연결 SG | ERROR(읽은 결과는 보존) |
-| 4 | `ec2:DescribeNetworkInterfaces` | 설명 `ELB app/haven-alb/*` | ALB의 연결 SG | ERROR(읽은 결과는 보존) |
-
-- ALB SG는 `elasticloadbalancing:DescribeLoadBalancers` 대신 ALB가 만든 ENI에서 읽는다(27번에 ELB 조회 권한이 없음).
-  - 11/13 15:29 민성 확인(읽기 전용): `describe-network-interfaces --filters "Name=description,Values=ELB app/haven-alb/*"` → ENI 2개(가용 영역마다 1개), 둘 다 `haven-sg-alb`. ENI가 여러 개이므로 SG는 중복을 없애서 ALB 하나의 연결 SG로 합친다.
-- baseline `assets`에 `expected_sg_names`(예: `haven-sg-web`)를 추가한다. live는 이름으로 실제 SG ID를 찾는다. **실제 SG ID는 저장소 파일에 적지 않는다.** 같은 이름의 SG가 2개면 ERROR.
-- 결과 파일의 계정 번호는 가려서 저장한다(앞 4자리만 남김).
-- 요청 제한(Throttling)·일시 오류는 정해진 횟수만 재시도하고, 그래도 실패하면 ERROR.
-
-### default SG (결정: b안)
-
-- VPC를 만들면 생기는 `default` SG는 어느 서버에도 붙이지 않는다. 실수로 붙어도 통신이 안 되도록 **규칙이 하나도 없어야 정상**으로 본다.
-- 새 판정 **SG-07: default SG에 규칙이 있으면 FAIL**. default SG는 "연결 안 된 SG(SG-06 UNKNOWN)" 판정에서는 뺀다.
-- 처음 실제 default SG에는 AWS 기본 규칙(같은 SG끼리 전부 허용, 밖으로 전부 허용)이 있어 SG-07 FAIL이 나왔다. 사용 리소스가 없는 것을 확인하고 11/13 16:15 두 규칙을 지웠다(위 실행 기록). 지금은 비어 있어 SG-07 PASS.
-
-### 일부러 실패시키는 시험 (가짜 AWS 응답, boto3 없이)
-
-| ID | 상황 | 기대 |
-|---|---|---|
-| L1 | 설계대로 + default SG 비어 있음 | PASS (0) |
-| L2 | default SG에 기본 규칙 있음 | FAIL SG-07 (1) |
-| L3 | `DescribeSecurityGroups` 권한 거부 | ERROR (2), PASS로 표시하지 않음 |
-| L4 | `DescribeInstances`만 거부(일부 수집) | ERROR (2), 읽은 finding 보존 |
-| L5 | 자격 증명 없음·로그인 만료 | ERROR (2), Traceback 없음 |
-| L6 | Haven VPC 0개 / 2개 | ERROR (2) |
-| L7 | web-1 인스턴스 없음(삭제·이름 바뀜) | UNKNOWN (3) |
-| L8 | ALB ENI 없음 | UNKNOWN (3) |
-| L9 | SG 목록이 여러 페이지 | 끝까지 읽고 정상 판정 |
-| L10 | 연결 안 된 SG(`haven-sg-test` 남음) | UNKNOWN SG-06 (3) |
-| L11 | 같은 이름의 SG 2개 | ERROR (2) |
-| L12 | Throttling 계속 | 재시도 후 ERROR (2) |
-| L13 | IPv6 `::/0` 22번·prefix list 규칙 | 기존 규칙대로 FAIL SG-01 / SG-05 |
-| L14 | 출력 폴더가 이미 차 있음 | AWS를 읽기 전에 ERROR (2) |
-| L15 | ALB ENI 2개(같은 SG) | 중복 없이 1개로 판정, PASS |
-
-- 구현 뒤 판정·수집 코드를 일부러 망가뜨려 시험이 실제로 잡는지 확인한다(뮤테이션 확인).
-- 마지막에 민성 계정으로 실제 AWS에서 1회 실행해 결과를 이 절에 남긴다(계정 번호·SG ID 가림).

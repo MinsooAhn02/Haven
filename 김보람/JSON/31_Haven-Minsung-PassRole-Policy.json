@@ -5,7 +5,10 @@
       "Sid": "AllowApprovedEC2RoleOnly",
       "Effect": "Allow",
       "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::777171525040:role/haven-ec2-ssm-role",
+      "Resource": [
+        "arn:aws:iam::777171525040:role/haven-ec2-ssm-role",
+        "arn:aws:iam::777171525040:role/haven-ec2-web-role"
+      ],
       "Condition": {
         "StringEquals": {
           "iam:PassedToService": "ec2.amazonaws.com"

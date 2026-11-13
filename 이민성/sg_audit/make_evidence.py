@@ -39,7 +39,10 @@ PATTERNS = [
     ("ipv4", re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?(?![\d.])")),
     ("ipv6", re.compile(r"(?<![0-9A-Za-z:])(?:[0-9a-fA-F]{1,4}:){1,7}:?(?:[0-9a-fA-F]{1,4})?(?:/\d{1,3})?(?![0-9A-Za-z:])")),
     ("account", re.compile(r"(?<![0-9A-Za-z-])\d{12}(?![0-9A-Za-z-])")),
+    # network_audit.py가 앞 4자리만 남긴 계정 번호(7771********). 공개 묶음에서는 4자리도 남기지 않는다
+    ("account", re.compile(r"(?<![0-9A-Za-z-])\d{4}\*{8}(?![0-9A-Za-z*])")),
 ]
+ACCOUNT_MASK = "account-masked"   # 계정 번호는 경우의 수가 적어 해시로도 되찾을 수 있으므로 고정 문자열
 
 
 class EvidenceError(Exception):
@@ -57,6 +60,8 @@ def skip(kind, value):
 
 def token(kind, value):
     """같은 값은 언제나 같은 가림 값이 된다(전후 비교용). 원래 값은 되돌릴 수 없다."""
+    if kind == "account":
+        return ACCOUNT_MASK
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
     if kind == "aws_id":
         return value.split("-", 1)[0] + "-#" + digest
@@ -65,7 +70,7 @@ def token(kind, value):
 
 class Masker:
     def __init__(self):
-        self.counts = {kind: 0 for kind, _ in PATTERNS}
+        self.counts = {kind: 0 for kind, _ in PATTERNS}   # 같은 종류(account)는 한 칸에 합산
         self.mapping = {}
 
     def text(self, value):
@@ -128,6 +133,18 @@ def finding_key(f):
                                               "from_port", "to_port", "source_type", "source_value"))
 
 
+def rule_text(key):
+    """비교표 '내용' 칸: 방향·프로토콜·포트·상대. 포트가 없으면(전체 프로토콜 등) '전체'."""
+    check_id, _, _, direction, protocol, from_port, to_port, _, source_value = key
+    if not direction:
+        return "(default SG 비어 있음)" if check_id == "SG-07" else "(규칙 단위 아님)"
+    empty = ("", "None")
+    ports = "전체" if from_port in empty and to_port in empty else (
+        from_port if from_port == to_port else f"{from_port}-{to_port}")
+    proto = "전체 프로토콜" if protocol == "-1" else protocol
+    return f"{direction} {proto} {ports} {source_value}"
+
+
 def compare(before, after):
     """가린 결과 두 개를 비교한 마크다운."""
     lines = ["# 전후 비교", "",
@@ -142,7 +159,7 @@ def compare(before, after):
     rows = []
     for key in sorted(set(b) | set(a)):
         if b.get(key) != a.get(key):
-            rows.append(f"| {key[0]} | {key[1]} | {key[2]} | {key[3]} {key[4]} {key[5]}-{key[6]} {key[8]} "
+            rows.append(f"| {key[0]} | {key[1]} | {key[2]} | {rule_text(key)} "
                         f"| {b.get(key, '(없음)')} | {a.get(key, '(없음)')} |")
     be = sorted({e.get("code", "") for e in before.get("errors", [])})
     ae = sorted({e.get("code", "") for e in after.get("errors", [])})
@@ -231,7 +248,7 @@ def make_evidence(results_dir, baseline, evidence_root, before_dir=None, omissio
     masking = {
         "mask_version": MASK_VERSION,
         "rules": {
-            "account": "12자리 계정 번호 → account-#<sha256 앞 8자> (network_audit.py는 앞 4자리만 남겨 이미 가림)",
+            "account": "계정 번호(12자리, 또는 network_audit.py가 남긴 앞 4자리 + ********) → account-masked (4자리도 남기지 않음)",
             "arn": "ARN 전체 → arn-#<해시>",
             "aws_id": "sg-/vpc-/eni-/i-/pl-/subnet- 등 실제 ID → <접두어>-#<해시>",
             "ipv4": "IPv4 주소·CIDR → ipv4-#<해시> (0.0.0.0/0은 판정 근거라 그대로)",

@@ -30,7 +30,7 @@ def results(run_id=RUN_ID, verdict="FAIL", extra=None, errors=None, scope=None):
          "reason": "baseline 허용 규칙과 일치", "evidence": f"{SG_WEB}: egress tcp 443 0.0.0.0/0"},
         {"check_id": "SG-07", "region": "ap-northeast-2", "vpc_id": VPC, "sg_id": "sg-0bbbbccccdddd0000",
          "asset_id": "(default SG)", "asset_role": "", "direction": "ingress", "protocol": "-1",
-         "from_port": "", "to_port": "", "source_type": "sg", "source_value": "sg-0bbbbccccdddd0000",
+         "from_port": None, "to_port": None, "source_type": "sg", "source_value": "sg-0bbbbccccdddd0000",
          "expected": "규칙 없음", "actual": "", "verdict": verdict, "reason": "default SG에 규칙이 있음",
          "evidence": f"eni: {ENI} 10.0.1.25 2001:db8::1/128 arn:aws:iam::{ACCOUNT}:user/minsung"},
     ] + (extra or [])
@@ -39,7 +39,7 @@ def results(run_id=RUN_ID, verdict="FAIL", extra=None, errors=None, scope=None):
         counts["PASS"] = 2
     return {"schema_version": 1, "run_id": run_id, "started_at_utc": "2026-11-13T06:45:00.123456+00:00",
             "finished_at_utc": "2026-11-13T06:45:03.000000+00:00", "tool_version": "0.3.0", "mode": "live",
-            "account_id": "1234********", "region": "ap-northeast-2",
+            "account_id": "7771********", "region": "ap-northeast-2",
             "scope": scope or {"vpc_id": VPC, "sg_ids": [], "profile": "default"},
             "collection_status": "FAILED" if errors else "COMPLETE", "overall_verdict": verdict,
             "counts": counts, "findings": findings, "errors": errors or []}
@@ -85,12 +85,29 @@ class EvidenceTests(unittest.TestCase):
     def test_E2_masks_ids_ips_arn_account(self):
         target = self.build(self.write_run("out", results()))
         text = self.all_text(target)
-        for raw in (SG_WEB, VPC, ENI, "10.0.1.25", "2001:db8::1", ACCOUNT, "arn:aws:iam"):
+        for raw in (SG_WEB, VPC, ENI, "10.0.1.25", "2001:db8::1", ACCOUNT, "arn:aws:iam", "7771"):
             self.assertNotIn(raw, text, raw)
         saved = json.loads((target / "results.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["findings"][0]["source_value"], "0.0.0.0/0")
+        self.assertEqual(saved["account_id"], "account-masked")
+        m = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(m["account_id"], "account-masked")
         self.assertIn("2026-11-13T06:45:00.123456+00:00", text)
         self.assertIn(RUN_ID, text)
+
+    # E2-c 비교표 '내용' 칸: 일반 규칙·범위 포트·default SG PASS 줄
+    def test_E2c_rule_text(self):
+        self.assertEqual(me.rule_text(("SG-05", "web-1", "sg-#1", "egress", "tcp", "443", "443", "cidr", "0.0.0.0/0")),
+                         "egress tcp 443 0.0.0.0/0")
+        self.assertEqual(me.rule_text(("SG-01", "db-1", "sg-#1", "ingress", "tcp", "0", "65535", "cidr", "0.0.0.0/0")),
+                         "ingress tcp 0-65535 0.0.0.0/0")
+        self.assertEqual(me.rule_text(("SG-07", "(default SG)", "sg-#1", "", "", "", "", "", "")),
+                         "(default SG 비어 있음)")
+
+    # E2-d 4자리만 남긴 계정 번호가 가림 없이 남으면 안전장치가 잡음
+    def test_E2d_partial_account_is_leak(self):
+        self.assertEqual(me.leaks('"account_id": "7771********"'), ["account"])
+        self.assertEqual(me.leaks('"account_id": "account-masked"'), [])
 
     # E2-b 시각(17:06:30)·날짜는 IP로 보고 가리지 않음
     def test_E2b_times_are_not_masked(self):
@@ -126,6 +143,8 @@ class EvidenceTests(unittest.TestCase):
         text = (target / "comparison.md").read_text(encoding="utf-8")
         self.assertIn("| SG-07 |", text)
         self.assertIn("| FAIL | PASS |", text)
+        self.assertIn("ingress 전체 프로토콜 전체", text)        # 포트 없는 규칙은 None-None이 아니라 '전체'
+        self.assertNotIn("None", text)
         self.assertNotIn("sg-0bbbbccccdddd0000", text)
         m = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(m["before_run_id"], "aaaaaaaa-0000-4000-8000-000000000001")

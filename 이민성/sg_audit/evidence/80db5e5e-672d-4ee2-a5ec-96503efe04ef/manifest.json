@@ -1,0 +1,38 @@
+{
+  "evidence_version": 1,
+  "run_id": "80db5e5e-672d-4ee2-a5ec-96503efe04ef",
+  "created_at_utc": "2026-11-13T08:33:41.289544+00:00",
+  "commit": "30f40e4c7a60621138d5fbffa17272932afaeb8e",
+  "commit_dirty": false,
+  "environment": {
+    "python": "3.13.2",
+    "os": "Windows 11",
+    "boto3": "1.43.120"
+  },
+  "tool_version": "0.3.0",
+  "rule_version": {
+    "baseline_sha256": "fb0bf102bd4bdb6c141fc94bf4ea4f0e74f8634dc7f247f6f64e758d872ae9ab",
+    "baseline_file": "baseline.live.json"
+  },
+  "mode": "live",
+  "account_id": "7771********",
+  "region": "ap-northeast-2",
+  "scope": {
+    "vpc_id": "vpc-#1f23243e",
+    "sg_ids": [],
+    "profile": "default"
+  },
+  "run_started_at_utc": "2026-11-13T08:31:37.876431+00:00",
+  "run_finished_at_utc": "2026-11-13T08:31:39.677683+00:00",
+  "overall_verdict": "PASS",
+  "counts": {
+    "PASS": 11,
+    "FAIL": 0,
+    "UNKNOWN": 0,
+    "ERROR": 0
+  },
+  "known_omissions": [
+    "SG 허용 설정만 본 결과이며 실제 인터넷 도달(공인 IP/route/NACL/listener)은 별도 시험으로 확인함(명세 5.2)"
+  ],
+  "before_run_id": "1c9e3706-f262-48af-8ea8-ea4f19b64bb2"
+}

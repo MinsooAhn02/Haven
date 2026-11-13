@@ -1,7 +1,7 @@
 {
   "mask_version": 1,
   "rules": {
-    "account": "12자리 계정 번호 → account-#<sha256 앞 8자> (network_audit.py는 앞 4자리만 남겨 이미 가림)",
+    "account": "계정 번호(12자리, 또는 network_audit.py가 남긴 앞 4자리 + ********) → account-masked (4자리도 남기지 않음)",
     "arn": "ARN 전체 → arn-#<해시>",
     "aws_id": "sg-/vpc-/eni-/i-/pl-/subnet- 등 실제 ID → <접두어>-#<해시>",
     "ipv4": "IPv4 주소·CIDR → ipv4-#<해시> (0.0.0.0/0은 판정 근거라 그대로)",

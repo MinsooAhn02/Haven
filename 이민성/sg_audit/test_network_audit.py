@@ -73,8 +73,46 @@ class NetworkAuditTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             saved = json.loads((Path(temp) / "out/results.json").read_text(encoding="utf-8"))
             self.assertEqual(saved["overall_verdict"], "ERROR")
-            self.assertEqual(saved["counts"]["PASS"], 8)
+            self.assertEqual(saved["counts"]["PASS"], 10)
 
+
+    def test_outbound_80_must_match_baseline(self):
+        """설계 4.2 web·db outbound TCP 80(apt): 빠지거나 다르게 열리면 FAIL(SG-05)."""
+        base = json.loads((FIXTURES / "pass.json").read_text(encoding="utf-8"))
+
+        def egress(fixture, group_id):
+            return next(sg for sg in fixture["security_groups"] if sg["GroupId"] == group_id)["IpPermissionsEgress"]
+
+        missing = json.loads(json.dumps(base))
+        db_egress = egress(missing, "sg-fixture-db")
+        db_egress[:] = [p for p in db_egress if p["FromPort"] != 80]
+
+        wrong_port = json.loads(json.dumps(base))
+        for perm in egress(wrong_port, "sg-fixture-web"):
+            if perm["FromPort"] == 80:
+                perm["FromPort"] = perm["ToPort"] = 8080
+
+        wrong_target = json.loads(json.dumps(base))
+        for perm in egress(wrong_target, "sg-fixture-web"):
+            if perm["FromPort"] == 80:
+                perm["IpRanges"] = [{"CidrIp": "10.0.0.0/8"}]
+
+        cases = {
+            "missing": (missing, "db-1", "규칙 없음"),
+            "wrong_port": (wrong_port, "web-1", "egress tcp 8080-8080 cidr:0.0.0.0/0"),
+            "wrong_target": (wrong_target, "web-1", "egress tcp 80-80 cidr:10.0.0.0/8"),
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            for name, (fixture, asset, actual) in cases.items():
+                with self.subTest(case=name):
+                    source = Path(temp) / f"{name}.json"
+                    source.write_text(json.dumps(fixture), encoding="utf-8")
+                    result = self.run_cli(source, out=Path(temp) / name)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    saved = json.loads((Path(temp) / name / "results.json").read_text(encoding="utf-8"))
+                    self.assertTrue(any(f["verdict"] == "FAIL" and f["check_id"] == "SG-05"
+                                        and f["asset_id"] == asset and f["actual"] == actual
+                                        for f in saved["findings"]), saved["findings"])
 
 if __name__ == "__main__":
     unittest.main()

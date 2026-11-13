@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "description": "network/설계.md 4장 SG 연결표를 옮긴 허용표 (1회차 fixture용, 11/13 설계 4.2 web·db outbound 80 반영)",
+  "description": "network/설계.md 4장 SG 연결표를 옮긴 허용표 (fixture는 expected_sg_ids, live는 expected_sg_names로 SG를 찾음. 11/13 설계 4.2 web·db outbound 80 반영)",
   "assets": [
-    { "asset_id": "alb",   "asset_role": "alb", "expected_sg_ids": ["sg-fixture-alb"] },
-    { "asset_id": "web-1", "asset_role": "web", "expected_sg_ids": ["sg-fixture-web"] },
-    { "asset_id": "db-1",  "asset_role": "db",  "expected_sg_ids": ["sg-fixture-db"] }
+    { "asset_id": "alb",   "asset_role": "alb", "expected_sg_ids": ["sg-fixture-alb"], "expected_sg_names": ["haven-sg-alb"] },
+    { "asset_id": "web-1", "asset_role": "web", "expected_sg_ids": ["sg-fixture-web"], "expected_sg_names": ["haven-sg-web"] },
+    { "asset_id": "db-1",  "asset_role": "db",  "expected_sg_ids": ["sg-fixture-db"],  "expected_sg_names": ["haven-sg-db"] }
   ],
   "allowed_rules": [
     { "asset_role": "alb", "direction": "ingress", "protocol": "tcp", "from_port": 443,  "to_port": 443,  "source_type": "cidr",    "source_value": "0.0.0.0/0" },

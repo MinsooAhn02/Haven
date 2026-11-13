@@ -39,6 +39,15 @@
       "Effect": "Allow",
       "Action": "wafv2:DisassociateWebACL",
       "Resource": "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:loadbalancer/app/haven-alb/*"
+    },
+    {
+      "Sid": "ReadHavenALBWAFConnection",
+      "Effect": "Allow",
+      "Action": "wafv2:GetWebACLForResource",
+      "Resource": [
+        "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:loadbalancer/app/haven-alb/*",
+        "arn:aws:wafv2:ap-northeast-2:777171525040:regional/webacl/*/*"
+      ]
     }
   ]
 }

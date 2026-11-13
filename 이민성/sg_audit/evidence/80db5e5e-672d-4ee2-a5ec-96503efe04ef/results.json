@@ -5,7 +5,7 @@
   "finished_at_utc": "2026-11-13T08:31:39.677683+00:00",
   "tool_version": "0.3.0",
   "mode": "live",
-  "account_id": "7771********",
+  "account_id": "account-masked",
   "region": "ap-northeast-2",
   "scope": {
     "vpc_id": "vpc-#1f23243e",

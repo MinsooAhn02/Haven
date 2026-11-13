@@ -3,8 +3,11 @@
 network/설계.md 4장의 SG 연결표(baseline.json)와 실제(또는 fixture) SG 규칙을 비교해
 PASS / FAIL / UNKNOWN / ERROR 로 판정한다.
 
-사용법 (1회차: fixture 모드만 구현):
+사용법:
     python network_audit.py fixture --fixture <json> --baseline <json> --output-dir <새 폴더>
+    python network_audit.py live --baseline <json> --output-dir <새 폴더> [--region ap-northeast-2]
+
+live 모드(3회차)는 실제 AWS를 읽기만 한다(Describe* API). boto3가 필요하다.
 
 종료 코드: 0=PASS, 1=FAIL, 2=ERROR, 3=UNKNOWN (여러 개면 ERROR > UNKNOWN > FAIL > PASS)
 """
@@ -13,11 +16,12 @@ import argparse
 import csv
 import json
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-TOOL_VERSION = "0.1.0"
+TOOL_VERSION = "0.2.0"
 
 # 인터넷 전체를 뜻하는 주소
 PUBLIC_CIDRS = {"0.0.0.0/0", "::/0"}
@@ -62,7 +66,7 @@ def validate_inputs(baseline, fixture):
     attachments = require_list(fixture, "attachments", "fixture")
     errors = require_list(fixture, "errors", "fixture")
     for item in assets:
-        if not isinstance(item, dict) or not isinstance(item.get("asset_id"), str) or not isinstance(item.get("asset_role"), str) or not isinstance(item.get("expected_sg_ids", []), list):
+        if not isinstance(item, dict) or not isinstance(item.get("asset_id"), str) or not isinstance(item.get("asset_role"), str) or not isinstance(item.get("expected_sg_ids", []), list) or not isinstance(item.get("expected_sg_names", []), list):
             raise ValueError("baseline.assets 항목 형식이 잘못되었습니다")
     required_rule = ("asset_role", "direction", "protocol", "from_port", "to_port", "source_type", "source_value")
     if any(not isinstance(item, dict) or any(key not in item for key in required_rule) for item in rules):
@@ -150,8 +154,9 @@ def make_finding(ctx, **kw):
     return finding
 
 
-def audit(baseline, fixture):
-    """baseline과 fixture를 비교해 findings 목록을 만든다."""
+def audit(baseline, fixture, ignore_unattached=()):
+    """baseline과 fixture를 비교해 findings 목록을 만든다.
+    ignore_unattached: '연결 안 된 SG(SG-06)' 판정에서 뺄 SG ID(live의 default SG, SG-07에서 따로 판정)."""
     ctx = {"region": fixture.get("region", ""), "vpc_id": fixture.get("vpc_id", "")}
     findings = []
 
@@ -266,7 +271,7 @@ def audit(baseline, fixture):
 
     # (6) 어느 자산에도 연결되지 않은 SG → UNKNOWN (SG-06)
     for sg_id in sgs:
-        if sg_id not in attached_sg_ids:
+        if sg_id not in attached_sg_ids and sg_id not in ignore_unattached:
             findings.append(make_finding(
                 ctx, check_id="SG-06", sg_id=sg_id, expected="자산에 연결된 SG",
                 actual="연결된 자산 없음", verdict="UNKNOWN",
@@ -311,21 +316,197 @@ def write_results(out, envelope):
 
 
 # ---------------------------------------------------------------------------
-# 5. 명령 실행
+# 5. live 수집 (실제 AWS, 읽기 전용)
 # ---------------------------------------------------------------------------
-def run_fixture(args):
-    started = datetime.now(timezone.utc)
-    try:
-        baseline = load_json(args.baseline)
-        fixture = load_json(args.fixture)
-        validate_inputs(baseline, fixture)
-        out = prepare_output_dir(args.output_dir)
-    except (ValueError, OSError) as e:
-        print(f"[ERROR] {e}", file=sys.stderr)
-        return EXIT_CODE["ERROR"]
+# 이 코드는 Describe* API만 부른다. AWS 설정을 바꾸는 API는 쓰지 않는다.
+RETRY_CODES = {"Throttling", "ThrottlingException", "RequestLimitExceeded", "RequestThrottled",
+               "ServiceUnavailable", "InternalError"}
+MAX_ATTEMPTS = 3
+LIVE_STATES = ["pending", "running", "stopping", "stopped"]   # 종료(terminated)만 뺀다
+DEFAULT_SG_NAME = "default"
 
-    errors = fixture.get("errors", [])
-    findings = audit(baseline, fixture)
+
+class CollectError(Exception):
+    """수집 단계 하나가 실패함. stage·code만 남기고 AWS 오류 원문은 남기지 않는다(ARN·계정 번호가 들어 있음)."""
+
+    def __init__(self, stage, code, message):
+        super().__init__(message)
+        self.stage, self.code, self.message = stage, code, message
+
+    def as_dict(self):
+        return {"stage": self.stage, "code": self.code, "message": self.message}
+
+
+def error_code(exc):
+    """botocore ClientError면 AWS 오류 코드, 아니면 예외 이름(예: NoCredentialsError)."""
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        code = response.get("Error", {}).get("Code")
+        if code:
+            return str(code)[:64]
+    return type(exc).__name__
+
+
+def call_paged(client, stage, method, result_key, sleep=time.sleep, **kwargs):
+    """Describe* API를 마지막 페이지까지 부른다. 요청 제한이면 MAX_ATTEMPTS번까지 다시 시도한다."""
+    items, token = [], None
+    while True:
+        params = dict(kwargs)
+        if token:
+            params["NextToken"] = token
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                page = getattr(client, method)(**params)
+                break
+            except Exception as exc:  # 어떤 오류든 PASS로 넘기지 않고 ERROR로 남긴다
+                code = error_code(exc)
+                if code in RETRY_CODES and attempt < MAX_ATTEMPTS:
+                    sleep(2 ** attempt)
+                    continue
+                tried = f" ({attempt}번 시도)" if code in RETRY_CODES else ""
+                raise CollectError(stage, code, f"{stage} 호출 실패{tried}")
+        items.extend(page.get(result_key, []))
+        token = page.get("NextToken")
+        if not token:
+            return items
+
+
+def mask_account(account_id):
+    """계정 번호는 앞 4자리만 남긴다."""
+    account_id = str(account_id or "")
+    return account_id[:4] + "*" * (len(account_id) - 4) if len(account_id) > 4 else account_id
+
+
+def collect_live(client, baseline, project="Haven", alb_name="haven-alb", sleep=time.sleep):
+    """실제 AWS를 읽어 fixture와 같은 모양(dict)으로 돌려준다.
+    돌려주는 값: (data, default_sg_ids). 실패한 단계는 data["errors"]에 남기고, 읽은 것은 보존한다."""
+    data = {"account_id": "", "region": "", "vpc_id": "", "fixture_id": "live",
+            "security_groups": [], "attachments": [], "errors": []}
+    default_sg_ids = []
+    assets = baseline.get("assets", [])
+
+    # 1) 점검할 VPC: Project 태그로 정확히 1개
+    try:
+        vpcs = call_paged(client, "DescribeVpcs", "describe_vpcs", "Vpcs", sleep=sleep,
+                          Filters=[{"Name": "tag:Project", "Values": [project]}])
+    except CollectError as e:
+        data["errors"].append(e.as_dict())
+        return data, default_sg_ids
+    if len(vpcs) != 1:
+        data["errors"].append(CollectError(
+            "DescribeVpcs", "VpcNotFound" if not vpcs else "VpcAmbiguous",
+            f"태그 Project={project}인 VPC가 {len(vpcs)}개(1개여야 함)").as_dict())
+        return data, default_sg_ids
+    vpc_id = vpcs[0]["VpcId"]
+    data["vpc_id"] = vpc_id
+    data["account_id"] = vpcs[0].get("OwnerId", "")
+    vpc_filter = {"Name": "vpc-id", "Values": [vpc_id]}
+
+    # 2) SG 전부(모든 페이지)
+    try:
+        groups = call_paged(client, "DescribeSecurityGroups", "describe_security_groups",
+                            "SecurityGroups", sleep=sleep, Filters=[vpc_filter])
+    except CollectError as e:
+        data["errors"].append(e.as_dict())
+        groups = []
+    data["security_groups"] = groups
+    ids_by_name = {}
+    for sg in groups:
+        ids_by_name.setdefault(sg.get("GroupName"), []).append(sg["GroupId"])
+    default_sg_ids = ids_by_name.get(DEFAULT_SG_NAME, [])
+
+    # baseline의 SG 이름 → 실제 ID (실제 ID는 저장소 파일에 적지 않는다)
+    for asset in assets:
+        names = asset.get("expected_sg_names", [])
+        if not names:
+            data["errors"].append(CollectError(
+                "baseline", "NoExpectedSgNames",
+                f"{asset['asset_id']}: baseline에 expected_sg_names가 없음").as_dict())
+        resolved = []
+        for name in names:
+            found = ids_by_name.get(name, [])
+            if len(found) > 1:
+                data["errors"].append(CollectError(
+                    "ResolveSgName", "DuplicateSgName", f"이름이 {name}인 SG가 {len(found)}개").as_dict())
+            if found:
+                resolved.extend(found)
+            elif groups:   # SG 목록은 읽었는데 그 이름이 없음 → "기대 SG 미연결" FAIL로 드러나게 한다
+                resolved.append(f"missing:{name}")
+        asset["expected_sg_ids"] = resolved
+
+    # 3) 서버(EC2): Name 태그로 찾고, 붙은 SG를 모은다
+    server_ids = [a["asset_id"] for a in assets if a["asset_role"] != "alb"]
+    if server_ids:
+        try:
+            reservations = call_paged(
+                client, "DescribeInstances", "describe_instances", "Reservations", sleep=sleep,
+                Filters=[vpc_filter, {"Name": "tag:Name", "Values": server_ids},
+                         {"Name": "instance-state-name", "Values": LIVE_STATES}])
+            seen = {}
+            for res in reservations:
+                for inst in res.get("Instances", []):
+                    name = next((t["Value"] for t in inst.get("Tags", []) if t.get("Key") == "Name"), None)
+                    if name in server_ids:
+                        seen.setdefault(name, []).append([g["GroupId"] for g in inst.get("SecurityGroups", [])])
+            for name, found in seen.items():
+                if len(found) > 1:
+                    data["errors"].append(CollectError(
+                        "DescribeInstances", "DuplicateInstanceName",
+                        f"Name 태그가 {name}인 인스턴스가 {len(found)}개").as_dict())
+                    continue
+                data["attachments"].append({"asset_id": name, "sg_ids": sorted(set(found[0]))})
+        except CollectError as e:
+            data["errors"].append(e.as_dict())
+
+    # 4) ALB: ELB 조회 권한 없이 ALB가 만든 ENI에서 SG를 읽는다(가용 영역마다 ENI가 있어 중복을 없앤다)
+    for asset in assets:
+        if asset["asset_role"] != "alb":
+            continue
+        try:
+            enis = call_paged(
+                client, "DescribeNetworkInterfaces", "describe_network_interfaces",
+                "NetworkInterfaces", sleep=sleep,
+                Filters=[vpc_filter, {"Name": "description", "Values": [f"ELB app/{alb_name}/*"]}])
+        except CollectError as e:
+            data["errors"].append(e.as_dict())
+            continue
+        sg_ids = sorted({g["GroupId"] for eni in enis for g in eni.get("Groups", [])})
+        if enis:
+            data["attachments"].append({"asset_id": asset["asset_id"], "sg_ids": sg_ids})
+
+    return data, default_sg_ids
+
+
+def check_default_sg(data, default_sg_ids):
+    """SG-07: VPC의 default SG는 규칙이 하나도 없어야 한다(실수로 붙어도 통신이 안 되게)."""
+    findings = []
+    ctx = {"region": data.get("region", ""), "vpc_id": data.get("vpc_id", "")}
+    groups = {sg["GroupId"]: sg for sg in data.get("security_groups", [])}
+    for sg_id in default_sg_ids:
+        rules = flatten_rules(groups[sg_id])
+        if rules:
+            for rule in rules:
+                findings.append(make_finding(
+                    ctx, check_id="SG-07", sg_id=sg_id, asset_id="(default SG)",
+                    **{k: rule[k] for k in ("direction", "protocol", "from_port", "to_port",
+                                            "source_type", "source_value")},
+                    expected="default SG에 규칙 없음", actual=describe(rule), verdict="FAIL",
+                    reason="default SG에 규칙이 있음(실수로 붙으면 통신이 열림)",
+                    evidence=f"{sg_id}: {describe(rule)}"))
+        else:
+            findings.append(make_finding(
+                ctx, check_id="SG-07", sg_id=sg_id, asset_id="(default SG)",
+                expected="default SG에 규칙 없음", actual="규칙 없음", verdict="PASS",
+                reason="default SG가 비어 있음", evidence=f"sg_id: {sg_id}"))
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# 6. 명령 실행
+# ---------------------------------------------------------------------------
+def finish(mode, data, findings, out, started, scope):
+    """판정 개수·전체 판정을 정리해 저장하고 화면에 요약을 찍는다. 종료 코드를 돌려준다."""
+    errors = data.get("errors", [])
     verdict = overall_verdict(findings, errors)
 
     counts = {v: 0 for v in ("PASS", "FAIL", "UNKNOWN", "ERROR")}
@@ -339,10 +520,10 @@ def run_fixture(args):
         "started_at_utc": started.isoformat(),
         "finished_at_utc": datetime.now(timezone.utc).isoformat(),
         "tool_version": TOOL_VERSION,
-        "mode": "fixture",
-        "account_id": fixture.get("account_id", ""),
-        "region": fixture.get("region", ""),
-        "scope": {"vpc_id": fixture.get("vpc_id", ""), "fixture_id": fixture.get("fixture_id", "")},
+        "mode": mode,
+        "account_id": data.get("account_id", ""),
+        "region": data.get("region", ""),
+        "scope": scope,
         "collection_status": "FAILED" if errors else "COMPLETE",
         "overall_verdict": verdict,
         "counts": counts,
@@ -356,7 +537,7 @@ def run_fixture(args):
         print(f"[ERROR] 결과 저장 실패: {e}", file=sys.stderr)
         return EXIT_CODE["ERROR"]
 
-    print(f"모드: fixture ({fixture.get('fixture_id', '')})  계정: {envelope['account_id']}  리전: {envelope['region']}")
+    print(f"모드: {mode} ({scope.get('fixture_id') or scope.get('vpc_id', '')})  계정: {envelope['account_id']}  리전: {envelope['region']}")
     print(f"수집 상태: {envelope['collection_status']}  결과: {counts}")
     for f in findings:
         if f["verdict"] != "PASS":
@@ -368,7 +549,73 @@ def run_fixture(args):
     return EXIT_CODE[verdict]
 
 
-def main():
+def run_fixture(args):
+    started = datetime.now(timezone.utc)
+    try:
+        baseline = load_json(args.baseline)
+        fixture = load_json(args.fixture)
+        validate_inputs(baseline, fixture)
+        out = prepare_output_dir(args.output_dir)
+    except (ValueError, OSError) as e:
+        print(f"[ERROR] {e}", file=sys.stderr)
+        return EXIT_CODE["ERROR"]
+
+    findings = audit(baseline, fixture)
+    scope = {"vpc_id": fixture.get("vpc_id", ""), "fixture_id": fixture.get("fixture_id", "")}
+    return finish("fixture", fixture, findings, out, started, scope)
+
+
+def make_ec2_client(region):
+    """boto3 EC2 클라이언트. 재시도는 call_paged가 직접 하므로 boto3 자동 재시도는 끈다."""
+    import boto3
+    from botocore.config import Config
+    config = Config(retries={"total_max_attempts": 1}, connect_timeout=5, read_timeout=15)
+    return boto3.client("ec2", region_name=region, config=config)
+
+
+def run_live(args, client_factory=make_ec2_client, sleep=time.sleep):
+    started = datetime.now(timezone.utc)
+    # AWS를 읽기 전에 입력·출력 폴더부터 확인한다(L14)
+    try:
+        baseline = load_json(args.baseline)
+        validate_inputs(baseline, {"security_groups": [], "attachments": [], "errors": []})
+        out = prepare_output_dir(args.output_dir)
+    except (ValueError, OSError) as e:
+        print(f"[ERROR] {e}", file=sys.stderr)
+        return EXIT_CODE["ERROR"]
+
+    try:
+        client = client_factory(args.region)
+    except ImportError:
+        data = {"errors": [{"stage": "setup", "code": "Boto3NotInstalled",
+                            "message": "live 모드는 boto3가 필요함(pip install boto3)"}]}
+        client = None
+    except Exception as e:
+        data = {"errors": [{"stage": "setup", "code": error_code(e), "message": "AWS 클라이언트 생성 실패"}]}
+        client = None
+
+    if client is not None:
+        try:
+            data, default_sg_ids = collect_live(client, baseline, project=args.project,
+                                                alb_name=args.alb_name, sleep=sleep)
+        except Exception as e:  # 예상 못 한 응답 모양도 Traceback 대신 ERROR로
+            data, default_sg_ids = {"errors": [{"stage": "collect", "code": error_code(e),
+                                                "message": "수집 중 예상하지 못한 오류"}]}, []
+    else:
+        default_sg_ids = []
+
+    data.setdefault("security_groups", [])
+    data.setdefault("attachments", [])
+    data["region"] = args.region
+    data["account_id"] = mask_account(data.get("account_id", ""))
+
+    findings = audit(baseline, data, ignore_unattached=set(default_sg_ids))
+    findings += check_default_sg(data, default_sg_ids)
+    scope = {"vpc_id": data.get("vpc_id", ""), "project_tag": args.project, "alb_name": args.alb_name}
+    return finish("live", data, findings, out, started, scope)
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description="SG 설정 점검 CLI (읽기 전용)")
     sub = parser.add_subparsers(dest="mode", required=True)
 
@@ -377,12 +624,16 @@ def main():
     p_fix.add_argument("--baseline", required=True, help="baseline JSON 경로")
     p_fix.add_argument("--output-dir", required=True, help="결과를 저장할 새 폴더")
 
-    sub.add_parser("live", help="실제 AWS 읽기 전용 수집 (3회차 예정, 아직 미구현)")
+    p_live = sub.add_parser("live", help="실제 AWS를 읽기만 해서 판정(boto3 필요)")
+    p_live.add_argument("--baseline", required=True, help="baseline JSON 경로")
+    p_live.add_argument("--output-dir", required=True, help="결과를 저장할 새 폴더")
+    p_live.add_argument("--region", default="ap-northeast-2", help="AWS 리전 (기본 ap-northeast-2)")
+    p_live.add_argument("--project", default="Haven", help="점검할 VPC의 Project 태그 값 (기본 Haven)")
+    p_live.add_argument("--alb-name", default="haven-alb", help="ALB 이름 (기본 haven-alb)")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.mode == "live":
-        print("[ERROR] live 모드는 아직 구현하지 않았습니다(3회차 예정).", file=sys.stderr)
-        return EXIT_CODE["ERROR"]
+        return run_live(args)
     return run_fixture(args)
 
 

@@ -113,7 +113,7 @@
 | `schema_version` | 형식 버전. 현재 1 |
 | `assets[].asset_id` | 서버 이름 (예: `web-1`) |
 | `assets[].asset_role` | 서버 역할: `alb`, `web`, `db` |
-| `assets[].expected_sg_ids` | 그 서버에 붙어 있어야 하는 SG ID. 1회차는 가짜 ID(`sg-fixture-...`), 3회차에 실제 ID로 교체 |
+| `assets[].expected_sg_ids` | 그 서버에 붙어 있어야 하는 SG ID. fixture 모드용 가짜 ID(`sg-fixture-...`). live 모드는 실제 ID를 파일에 적지 않고 `expected_sg_names`(SG 이름, 3회차 추가 예정)로 찾는다(아래 "live 모드 설계") |
 | `allowed_rules[].direction` | `ingress`(들어옴) / `egress`(나감) |
 | `allowed_rules[].protocol`, `from_port`, `to_port` | 프로토콜과 포트 범위 |
 | `allowed_rules[].source_type` | `cidr`(IP 범위) 또는 `sg_role`(해당 역할의 SG) |
@@ -220,5 +220,60 @@ python -B -m unittest discover -s 이민성/sg_audit -p test_network_audit.py -v
 - 같은 `--output-dir`로 다시 실행하면 덮어쓰지 않고 ERROR(2)로 멈춘다.
 - 없는 파일을 지정하면 ERROR(2)로 멈춘다.
 
-미구현(다음 회차): `live` 모드(실제 AWS 읽기 전용 수집, 3회차), AUD-03~07·10·11 추가 fixture.
+미구현(다음 회차): `live` 모드(실제 AWS 읽기 전용 수집, 3회차 — 설계는 아래 "live 모드 설계" 절), AUD-03~07·10·11 추가 fixture.
 
+## live 모드 설계 (2026-11-13 확정, 구현 전)
+
+명세 5.1. 실제 AWS에서 SG를 **읽기만** 해서 fixture와 같은 모양으로 바꾼 뒤, 기존 판정 코드(`audit`)로 baseline과 비교한다. AWS 설정은 바꾸지 않는다.
+
+실행(예정):
+
+```bash
+python network_audit.py live --baseline baseline.json --output-dir out/live-YYYYMMDD --region ap-northeast-2
+```
+
+- 실행 주체: 구현·첫 실행 이민성, 3회차 실행·대조 구민철(보람 27번 `Haven-Minchul-SG-Read`).
+- 필요 패키지: `boto3`(live 모드만). fixture 모드와 시험은 boto3 없이 돈다.
+
+### 수집 순서 (27번 권한 안에서만)
+
+| 순서 | API | 조건 | 얻는 것 | 실패하면 |
+|---|---|---|---|---|
+| 1 | `ec2:DescribeVpcs` | 태그 `Project=Haven` | 점검할 VPC 1개 | 0개·2개 이상이면 ERROR |
+| 2 | `ec2:DescribeSecurityGroups` | 그 VPC, 모든 페이지 | SG와 규칙 전부 | ERROR |
+| 3 | `ec2:DescribeInstances` | 태그 `Name=web-1`·`db-1`, 종료된 것 제외(중지 상태 포함) | 서버별 연결 SG | ERROR(읽은 결과는 보존) |
+| 4 | `ec2:DescribeNetworkInterfaces` | 설명 `ELB app/haven-alb/*` | ALB의 연결 SG | ERROR(읽은 결과는 보존) |
+
+- ALB SG는 `elasticloadbalancing:DescribeLoadBalancers` 대신 ALB가 만든 ENI에서 읽는다(27번에 ELB 조회 권한이 없음).
+  - 11/13 15:29 민성 확인(읽기 전용): `describe-network-interfaces --filters "Name=description,Values=ELB app/haven-alb/*"` → ENI 2개(가용 영역마다 1개), 둘 다 `haven-sg-alb`. ENI가 여러 개이므로 SG는 중복을 없애서 ALB 하나의 연결 SG로 합친다.
+- baseline `assets`에 `expected_sg_names`(예: `haven-sg-web`)를 추가한다. live는 이름으로 실제 SG ID를 찾는다. **실제 SG ID는 저장소 파일에 적지 않는다.** 같은 이름의 SG가 2개면 ERROR.
+- 결과 파일의 계정 번호는 가려서 저장한다(앞 4자리만 남김).
+- 요청 제한(Throttling)·일시 오류는 정해진 횟수만 재시도하고, 그래도 실패하면 ERROR.
+
+### default SG (결정: b안)
+
+- VPC를 만들면 생기는 `default` SG는 어느 서버에도 붙이지 않는다. 실수로 붙어도 통신이 안 되도록 **규칙이 하나도 없어야 정상**으로 본다.
+- 새 판정 **SG-07: default SG에 규칙이 있으면 FAIL**. default SG는 "연결 안 된 SG(SG-06 UNKNOWN)" 판정에서는 뺀다.
+- 지금 실제 default SG에는 AWS 기본 규칙(같은 SG끼리 전부 허용, 밖으로 전부 허용)이 있어 SG-07 FAIL이 나온다. PASS를 받으려면 default SG 규칙 2개를 지우는 AWS 변경이 필요하다(민성 담당, default SG를 쓰는 ENI가 없는지 먼저 확인, 실행 전 조장 확인). live 구현 뒤에 한다.
+
+### 일부러 실패시키는 시험 (가짜 AWS 응답, boto3 없이)
+
+| ID | 상황 | 기대 |
+|---|---|---|
+| L1 | 설계대로 + default SG 비어 있음 | PASS (0) |
+| L2 | default SG에 기본 규칙 있음 | FAIL SG-07 (1) |
+| L3 | `DescribeSecurityGroups` 권한 거부 | ERROR (2), PASS로 표시하지 않음 |
+| L4 | `DescribeInstances`만 거부(일부 수집) | ERROR (2), 읽은 finding 보존 |
+| L5 | 자격 증명 없음·로그인 만료 | ERROR (2), Traceback 없음 |
+| L6 | Haven VPC 0개 / 2개 | ERROR (2) |
+| L7 | web-1 인스턴스 없음(삭제·이름 바뀜) | UNKNOWN (3) |
+| L8 | ALB ENI 없음 | UNKNOWN (3) |
+| L9 | SG 목록이 여러 페이지 | 끝까지 읽고 정상 판정 |
+| L10 | 연결 안 된 SG(`haven-sg-test` 남음) | UNKNOWN SG-06 (3) |
+| L11 | 같은 이름의 SG 2개 | ERROR (2) |
+| L12 | Throttling 계속 | 재시도 후 ERROR (2) |
+| L13 | IPv6 `::/0` 22번·prefix list 규칙 | 기존 규칙대로 FAIL SG-01 / SG-05 |
+| L14 | 출력 폴더가 이미 차 있음 | AWS를 읽기 전에 ERROR (2) |
+
+- 구현 뒤 판정·수집 코드를 일부러 망가뜨려 시험이 실제로 잡는지 확인한다(뮤테이션 확인).
+- 마지막에 민성 계정으로 실제 AWS에서 1회 실행해 결과를 이 절에 남긴다(계정 번호·SG ID 가림).

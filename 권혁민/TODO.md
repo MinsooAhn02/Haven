@@ -39,7 +39,46 @@
 - [ ] AWS 환경에서 보안 fixture 재실행
 - [ ] Count 결과를 바탕으로 Block 전환 대상 선정
 - [ ] Block 적용 전후 정상 기능 및 차단 결과 비교
+- [ ] 발견 문제의 수정 후 재시험과 정상 회귀를 확인한다.
 - [ ] 최종 시험 결과 보고서 작성 및 PR 제출
+
+#### IAM 권한 검증 결과 (2026-11-13)
+
+- 환경: AWS CLI, profile `hyeokmin`, region `ap-northeast-2`
+- WAF 조회: `aws wafv2 get-web-acl` → 성공
+  - `haven-web-acl`, 기본 Allow, 관리형 규칙 3개 Count 확인
+  - `--query` 없이 원본 JSON 조회 및 로컬 저장
+- CloudWatch 로그 그룹 조회: `logs describe-log-groups` → 성공
+  - `/haven/web`, 보존 기간 30일
+- 로그 스트림 조회: `logs describe-log-streams` → 성공
+  - `app`, `nginx-access`, `nginx-error` 확인
+- 로그 읽기: `logs get-log-events` → 이벤트 5건 조회 성공
+- 로그 검색: `logs filter-log-events` → 이벤트 5건 검색 성공
+- EC2 조회: `ec2 describe-instances` → 실행 중인 인스턴스 2대 확인
+- SSM 접근 거부: `ssm start-session` → `AccessDeniedException`
+  - `ssm:StartSession` 허용 정책 없음 확인
+
+결과: 조회·검색 권한 정상, SSM 기본 셸 세션 접근 거부 정상.
+범위: 실제 실행한 API 호출 기준. IAM 전체 정책 및 다른 세션 방식은 미검증.
+
+#### WAF Web ACL 원본 검증 (2026-11-13)
+
+- 대상: `haven-web-acl` (`REGIONAL`, `ap-northeast-2`)
+- 검증 방법: AWS CLI `get-web-acl` 실제 조회
+- 검증 결과:
+  - 기본 동작 Allow 확인
+  - 관리형 규칙 3개 모두 Count 모드 확인
+  - `SampledRequestsEnabled=false` 확인
+  - 원본 JSON 조회 성공 (`WAF_READ_OK`)
+- 원본 증빙: `waf/2026-11-13_get-web-acl_raw.json`
+
+실행 명령:
+
+```cmd
+aws wafv2 get-web-acl --name haven-web-acl --scope REGIONAL --id ddd129cb-9894-4907-9807-bbdfb79e36c1 --profile hyeokmin --region ap-northeast-2 --output json --no-cli-pager
+```
+
+※ 2026-11-13 12:00경(KST) 조장이 ALB 연결 완료(#98). 이후 정상 요청 및 SQLi·XSS·PROPFIND의 실제 WAF Count 동작과 CloudWatch 로그 수집을 확인함. WAF–Nginx–Gunicorn 로그 상관분석은 요청 경로·시각 기준으로 완료했으며, Nginx·Gunicorn의 요청 ID 헤더 기록 개선은 별도 진행 예정.
 
 ## 인계·완료 기준
 

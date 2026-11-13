@@ -13,7 +13,7 @@
         "wafv2:PutLoggingConfiguration",
         "wafv2:GetLoggingConfiguration"
       ],
-      "Resource": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/webacl/haven-*/*"
+      "Resource": "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/webacl/haven-*/*"
     },
     {
       "Sid": "ManageReferencedManagedRuleSets",
@@ -22,7 +22,7 @@
         "wafv2:CreateWebACL",
         "wafv2:UpdateWebACL"
       ],
-      "Resource": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/managedruleset/*/*"
+      "Resource": "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/managedruleset/*/*"
     },
     {
       "Sid": "WAFReadAndRules",
@@ -64,13 +64,13 @@
         "logs:CreateLogGroup",
         "logs:PutRetentionPolicy"
       ],
-      "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:aws-waf-logs-haven*"
+      "Resource": "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:aws-waf-logs-haven*"
     },
     {
       "Sid": "ListHavenWebACLResources",
       "Effect": "Allow",
       "Action": "wafv2:ListResourcesForWebACL",
-      "Resource": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/webacl/haven-web-acl/ddd129cb-9894-4907-9807-bbdfb79e36c1"
+      "Resource": "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/webacl/haven-web-acl/ddd129cb-9894-4907-9807-bbdfb79e36c1"
     }
   ]
 }

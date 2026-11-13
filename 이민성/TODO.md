@@ -63,7 +63,7 @@
 | 시험 메일 EXT-03(도착)·EXT-04(실패 표시) | 선행: 보람 Web Role `ses:SendEmail`(11/12 미확인). 서버 실행 민성, 판단 요찬, 수신 확인 보람 |
 | SG 점검 도구 live 모드 구현·시험·병합 → VPC ID·실행 방법을 구민철에게 전달 | 명세 5.1, boto3. 선행: 보람 읽기 권한 |
 | ~백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번)~ | ✅ 11/13 10:03 백업 `20261113T010301Z` → 격리 복원 DB 줄 수 일치·업로드 7개 sha256 일치 (아래 11/13 코멘트) |
-| 15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부) | 보람 #47 |
+| ~15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부)~ | ✅ 11/13 11:38~11:42 허용 1·거부 4 (아래 11/13 코멘트). 보람 기록 반영은 보람에게 전달 |
 | ALB·WAF 밤 처리 결정 → destroy.sh 정리 순서 | #57 약 $4.55/주 |
 | WAF ALB 연결·Block 적용 | 4회차. 보람 #77 26번 정책 반영됨, ALB 연결 액션(`CreateWebACLAssociation` vs `SetWebAcl`)은 연결 시험 때 확인 → 거부되면 보람에게 |
 | 가상 운영 관리자 계정 생성(make_operator.py) | 4회차 APP-07·09 시험 직전에만, 끝나면 바로 비활성화 |
@@ -221,6 +221,25 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - 운영 DB와 운영 업로드 폴더는 건드리지 않았다. `TARGET_DB`·`TARGET_DIR`은 지정하지 않았다.
 - 시간도장은 UTC다(`T010301Z` = KST 10:03). 시간도장 하나로 DB와 업로드가 한 묶음이다.
 - 격리 DB `haven_restore_check`와 격리 폴더는 남겨 두었다(다음 연습 때 스크립트가 지우고 다시 만든다).
+
+**15번 SG 삭제 권한 실제 시험 (11:38~11:42, minsung CLI·Git Bash, 서울)**
+
+정책: 실제 AWS `Haven-Minsung-Delete-Policy`(보람 JSON 34번, 15번이 합쳐짐). `ec2:DeleteSecurityGroup`은 태그 `Project=Haven`과 `Name=haven-sg-test`가 둘 다 맞는 SG만 허용.
+
+| # | 시도 | 결과 | 판정 |
+|---|---|---|---|
+| 1 | 운영 `haven-sg-alb` 삭제 (`--dry-run`) | `UnauthorizedOperation` | ✅ 거부 |
+| 2 | 운영 `haven-sg-web` 삭제 (`--dry-run`) | `UnauthorizedOperation` | ✅ 거부 |
+| 3 | 운영 `haven-sg-db` 삭제 (`--dry-run`) | `UnauthorizedOperation` | ✅ 거부 |
+| 4 | `default` SG(태그 없음) 삭제 (`--dry-run`) | `UnauthorizedOperation` | ✅ 거부 |
+| 5 | 시험용 `haven-sg-test` 생성 (태그 Project=Haven·Name=haven-sg-test·Owner=minsung, 만들 때 태그) | 생성됨 | ✅ |
+| 6 | 시험용 SG 삭제 (`--dry-run`) | `DryRunOperation` | ✅ 권한 있음 |
+| 7 | 시험용 SG 실제 삭제 → 다시 조회 | `Return: true` → `InvalidGroup.NotFound` | ✅ 허용·삭제 확인 |
+
+- 운영 SG는 `--dry-run`으로만 시험해 실제로 지워질 수 없게 했다. 남은 시험용 리소스 없음.
+- "Name은 맞고 Project 태그만 없는 SG"는 만들면 민성 계정으로도 지울 수 없어 하지 않았다. 대신 Name이 다른 경우(1~3)와 태그가 없는 경우(4)를 각각 확인했다.
+- 처음 반복문(`for`)을 여러 줄로 붙여 넣다 터미널 붙여넣기 표시(`[200~`)가 섞여 깨졌다. ID가 빈 채로 `--dry-run` 명령이 실행돼 `InvalidGroupId.Malformed`로 거절됨(변경 없음). 한 줄 명령으로 다시 했다.
+- 기록에는 SG·VPC ID, 계정 번호, 인코딩된 거부 메시지를 남기지 않는다.
 
 **현재 운영 배포:** `a7bfcd6` (main, #86까지). #79는 이번 배포에 포함된다. 이전 `6c98b90`(11/12 17:33).
 

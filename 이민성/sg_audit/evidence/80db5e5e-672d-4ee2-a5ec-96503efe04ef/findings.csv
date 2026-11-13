@@ -1,0 +1,12 @@
+﻿check_id,region,vpc_id,sg_id,asset_id,asset_role,direction,protocol,from_port,to_port,source_type,source_value,expected,actual,verdict,reason,evidence
+SG-05,ap-northeast-2,vpc-#1f23243e,sg-#1777238c,alb,alb,ingress,tcp,80,80,cidr,0.0.0.0/0,ingress tcp 80-80 cidr:0.0.0.0/0,ingress tcp 80-80 cidr:0.0.0.0/0,PASS,baseline 허용 규칙과 일치,sg-#1777238c: ingress tcp 80-80 cidr:0.0.0.0/0
+SG-05,ap-northeast-2,vpc-#1f23243e,sg-#1777238c,alb,alb,ingress,tcp,443,443,cidr,0.0.0.0/0,ingress tcp 443-443 cidr:0.0.0.0/0,ingress tcp 443-443 cidr:0.0.0.0/0,PASS,baseline 허용 규칙과 일치,sg-#1777238c: ingress tcp 443-443 cidr:0.0.0.0/0
+SG-05,ap-northeast-2,vpc-#1f23243e,sg-#1777238c,alb,alb,egress,tcp,80,80,sg,sg-#512c66bf,egress tcp 80-80 sg_role:web,egress tcp 80-80 sg_role:web,PASS,baseline 허용 규칙과 일치,sg-#1777238c: egress tcp 80-80 sg:sg-#512c66bf
+SG-05,ap-northeast-2,vpc-#1f23243e,sg-#07605634,db-1,db,ingress,tcp,5432,5432,sg,sg-#512c66bf,ingress tcp 5432-5432 sg_role:web,ingress tcp 5432-5432 sg_role:web,PASS,baseline 허용 규칙과 일치,sg-#07605634: ingress tcp 5432-5432 sg:sg-#512c66bf
+SG-05,ap-northeast-2,vpc-#1f23243e,sg-#07605634,db-1,db,egress,tcp,80,80,cidr,0.0.0.0/0,egress tcp 80-80 cidr:0.0.0.0/0,egress tcp 80-80 cidr:0.0.0.0/0,PASS,baseline 허용 규칙과 일치,sg-#07605634: egress tcp 80-80 cidr:0.0.0.0/0
+SG-05,ap-northeast-2,vpc-#1f23243e,sg-#07605634,db-1,db,egress,tcp,443,443,cidr,0.0.0.0/0,egress tcp 443-443 cidr:0.0.0.0/0,egress tcp 443-443 cidr:0.0.0.0/0,PASS,baseline 허용 규칙과 일치,sg-#07605634: egress tcp 443-443 cidr:0.0.0.0/0
+SG-05,ap-northeast-2,vpc-#1f23243e,sg-#512c66bf,web-1,web,ingress,tcp,80,80,sg,sg-#1777238c,ingress tcp 80-80 sg_role:alb,ingress tcp 80-80 sg_role:alb,PASS,baseline 허용 규칙과 일치,sg-#512c66bf: ingress tcp 80-80 sg:sg-#1777238c
+SG-05,ap-northeast-2,vpc-#1f23243e,sg-#512c66bf,web-1,web,egress,tcp,80,80,cidr,0.0.0.0/0,egress tcp 80-80 cidr:0.0.0.0/0,egress tcp 80-80 cidr:0.0.0.0/0,PASS,baseline 허용 규칙과 일치,sg-#512c66bf: egress tcp 80-80 cidr:0.0.0.0/0
+SG-05,ap-northeast-2,vpc-#1f23243e,sg-#512c66bf,web-1,web,egress,tcp,5432,5432,sg,sg-#07605634,egress tcp 5432-5432 sg_role:db,egress tcp 5432-5432 sg_role:db,PASS,baseline 허용 규칙과 일치,sg-#512c66bf: egress tcp 5432-5432 sg:sg-#07605634
+SG-05,ap-northeast-2,vpc-#1f23243e,sg-#512c66bf,web-1,web,egress,tcp,443,443,cidr,0.0.0.0/0,egress tcp 443-443 cidr:0.0.0.0/0,egress tcp 443-443 cidr:0.0.0.0/0,PASS,baseline 허용 규칙과 일치,sg-#512c66bf: egress tcp 443-443 cidr:0.0.0.0/0
+SG-07,ap-northeast-2,vpc-#1f23243e,sg-#d760e060,(default SG),,,,,,,,default SG에 규칙 없음,규칙 없음,PASS,default SG가 비어 있음,sg_id: sg-#d760e060

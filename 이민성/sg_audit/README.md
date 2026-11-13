@@ -233,7 +233,7 @@ python make_evidence.py --results-dir out/live-YYYYMMDD-HHMM --baseline baseline
 | 파일 | 내용 |
 |---|---|
 | `manifest.json` | commit(커밋 안 된 변경 여부 포함), 환경(Python·OS·boto3), 도구 버전, 규칙 버전(baseline SHA-256), 대상 범위, 실행 시각, 알려진 누락 |
-| `masking.json` | 가림 설정: 계정 번호·ARN·`sg-`/`vpc-`/`eni-`/`i-` 등 ID·IPv4·IPv6를 `<종류>-#<해시 8자>`로 바꿈. `0.0.0.0/0`·`::/0`은 판정 근거라 그대로 |
+| `masking.json` | 가림 설정: ARN·`sg-`/`vpc-`/`eni-`/`i-` 등 ID·IPv4·IPv6를 `<종류>-#<해시 8자>`로 바꿈. 계정 번호는 앞 4자리도 남기지 않고 `account-masked`(경우의 수가 적어 해시로는 되찾을 수 있음). `0.0.0.0/0`·`::/0`은 판정 근거라 그대로 |
 | `results.json`, `findings.csv` | 가린 시험 결과 |
 | `masking_log.json` | 종류별로 몇 개 가렸는지(원래 값은 없음) |
 | `comparison.md` | `--before`를 주면 판정이 바뀐 항목 표(예: SG-07 FAIL → PASS). 범위가 다르면 경고 |

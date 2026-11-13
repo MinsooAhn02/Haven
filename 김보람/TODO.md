@@ -369,3 +369,10 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
   2. 역할 교체에 필요한 `iam:PassRole`(새 역할)과 인스턴스 프로파일 교체 권한을 누가 어디에 둘지: 02번은 옛 역할만 허용한다.
 - **알아 둘 것:** 역할 교체는 11/13 백업·격리 복원 연습 뒤가 안전하다는 것이 조장 의견이다(결정은 아님). 새 역할의 콘솔 확인은 보람 보고이고 조장이 AWS에서 본 것은 아니다.
 - **남은 일:** 3회차 문서 72행의 낡은 #73 문장 정정, 이전 코멘트의 깨진 링크 2곳·`TODO.md` 314행·20~23번 시험 결과 반영, `AssociateWebACL`·`GetWebACLForResource` 리소스 대상 확인(민성 연결 시험에서 거부될 때).
+
+## 2026-11-13 OUT-10 DB 로그 IAM 권한 적용
+
+- [x] [05_DB_Logs_Policy.json](JSON/05_DB_Logs_Policy.json)에 `/haven/db` 로그 그룹의 `logs:DescribeLogStreams` 권한 추가. 기존 로그 스트림 생성·이벤트 쓰기 권한 유지.
+- [x] GitHub `Boram` 브랜치에 05번 정책 JSON 수정·커밋 완료(계정 ID 자리표시자는 `${ACCOUNT_ID}`로 통일).
+- [x] AWS IAM 고객 관리형 정책 `Haven-EC2-DB-Logs-Write` 생성 및 `haven-ec2-ssm-role` 연결 확인(사용자 제공 IAM 역할 권한 화면 기준).
+- [ ] 민성님 `/haven/db` 로그 그룹 생성 여부 확인 및 db-1 실제 CloudWatch 로그 수집·허용/거부 시험 결과 기록. 아직 테스트 성공으로 표시하지 않음.

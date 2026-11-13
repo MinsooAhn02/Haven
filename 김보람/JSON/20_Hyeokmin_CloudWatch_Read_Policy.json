@@ -19,13 +19,13 @@
         "logs:DescribeLogStreams",
         "logs:FilterLogEvents"
       ],
-      "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:/haven/web"
+      "Resource": "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:/haven/web"
     },
     {
       "Sid": "ReadHavenWebLogEvents",
       "Effect": "Allow",
       "Action": "logs:GetLogEvents",
-      "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:/haven/web:log-stream:*"
+      "Resource": "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:/haven/web:log-stream:*"
     },
     {
       "Sid": "ReadHavenWAFLogGroup",
@@ -34,13 +34,13 @@
         "logs:DescribeLogStreams",
         "logs:FilterLogEvents"
       ],
-      "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:aws-waf-logs-haven*"
+      "Resource": "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:aws-waf-logs-haven*"
     },
     {
       "Sid": "ReadHavenWAFLogEvents",
       "Effect": "Allow",
       "Action": "logs:GetLogEvents",
-      "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:aws-waf-logs-haven*:log-stream:*"
+      "Resource": "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:aws-waf-logs-haven*:log-stream:*"
     }
   ]
 }

@@ -54,7 +54,7 @@
 | 3 | 진행 중 (ALB·HTTPS 완료. SG 실제 수집은 11/12 결정으로 live 모드 구현=민성, 실행·대조=구민철) | 도메인 `orchestration-haven.cloud` 확정(11/11). Route 53 공개 호스팅 영역 1개, 네임서버 4개가 구글 DNS(8.8.8.8) 응답과 일치 확인. `infra/build-alb.sh` 작성(ACM DNS 검증 → 대상 그룹 /healthz → ALB → 443 TLS1.2+·80→301 → apex Alias → healthy·NET-01·01-b 확인). 가짜 시험 `test/alb-fake-test.sh` 39개(일부러 실패: ALB 중복·web-1 꺼짐·호스팅 영역 0/2개·기존 A 레코드·권한 없음·인증서 시간 초과/FAILED·unhealthy·302·가짜 도메인 리다이렉트). 시험이 실제로 버그를 잡는지 스크립트를 일부러 망가뜨려 확인(가드 3곳 제거 → 해당 시험 FAIL). 민성 Windows Git Bash 11:32: 가짜 시험 PASS 39 / FAIL 0, `DRY_RUN=1 bash build-alb.sh` 1/5~5/5 종료 0(실제 state ID로 명령만 출력). 권한: ELB·ACM 읽기부터 AccessDenied(11:1x) → 보람님 추가 → 11:36 1차 실행: 인증서 2초 만에 발급, 대상 그룹까지 만들고 ALB에서 `ec2:GetSecurityGroupsForVpc` 없음으로 멈춤 → 스크립트에 "이 스크립트가 만든 것(state 기록과 같은 ID)만 이어서 쓰기" 추가(가짜 시험 F1~F13) → 보람님 권한 추가 → 11:47 2차: 대상 그룹·인증서 재사용, ALB·리스너·도메인 연결, healthy, NET-01 OK, NET-01-b는 **Windows curl이 `/dev/null`을 몰라서** 확인 단계만 실패 → 고침(가짜 curl도 Windows처럼 바꿔 W1 시험 추가, 옛 코드로 되돌리면 13개 FAIL 확인) → 11:58 3차: 전부 재사용(새로 만든 것 없음), **NET-01 200 ok·인증서 OK, NET-01-b 301 → https, 실제 DNS 접속 OK**. 가짜 시험 최종 PASS 59 / FAIL 0(민성 Git Bash). 남은 것: live SG 읽기 수집·AUD 대조, WAF·ALB 접근 로그(설계 7절) | 증거: 연결확인표 NET-01·01-b, `~/alb-1111.log`(계정 번호·ARN 가려서 첨부). PR 작성 예정 | 노푸른: `https://orchestration-haven.cloud` 접속 가능(11/11 11:59~, 평일 09~21시, 밤에는 EC2가 꺼져 502/503). 안민수: ALB 켜 둠(11/11 결정), CSRF_TRUSTED_ORIGINS가 이 도메인인지 실제 로그인으로 확인 요청. 김보람: ALB 요금 시작(11:47~) 비용 확인 |
 | 4 | 미착수 | 미확인 | — | — |
 
-## 지금 할 일 (11/13 17:30 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
+## 지금 할 일 (11/13 17:40 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
 
 | 할 일 | 상태·선행 |
 |---|---|
@@ -62,7 +62,7 @@
 | ~#64 서버 쪽 PR (boto3, MAIL_FROM → 메일 환경변수) → 같은 커밋 2번 배포~ | ✅ 11/12 #78 병합(요찬 리뷰), `5bccce1` 2회 배포 + web-setup.sh 재실행 → `HAVEN_MAIL_BACKEND=ses` 등 3줄 (앱계약 E5·E6) |
 | ~web-1 역할 교체 (보람 #84, `haven-ec2-web-role`)~ | ✅ 11/13 12:23 교체, 12:33까지 기능 확인(SES 빼고 전부). 아래 11/13 낮 코멘트 |
 | ~시험 메일 EXT-03(도착)·EXT-04(실패 표시)~ | ✅ 11/13 오후 둘 다 통과(요찬 안내서, 실행·판정 민성·수신 확인 보람·기록 요찬). 아래 11/13 오후 코멘트 |
-| SG 점검 도구 live 모드 → **명세 5.1 맞춤(0.3.0)** → PC 시험·실제 AWS 재실행 → PR → 구민철에게 새 실행 방법 전달 | 0.2.0(태그·이름으로 찾는 방식)은 병합·구민철 전달 끝. 17시 명세 5.1과 어긋난 점 발견 → 0.3.0으로 고쳐 PC에 넣음(17:28, 아래 11/13 저녁 코멘트). 남은 것: PC 시험 50개 → `baseline.live.json` 만들기 → 실제 AWS `--vpc-id` 실행 → 증거 묶음 → PR → 구민철에게 "명령이 바뀜" 전달 |
+| SG 점검 도구 live 모드 → **명세 5.1 맞춤(0.3.0)** → PC 시험·실제 AWS 재실행 → PR → 구민철에게 새 실행 방법 전달 | 0.2.0(태그·이름으로 찾는 방식)은 병합·구민철 전달 끝. 17시 명세 5.1과 어긋난 점 발견 → ✅ 0.3.0 구현·PC 시험 52개 통과·실제 AWS **PASS 11**(17:31, `--vpc-id`)·코드 커밋 `30f40e4` → 🔶 증거 묶음 1차(17:33) 계정 앞 4자리 남음 → 가림 수정(17:38). 남은 것: 시험 54개 → 커밋 → 증거 묶음 다시 만들기·확인 → 커밋 → PR → 구민철에게 "명령이 바뀜" 전달 (아래 11/13 저녁 코멘트) |
 | ~백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번)~ | ✅ 11/13 10:03 백업 `20261113T010301Z` → 격리 복원 DB 줄 수 일치·업로드 7개 sha256 일치 (아래 11/13 코멘트) |
 | ~15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부)~ | ✅ 11/13 11:38~11:42 허용 1·거부 4 (아래 11/13 코멘트). 보람 기록 반영은 보람에게 전달 |
 | ALB·WAF 밤 처리 결정 → destroy.sh 정리 순서 | #57 약 $4.55/주 |
@@ -370,7 +370,14 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 | 17:06 | 배포 전 백업(db-1 `backup.sh`) | ✅ 시간도장 `20261113T080630Z` |
 | 17:0x | 배포 `808465decd87ecceca00d369bb39d32387bab779` (#88 로그인 실패 제한, 요찬 구현). 앱만 바뀜(`안민수/server`·requirements 변경 없음), 새 migration `accounts.0001_initial` | ✅ `Applying accounts.0001_initial... OK`, healthz 200 |
 | 17시 | SG 점검 도구 live 0.2.0이 명세 5.1과 어긋난 점 확인: `--profile`·`--vpc-id`/`--sg-id` 없음, STS 계정 확인 없음, 이름·태그로 자산 추정, SG 지정 시 합집합 없음, 연결 정보 없을 때 처리 없음, 증거 폴더(9장) 없음 | 조장 결정: 지금 고침. AWS 설정은 그대로라 다시 만들 것 없음(수집 부분·명령 형식만) |
-| 17:28 | `network_audit.py` 0.3.0 + `make_evidence.py`(증거 묶음) PC에 넣음 | 작업 환경 시험 50개 통과(fixture 6·live 30·증거 14), 일부러 망가뜨린 17가지를 시험이 모두 잡음. **민성 PC 시험·실제 AWS 실행은 아직** |
+| 17:28 | `network_audit.py` 0.3.0 + `make_evidence.py`(증거 묶음) PC에 넣음 | 작업 환경 시험 50개 통과(fixture 6·live 30·증거 14), 일부러 망가뜨린 17가지를 시험이 모두 잡음 |
+| 17:29 | 민성 PC 전체 시험 | ❌ 10개 실패: 증거 묶음이 commit 번호를 읽을 때 Windows 기본 인코딩(cp949)으로 git 출력을 풀다가 한글 경로에서 깨짐(stdout 없음). 판정 코드와 무관 |
+| 17:30 | git 출력을 UTF-8로 읽게 수정, 못 읽으면 commit `unknown` + 알려진 누락에 기록. 시험 2개 추가 → 민성 PC 다시 시험 | ✅ 52개 통과(OK, 3.578s) |
+| 17:31 | `baseline.live.json` 만듦(`baseline.json` 복사 → SG ID 3개를 실제 ID로, Git 제외 확인). SG 3개가 같은 VPC인지 확인 | ✅ `sg-fixture` 0개, 실제 ID 3개, `git status`에 안 나옴 |
+| 17:31 | **live 0.3.0 실제 실행** `--region ap-northeast-2 --profile default --vpc-id <VPC>` | ✅ 시작 줄 `대상 계정: 앞4자리********` 출력, **COMPLETE, PASS 11, FAIL 0, UNKNOWN 0, ERROR 0, 종료 코드 0**. 이름·태그 없이 SG ID로 alb·web-1·db-1을 모두 찾음, baseline에 없는 ENI 없음 |
+| 17:3x | 코드 커밋 `30f40e4` | ✅ |
+| 17:33 | 증거 묶음 1차 `make_evidence.py --results-dir out/live-20261113-1731 --before out/live-20261113-1545` | 만들어짐(종료 코드 0, `commit_dirty: false`, 실제 ID 42개 가림, 전후 비교 SG-07 FAIL 2 → PASS). ❌ 확인 검사에서 `manifest.json`·`results.json`에 계정 앞 4자리가 남음 |
+| 17:38 | 증거 묶음은 계정 번호를 앞 4자리도 남기지 않고 `account-masked`로, 남으면 묶음을 막음. 비교표 `None-None` → `전체`. 시험 2개 추가 | 작업 환경 54개 통과, 고친 곳을 되돌리면 시험이 실패함 확인. **민성 PC 시험·묶음 다시 만들기는 아직** |
 
 **0.3.0에서 바뀐 것** (자세한 내용은 `sg_audit/README.md` "0.2.0 → 0.3.0")
 - 명령: `live --region <리전> --profile <프로필> (--vpc-id <VPC> | --sg-id <SG> ...) --baseline baseline.live.json --output-dir <새 폴더>`. `--project`·`--alb-name` 없어짐.
@@ -383,8 +390,9 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 
 | 할 일 | 메모 |
 |---|---|
-| 민성 PC 시험 | 저장소 루트에서 `python -B -m unittest discover -s 이민성/sg_audit -p "test_*.py" -v` → 50개 |
-| `baseline.live.json` 만들기 | `baseline.json` 복사 → alb·web-1·db-1 `expected_sg_ids`를 실제 SG ID로 |
-| 실제 AWS 0.3.0 실행 (`--vpc-id`) | 기대: PASS 11(default SG는 16:15에 비움). 모르는 ENI가 있으면 UNKNOWN으로 나옴 → 확인 |
-| 증거 묶음 | `make_evidence.py --results-dir out/<0.3.0 실행> --baseline baseline.live.json` |
-| PR → 병합 → 구민철 전달 | 명령이 바뀜: `--profile`, VPC ID, `baseline.live.json` 만드는 법 |
+| ~민성 PC 시험~ | ✅ 17:30 52개 |
+| ~`baseline.live.json` 만들기~ | ✅ 17:31 |
+| ~실제 AWS 0.3.0 실행 (`--vpc-id`)~ | ✅ 17:31 PASS 11 |
+| 민성 PC 시험 54개 → 커밋(증거 가림 수정 3개 파일) | 17:38 수정분 |
+| 증거 묶음 다시 만들기 → 확인 → 커밋 | 1차 폴더 지우고 같은 결과(`live-20261113-1731`)로 다시. `sg-0`·`vpc-0`·계정 앞 4자리가 6개 파일 모두 0개, `account_id`가 `account-masked`인지 |
+| PR → 병합 → 구민철 전달 | 명령이 바뀜: `--profile`, VPC ID, `baseline.live.json`(SG ID 3개) 만드는 법. 필요 권한은 줄어듦(`DescribeInstances` 불필요) |

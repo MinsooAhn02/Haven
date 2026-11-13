@@ -1,0 +1,12 @@
+{
+  "mask_version": 1,
+  "rules": {
+    "account": "12자리 계정 번호 → account-#<sha256 앞 8자> (network_audit.py는 앞 4자리만 남겨 이미 가림)",
+    "arn": "ARN 전체 → arn-#<해시>",
+    "aws_id": "sg-/vpc-/eni-/i-/pl-/subnet- 등 실제 ID → <접두어>-#<해시>",
+    "ipv4": "IPv4 주소·CIDR → ipv4-#<해시> (0.0.0.0/0은 판정 근거라 그대로)",
+    "ipv6": "IPv6 주소·CIDR → ipv6-#<해시> (::/0은 그대로)"
+  },
+  "same_value_same_token": true,
+  "map_location": "results-dir/masking_map.json (raw 위치, 공개 묶음에 넣지 않음)"
+}

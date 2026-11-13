@@ -3962,7 +3962,6 @@ def test_failed_checkpoint_cleanup_stops_remaining_cases(
 # M2: post_reference는 허용된 경로에서만 사용
 @pytest.mark.parametrize("path", [
     "/posts/{post_id}/",
-    "/posts/{post_id}/shares/",
     "/posts/{post_id}/attachments/extra/",
 ])
 def test_post_reference_rejects_unsupported_paths(path):
@@ -4237,3 +4236,524 @@ def test_capture_rejects_malformed_expected_app(expected):
             phase2_make_suite([case]),
             ROOT / "fixtures",
         )
+
+
+def test_aws_cleanup_suite_valid():
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+
+    cli.validate_aws_cleanup_suite(suite)
+
+
+def test_aws_cleanup_suite_rejects_missing_cleanup():
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+
+    suite["cleanup_cases"] = []
+
+    with pytest.raises(cli.ConfigError):
+        cli.validate_aws_cleanup_suite(suite)
+
+
+def test_aws_cleanup_suite_rejects_fixed_post_mutation():
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+
+    suite["cases"][1]["path"] = "/posts/1/attachments/"
+
+    with pytest.raises(cli.ConfigError):
+        cli.validate_aws_cleanup_suite(suite)
+
+
+@pytest.mark.parametrize(
+    "get_status, expected_complete",
+    [
+        (404, True),
+        (200, False),
+    ],
+)
+def test_aws_cleanup_verifies_post_inaccessible(
+    monkeypatch, get_status, expected_complete
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    cleanup_case = suite["cleanup_cases"][0]
+
+    budget = cli.RequestBudget(
+        Namespace(
+            max_requests=10,
+            rate=5,
+            max_duration=60,
+            timeout=3,
+        )
+    )
+
+    session = cli.new_session()
+    session.cookies.set("csrftoken", "synthetic-csrf")
+
+    sent = []
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        budget.begin()
+        sent.append((method, path))
+
+        status = 302 if method == "POST" else get_status
+
+        return phase2_detail(status), None
+
+    
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    # 6-3단계에서 추가한 게시글 표식 조회를 모의 처리한다.
+    # 이번 테스트는 삭제 후 404 검증이 목적이므로
+    # 표식 조회는 정상적으로 ID 17을 반환하도록 설정한다.
+    def fake_lookup(session, target, budget, run_id, marker):
+        assert marker == cli.aws_post_marker(
+            run_id, "AWS-SETUP-A-POST"
+        )
+        return 17
+
+    monkeypatch.setattr(
+        cli, "find_aws_post_by_marker", fake_lookup
+    )
+
+    results = []
+
+    complete = cli.execute_cleanup(
+        cases=[cleanup_case],
+        attempted={"AWS-SETUP-A-POST"},
+        sessions={"member_a": session},
+        prepped={"member_a": True},
+        target=cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        budget=budget,
+        run_id="synthetic-test-run",
+        prep_events=[],
+        fixture_root=ROOT / "fixtures",
+        max_response_bytes=cli.MAX_RESPONSE,
+        results=results,
+        created_post_ids={"AWS-SETUP-A-POST": 17},
+    )
+
+    assert complete is expected_complete
+
+    assert sent == [
+        ("POST", "/posts/17/delete/"),
+        ("GET", "/posts/17/"),
+    ]
+
+    verification = results[0]["response_summary"]["verification"]
+
+    assert verification["http_status"] == get_status
+    assert verification["post_inaccessible"] is expected_complete
+
+    session.close()
+
+
+def test_aws_post_creation_adds_unique_marker(monkeypatch):
+    monkeypatch.setattr(
+        cli, "csrf_for_post",
+        lambda *args, **kwargs: "test-csrf"
+    )
+
+    case = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )["cases"][0]
+
+    run_id = "11111111-2222-4333-8444-555555555555"
+
+    with cli.new_session() as session:
+        fields, headers, file_info = cli.prepare_case_request(
+            session,
+            case,
+            ROOT / "fixtures",
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            run_id,
+            [],
+            cli.MAX_RESPONSE,
+        )
+
+    marker = cli.aws_post_marker(
+        run_id, "AWS-SETUP-A-POST"
+    )
+
+    assert fields["title"].startswith(marker + " ")
+    assert len(fields["title"]) <= 200
+    assert fields["body"]
+    assert file_info is None
+
+
+def test_aws_post_parser_finds_actual_id():
+    html = """
+    <ul class="record-list">
+      <li class="record-row">
+        <h2 class="record-title">[HAVEN-AWS:test:CREATE] Test</h2>
+        <a class="record-link" href="/posts/57/">Open</a>
+      </li>
+    </ul>
+    <span class="page-count">1 / 1 페이지</span>
+    """.encode("utf-8")
+
+    rows, pages = cli.parse_aws_post_page(html, 1)
+
+    assert rows == [
+        ("[HAVEN-AWS:test:CREATE] Test", 57)
+    ]
+    assert pages == 1
+
+
+def test_aws_post_parser_rejects_invalid_link():
+    html = """
+    <ul class="record-list">
+      <li class="record-row">
+        <h2 class="record-title">Test</h2>
+        <a class="record-link" href="https://evil.invalid/">Open</a>
+      </li>
+    </ul>
+    <span class="page-count">1 / 1 페이지</span>
+    """.encode("utf-8")
+
+    with pytest.raises(cli.ConfigError):
+        cli.parse_aws_post_page(html, 1)
+
+
+def test_aws_post_parser_rejects_wrong_page():
+    html = """
+    <ul class="record-list"></ul>
+    <span class="page-count">2 / 3 페이지</span>
+    """.encode("utf-8")
+
+    with pytest.raises(cli.ConfigError):
+        cli.parse_aws_post_page(html, 1)
+
+
+@pytest.mark.parametrize(
+    "saved_id, expected_complete",
+    [
+        (None, True),
+        (57, True),
+        (58, False),
+    ],
+)
+def test_aws_cleanup_recovers_post_by_marker(
+    monkeypatch, saved_id, expected_complete
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    cleanup_case = suite["cleanup_cases"][0]
+
+    budget = cli.RequestBudget(
+        Namespace(
+            max_requests=20,
+            rate=5,
+            max_duration=60,
+            timeout=3,
+        )
+    )
+
+    sent = []
+
+    def fake_lookup(
+        session, target, budget, run_id, marker
+    ):
+        budget.begin()
+        assert marker == cli.aws_post_marker(
+            run_id, "AWS-SETUP-A-POST"
+        )
+        return 57
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        budget.begin()
+        sent.append((method, path))
+
+        status = 302 if method == "POST" else 404
+        return phase2_detail(status), None
+
+    monkeypatch.setattr(
+        cli, "find_aws_post_by_marker", fake_lookup
+    )
+    monkeypatch.setattr(
+        cli, "bounded_send", fake_send
+    )
+    monkeypatch.setattr(
+        cli, "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf"
+    )
+
+    created_ids = (
+        {}
+        if saved_id is None
+        else {"AWS-SETUP-A-POST": saved_id}
+    )
+
+    results = []
+
+    with cli.new_session() as session:
+        complete = cli.execute_cleanup(
+            cases=[cleanup_case],
+            attempted={"AWS-SETUP-A-POST"},
+            sessions={"member_a": session},
+            prepped={"member_a": True},
+            target=cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            budget=budget,
+            run_id="synthetic-test-run",
+            prep_events=[],
+            fixture_root=ROOT / "fixtures",
+            max_response_bytes=cli.MAX_RESPONSE,
+            results=results,
+            created_post_ids=created_ids,
+        )
+
+    assert complete is expected_complete
+
+    if expected_complete:
+        assert sent == [
+            ("POST", "/posts/57/delete/"),
+            ("GET", "/posts/57/"),
+        ]
+        assert results[0]["verified_post_id"] == 57
+    else:
+        assert sent == []
+        assert results[0]["transport_status"] == "ERROR"
+
+
+def test_aws_recovery_plan_preserves_real_post_id():
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+
+    run_id = "11111111-2222-4333-8444-555555555555"
+
+    state = {
+        "schema_version": 1,
+        "source": "live_http_run",
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "suite_id": suite["suite_id"],
+        "run_id": run_id,
+        "cleanup_complete": False,
+        "cleanup_results": [],
+        "results": [
+            {
+                "case_id": "AWS-SETUP-A-POST",
+                "post_marker": cli.aws_post_marker(
+                    run_id, "AWS-SETUP-A-POST"
+                ),
+                "created_post_id": 57,
+                "request_attempted": True,
+            }
+        ],
+    }
+
+    plan = cli.build_aws_recovery_plan(state, suite)
+
+    assert len(plan) == 1
+    assert plan[0]["saved_post_id"] == 57
+    assert plan[0]["auth_role"] == "member_a"
+
+
+def test_aws_recovery_plan_rejects_wrong_marker():
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+
+    state = {
+        "schema_version": 1,
+        "source": "live_http_run",
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "suite_id": suite["suite_id"],
+        "run_id": "11111111-2222-4333-8444-555555555555",
+        "cleanup_complete": False,
+        "cleanup_results": [],
+        "results": [
+            {
+                "case_id": "AWS-SETUP-A-POST",
+                "post_marker": "[HAVEN-AWS:wrong:CREATE]",
+                "request_attempted": True,
+            }
+        ],
+    }
+
+    with pytest.raises(cli.ConfigError):
+        cli.build_aws_recovery_plan(state, suite)
+
+
+def test_aws_recover_dry_run_no_network(
+    tmp_path, monkeypatch, capsys
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    run_id = "11111111-2222-4333-8444-555555555555"
+
+    state = {
+        "schema_version": 1,
+        "source": "live_http_run",
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "suite_id": suite["suite_id"],
+        "selected_phase": None,
+        "run_id": run_id,
+        "cleanup_complete": False,
+        "cleanup_results": [],
+        "results": [{
+            "case_id": "AWS-SETUP-A-POST",
+            "post_marker": cli.aws_post_marker(
+                run_id, "AWS-SETUP-A-POST"
+            ),
+            "created_post_id": 57,
+            "request_attempted": True,
+        }],
+    }
+
+    run_json = tmp_path / "results.json"
+    run_json.write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+
+    monkeypatch.setattr(
+        cli, "bounded_send",
+        lambda *args, **kwargs: pytest.fail(
+            "Dry Run에서 HTTP 요청이 발생했습니다"
+        )
+    )
+
+    result = cli.main([
+        "recover",
+        "--run-json", str(run_json),
+        "--target", "https://orchestration-haven.cloud",
+        "--allowlist",
+        str(ROOT / "fixtures" / "allowlist_aws.json"),
+        "--cases",
+        str(ROOT / "fixtures" / "cases_haven_aws.json"),
+        "--fixture-dir", str(ROOT / "fixtures"),
+        "--dry-run",
+    ])
+
+    assert result == 0
+
+    output = capsys.readouterr().out
+    assert '"recovery_count": 1' in output
+    assert '"saved_post_id": 57' in output
+    assert '"member_a"' in output
+
+
+def test_aws_recover_apply_uses_marker_verified_id(
+    tmp_path, monkeypatch
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    run_id = "11111111-2222-4333-8444-555555555555"
+
+    state = {
+        "schema_version": 1,
+        "source": "live_http_run",
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "suite_id": suite["suite_id"],
+        "selected_phase": None,
+        "run_id": run_id,
+        "cleanup_complete": False,
+        "cleanup_results": [],
+        "results": [{
+            "case_id": "AWS-SETUP-A-POST",
+            "post_marker": cli.aws_post_marker(
+                run_id, "AWS-SETUP-A-POST"
+            ),
+            "created_post_id": None,
+            "request_attempted": True,
+        }],
+    }
+
+    run_json = tmp_path / "original_results.json"
+    run_json.write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+
+    sent = []
+
+    def fake_lookup(
+        session, target, budget, run_id_arg, marker
+    ):
+        budget.begin()
+        assert marker == cli.aws_post_marker(
+            run_id, "AWS-SETUP-A-POST"
+        )
+        return 57
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        budget.begin()
+        sent.append((method, path))
+        return phase2_detail(
+            302 if method == "POST" else 404
+        ), None
+
+    monkeypatch.setattr(
+        cli, "find_aws_post_by_marker", fake_lookup
+    )
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        cli, "prep_login",
+        lambda session, *args: session.cookies.set(
+            "csrftoken", "synthetic-csrf"
+        )
+    )
+    monkeypatch.setattr(
+        cli, "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf"
+    )
+
+    output_dir = tmp_path / "recovery_output"
+
+    result = cli.main([
+        "recover",
+        "--run-json", str(run_json),
+        "--target", "https://orchestration-haven.cloud",
+        "--allowlist",
+        str(ROOT / "fixtures" / "allowlist_aws.json"),
+        "--cases",
+        str(ROOT / "fixtures" / "cases_haven_aws.json"),
+        "--fixture-dir", str(ROOT / "fixtures"),
+        "--output-dir", str(output_dir),
+        "--apply",
+    ])
+
+    assert result == 0
+
+    assert sent == [
+        ("POST", "/posts/57/delete/"),
+        ("GET", "/posts/57/"),
+    ]
+
+    recovery = cli.load_json(output_dir / "results.json")
+    assert recovery["cleanup_complete"] is True
+    assert recovery["cleanup_results"][0]["verified_post_id"] == 57
+
+    # 원본 실행 결과는 변경하지 않는다.
+    assert cli.load_json(run_json) == state

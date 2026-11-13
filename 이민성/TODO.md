@@ -54,14 +54,14 @@
 | 3 | 진행 중 (ALB·HTTPS 완료. SG 실제 수집은 11/12 결정으로 live 모드 구현=민성, 실행·대조=구민철) | 도메인 `orchestration-haven.cloud` 확정(11/11). Route 53 공개 호스팅 영역 1개, 네임서버 4개가 구글 DNS(8.8.8.8) 응답과 일치 확인. `infra/build-alb.sh` 작성(ACM DNS 검증 → 대상 그룹 /healthz → ALB → 443 TLS1.2+·80→301 → apex Alias → healthy·NET-01·01-b 확인). 가짜 시험 `test/alb-fake-test.sh` 39개(일부러 실패: ALB 중복·web-1 꺼짐·호스팅 영역 0/2개·기존 A 레코드·권한 없음·인증서 시간 초과/FAILED·unhealthy·302·가짜 도메인 리다이렉트). 시험이 실제로 버그를 잡는지 스크립트를 일부러 망가뜨려 확인(가드 3곳 제거 → 해당 시험 FAIL). 민성 Windows Git Bash 11:32: 가짜 시험 PASS 39 / FAIL 0, `DRY_RUN=1 bash build-alb.sh` 1/5~5/5 종료 0(실제 state ID로 명령만 출력). 권한: ELB·ACM 읽기부터 AccessDenied(11:1x) → 보람님 추가 → 11:36 1차 실행: 인증서 2초 만에 발급, 대상 그룹까지 만들고 ALB에서 `ec2:GetSecurityGroupsForVpc` 없음으로 멈춤 → 스크립트에 "이 스크립트가 만든 것(state 기록과 같은 ID)만 이어서 쓰기" 추가(가짜 시험 F1~F13) → 보람님 권한 추가 → 11:47 2차: 대상 그룹·인증서 재사용, ALB·리스너·도메인 연결, healthy, NET-01 OK, NET-01-b는 **Windows curl이 `/dev/null`을 몰라서** 확인 단계만 실패 → 고침(가짜 curl도 Windows처럼 바꿔 W1 시험 추가, 옛 코드로 되돌리면 13개 FAIL 확인) → 11:58 3차: 전부 재사용(새로 만든 것 없음), **NET-01 200 ok·인증서 OK, NET-01-b 301 → https, 실제 DNS 접속 OK**. 가짜 시험 최종 PASS 59 / FAIL 0(민성 Git Bash). 남은 것: live SG 읽기 수집·AUD 대조, WAF·ALB 접근 로그(설계 7절) | 증거: 연결확인표 NET-01·01-b, `~/alb-1111.log`(계정 번호·ARN 가려서 첨부). PR 작성 예정 | 노푸른: `https://orchestration-haven.cloud` 접속 가능(11/11 11:59~, 평일 09~21시, 밤에는 EC2가 꺼져 502/503). 안민수: ALB 켜 둠(11/11 결정), CSRF_TRUSTED_ORIGINS가 이 도메인인지 실제 로그인으로 확인 요청. 김보람: ALB 요금 시작(11:47~) 비용 확인 |
 | 4 | 미착수 | 미확인 | — | — |
 
-## 지금 할 일 (11/13 12:40 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
+## 지금 할 일 (11/13 13:00 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
 
 | 할 일 | 상태·선행 |
 |---|---|
 | ~PR #76 로그 수집(OUT-10)·NET-06 기록~ | ✅ 11/12 #76 병합, 최종 판 web-1 실행(14:44)·CloudWatch 도착 확인 |
 | ~#64 서버 쪽 PR (boto3, MAIL_FROM → 메일 환경변수) → 같은 커밋 2번 배포~ | ✅ 11/12 #78 병합(요찬 리뷰), `5bccce1` 2회 배포 + web-setup.sh 재실행 → `HAVEN_MAIL_BACKEND=ses` 등 3줄 (앱계약 E5·E6) |
 | ~web-1 역할 교체 (보람 #84, `haven-ec2-web-role`)~ | ✅ 11/13 12:23 교체, 12:33까지 기능 확인(SES 빼고 전부). 아래 11/13 낮 코멘트 |
-| 시험 메일 EXT-03(도착)·EXT-04(실패 표시) | 역할 교체 ✅. 요찬·보람과 시간 맞추는 중(11/13 12:35 요청). 서버 실행 민성, 판단 요찬, 수신 확인 보람 |
+| 시험 메일 EXT-03(도착)·EXT-04(실패 표시) | **다음 주로 이관**(11/13 요찬 조퇴). 11/13 12:54 첫 시도 `AccessDeniedException` → 보람 SES 권한 수정이 먼저(아래 11/13 낮 코멘트). 서버 실행 민성, 판단 요찬, 수신 확인 보람 |
 | SG 점검 도구 live 모드 구현·시험·병합 → VPC ID·실행 방법을 구민철에게 전달 | 명세 5.1, boto3. 선행: 보람 읽기 권한 |
 | ~백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번)~ | ✅ 11/13 10:03 백업 `20261113T010301Z` → 격리 복원 DB 줄 수 일치·업로드 7개 sha256 일치 (아래 11/13 코멘트) |
 | ~15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부)~ | ✅ 11/13 11:38~11:42 허용 1·거부 4 (아래 11/13 코멘트). 보람 기록 반영은 보람에게 전달 |
@@ -290,11 +290,32 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - 되돌리기: `replace-iam-instance-profile-association --association-id <교체 뒤 ID> --iam-instance-profile Name=haven-ec2-ssm-profile`.
 - 이제 공통 역할 `haven-ec2-ssm-role`은 db-1만 쓴다. web 전용 권한(SES 발신·web 로그 쓰기)을 뺄지 보람과 정한다. 빼면 db-1 백업·SSM 영향 확인.
 
+**db-1 재시험 (12:45~12:50, 보람이 공통 역할에서 web 로그 쓰기 정책 삭제 뒤, PR #94)**
+
+| 확인 | 결과 |
+|---|---|
+| 역할 | ✅ `assumed-role/haven-ec2-ssm-role` (db-1은 공통 역할 그대로) |
+| SSM | ✅ 세션 정상 |
+| Parameter Store 읽기 (`/haven/db/app_password`·`owner_password`, 이름만) | ✅ 2개, missing 없음 |
+| DB 백업 S3 쓰기 | ✅ `20261113T034802Z`(KST 12:48), 52,170 bytes, 13 tables (웹 켠 채로, 권한 확인용) |
+| 격리 복원 S3 읽기 | ✅ `haven_restore_check` 13 tables, 줄 수 일치 |
+
+- 배포는 web-1(새 web 역할)에서 돌아 db-1 역할과 무관. 12:32 배포 2회 OK.
+- 처음 `restore.sh "$TS3"`는 변수 이름을 `TS`로 넣어 비어 있었음 → `usage`로 멈춤(변경 없음).
+
+**시험 메일 첫 시도 (12:54, web-1 `send_test_mail --to <SES 등록 주소>`)**
+
+- 결과: `메일을 보내지 못했습니다 (오류: AccessDeniedException, 실행 ID: …)`, `exit=1`. 메일 나가지 않음, 사이트 영향 없음.
+- SES 계정은 샌드박스(`ProductionAccessEnabled=false`, `SendingEnabled=true`, 12:43 민성 `sesv2 get-account`).
+- 원인 추정: 28번 `Haven-EC2-Web-SES-Send`의 Resource가 `identity/orchestration-haven.cloud`(보내는 도메인) 하나뿐. 샌드박스에서는 받는 주소 identity도 권한 검사 대상이라 거부된 것으로 보인다. 또는 28번이 새 역할에 안 붙어 있을 가능성. → 보람에게 확인·수정 요청.
+- 실패 표시 자체는 명령 설계대로였다(종료 코드 1, 오류 종류만, "접수" 없음, 주소 원문 없음). 다만 권한 문제로 난 실패라 EXT-04 판정은 권한 수정 뒤 다시(요찬 판단).
+- **다음 주로 이관**(요찬 조퇴). 순서: 보람 권한 수정 → EXT-03(SES 등록 주소, 도착은 보람 확인) → EXT-04(인증 안 된 주소 → `MessageRejected` 기대). 기록에는 받는 주소를 "SES 등록 주소"로만 쓴다.
+
 **다음 (11/13 오후)**
 
 | 할 일 | 메모 |
 |---|---|
-| 시험 메일 EXT-03·04 | 요찬·보람 답 오면 바로. 받는 주소는 "SES 등록 주소"로만 기록 |
+| 시험 메일 EXT-03·04 | **다음 주.** 보람 SES 권한 수정 먼저 |
 | SG 점검 도구 live 모드 | 오후 시작(설계부터). 명세 5.1, boto3. 구민철 실행은 3회차 |
-| 보람에게 | 15번 SG 시험 결과 전달, WAF 조회 권한 범위, 공통 역할 정리 |
+| 보람에게 | 15번 SG 시험 결과 전달, WAF 조회 권한 범위, SES 발신 권한(받는 주소 identity), PR #94 리뷰·병합(db-1 재시험 결과 코멘트) |
 | 21:00 `night.sh` | ALB 유지(WAF Count 관찰) |

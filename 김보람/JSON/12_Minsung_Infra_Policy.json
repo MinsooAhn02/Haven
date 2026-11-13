@@ -200,6 +200,12 @@
           "ec2:AssociatePublicIpAddress": "true"
         }
       }
+    },
+    {
+      "Sid": "AllowDefaultSGIngressCleanup",
+      "Effect": "Allow",
+      "Action": "ec2:RevokeSecurityGroupIngress",
+      "Resource": "arn:aws:ec2:ap-northeast-2:ACCOUNT_ID_MASKED:security-group/sg-DEFAULT-MASKED"
     }
   ]
 }

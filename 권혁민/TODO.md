@@ -78,7 +78,7 @@
 aws wafv2 get-web-acl --name haven-web-acl --scope REGIONAL --id ddd129cb-9894-4907-9807-bbdfb79e36c1 --profile hyeokmin --region ap-northeast-2 --output json --no-cli-pager
 ```
 
-※ 원본 Web ACL 설정 검증만 완료했으며, ALB 연결 후 실제 WAF 요청 로그 및 Count 동작은 별도 검증 예정.
+※ 2026-11-13 12:00경(KST) 조장이 ALB 연결 완료(#98). 이후 정상 요청 및 SQLi·XSS·PROPFIND의 실제 WAF Count 동작과 CloudWatch 로그 수집을 확인함. WAF–Nginx–Gunicorn 로그 상관분석은 요청 경로·시각 기준으로 완료했으며, Nginx·Gunicorn의 요청 ID 헤더 기록 개선은 별도 진행 예정.
 
 ## 인계·완료 기준
 

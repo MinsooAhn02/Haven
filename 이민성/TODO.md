@@ -54,7 +54,7 @@
 | 3 | 진행 중 (ALB·HTTPS 완료. SG 실제 수집은 11/12 결정으로 live 모드 구현=민성, 실행·대조=구민철) | 도메인 `orchestration-haven.cloud` 확정(11/11). Route 53 공개 호스팅 영역 1개, 네임서버 4개가 구글 DNS(8.8.8.8) 응답과 일치 확인. `infra/build-alb.sh` 작성(ACM DNS 검증 → 대상 그룹 /healthz → ALB → 443 TLS1.2+·80→301 → apex Alias → healthy·NET-01·01-b 확인). 가짜 시험 `test/alb-fake-test.sh` 39개(일부러 실패: ALB 중복·web-1 꺼짐·호스팅 영역 0/2개·기존 A 레코드·권한 없음·인증서 시간 초과/FAILED·unhealthy·302·가짜 도메인 리다이렉트). 시험이 실제로 버그를 잡는지 스크립트를 일부러 망가뜨려 확인(가드 3곳 제거 → 해당 시험 FAIL). 민성 Windows Git Bash 11:32: 가짜 시험 PASS 39 / FAIL 0, `DRY_RUN=1 bash build-alb.sh` 1/5~5/5 종료 0(실제 state ID로 명령만 출력). 권한: ELB·ACM 읽기부터 AccessDenied(11:1x) → 보람님 추가 → 11:36 1차 실행: 인증서 2초 만에 발급, 대상 그룹까지 만들고 ALB에서 `ec2:GetSecurityGroupsForVpc` 없음으로 멈춤 → 스크립트에 "이 스크립트가 만든 것(state 기록과 같은 ID)만 이어서 쓰기" 추가(가짜 시험 F1~F13) → 보람님 권한 추가 → 11:47 2차: 대상 그룹·인증서 재사용, ALB·리스너·도메인 연결, healthy, NET-01 OK, NET-01-b는 **Windows curl이 `/dev/null`을 몰라서** 확인 단계만 실패 → 고침(가짜 curl도 Windows처럼 바꿔 W1 시험 추가, 옛 코드로 되돌리면 13개 FAIL 확인) → 11:58 3차: 전부 재사용(새로 만든 것 없음), **NET-01 200 ok·인증서 OK, NET-01-b 301 → https, 실제 DNS 접속 OK**. 가짜 시험 최종 PASS 59 / FAIL 0(민성 Git Bash). 남은 것: live SG 읽기 수집·AUD 대조, WAF·ALB 접근 로그(설계 7절) | 증거: 연결확인표 NET-01·01-b, `~/alb-1111.log`(계정 번호·ARN 가려서 첨부). PR 작성 예정 | 노푸른: `https://orchestration-haven.cloud` 접속 가능(11/11 11:59~, 평일 09~21시, 밤에는 EC2가 꺼져 502/503). 안민수: ALB 켜 둠(11/11 결정), CSRF_TRUSTED_ORIGINS가 이 도메인인지 실제 로그인으로 확인 요청. 김보람: ALB 요금 시작(11:47~) 비용 확인 |
 | 4 | 미착수 | 미확인 | — | — |
 
-## 지금 할 일 (11/12 17:40 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
+## 지금 할 일 (11/13 10:55 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
 
 | 할 일 | 상태·선행 |
 |---|---|
@@ -62,7 +62,7 @@
 | ~#64 서버 쪽 PR (boto3, MAIL_FROM → 메일 환경변수) → 같은 커밋 2번 배포~ | ✅ 11/12 #78 병합(요찬 리뷰), `5bccce1` 2회 배포 + web-setup.sh 재실행 → `HAVEN_MAIL_BACKEND=ses` 등 3줄 (앱계약 E5·E6) |
 | 시험 메일 EXT-03(도착)·EXT-04(실패 표시) | 선행: 보람 Web Role `ses:SendEmail`(11/12 미확인). 서버 실행 민성, 판단 요찬, 수신 확인 보람 |
 | SG 점검 도구 live 모드 구현·시험·병합 → VPC ID·실행 방법을 구민철에게 전달 | 명세 5.1, boto3. 선행: 보람 읽기 권한 |
-| 백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번) | **11/13로 이관.** db-1 `/root/setup`에 backup.sh·restore.sh·common.sh 반입·sha256 일치(11/12 17:20). 11/13은 ①웹 멈추기부터 |
+| ~백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번)~ | ✅ 11/13 10:03 백업 `20261113T010301Z` → 격리 복원 DB 줄 수 일치·업로드 7개 sha256 일치 (아래 11/13 코멘트) |
 | 15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부) | 보람 #47 |
 | ALB·WAF 밤 처리 결정 → destroy.sh 정리 순서 | #57 약 $4.55/주 |
 | WAF ALB 연결·Block 적용 | 4회차. 보람 #77 26번 정책 반영됨, ALB 연결 액션(`CreateWebACLAssociation` vs `SetWebAcl`)은 연결 시험 때 확인 → 거부되면 보람에게 |
@@ -202,3 +202,33 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - **구민철 시험 시점:** 구민철의 AWS 공유 흐름 시험(15:50~16:29) 당시 운영 배포는 이 문서의 기록상 `74ae5eb`(15:33)다. `5bccce1`은 16:45 배포라 시험 이후다.
 - **새 작업 — web-1 역할 교체(보람 #84):** 새 Web 전용 역할 `haven-ec2-web-role`이 생겼고 web-1은 옛 역할이다. 교체 전에 정할 것: ① 새 역할에 첨부 백업·복원용 S3 권한(`db-backups/*`, `PutObject`·`GetObject`)이 있어야 `backup-uploads.sh`·`restore-uploads.sh`가 계속 동작한다 ② 교체용 `iam:PassRole`(새 역할)과 인스턴스 프로파일 교체 권한이 지금 기록된 정책에는 없다. 조장이 보람에게 코멘트로 요청했다. 11/13 백업·격리 복원 연습 뒤에 교체하는 것이 안전하다. 교체 뒤 시험 메일 EXT-03·04.
 - **ALB·WAF 밤 처리:** 보람 답변(#84 문서)은 WAF 기본요금 월 약 $8(월 약 $1 증가), 야간 유지에 동의. 단가는 보람 계산이고 요금표 대조는 하지 않았다. 정식 결정은 아직 기록하지 않았다.
+
+## 민성's comment · 2026-11-13 오전 · 백업·격리 복원 연습과 재배포
+
+**한 일 (실제로 돌려 본 것만)**
+
+| 시각 | 한 일 | 결과·근거 |
+|---|---|---|
+| 09:49 | 로그인 실패 제한(#75 결정) 구현 여부 확인: `git fetch` 뒤 `git grep -niE "attempt\|lockout\|ratelimit\|실패 횟수\|잠금" origin/main -- 신요찬/app` | 결과 없음 → **아직 미구현**. 요찬 구현 PR 병합 뒤 배포 2회 (대기) |
+| 약 10:00 | ① web-1 `systemctl stop haven` | ✅ `inactive` |
+| 10:03 | ② db-1 `backup.sh` | ✅ `OK backup 20261113T010301Z` → `s3://haven-backup-************/db-backups/`, 51,674 bytes, 13 tables |
+| ~10:22 | ③ web-1 `backup-uploads.sh "$TS"` (같은 시간도장) | ✅ OK. 처음 두 번은 시간도장 뒤의 `->`·`s3://…`·`(… bytes)`까지 붙여 넣어 bash 구문 오류 → 명령은 실행되지 않음. `TS=` 변수로 넣어 해결 |
+| ~10:22 | ④ web-1 `systemctl start haven` | ✅ active, healthz 200. 사이트 중단 약 20분(붙여넣기 실수로 길어짐) |
+| 10:25 | ⑤ db-1 `restore.sh "$TS"` → 격리 DB `haven_restore_check` | ✅ `13 tables, row counts match backup`. `NOTICE: database "haven_restore_check" does not exist, skipping`은 첫 복원이라 지울 옛 격리 DB가 없다는 안내 |
+| 10:26 | ⑥ web-1 `restore-uploads.sh "$TS"` → 격리 폴더 `/srv/haven/restore-check/uploads` | ✅ `7 files, sha256 match` |
+| 10:30~10:50 | 최신 main `a7bfcd6`(#86까지) 배포 | ✅ `readlink -f /srv/haven/current` = `/srv/haven/releases/a7bfcd6158f3d42e6a56dd62bb6eda2b7c5391ce`. 배포 전 `git diff --stat 6c98b90 origin/main -- 신요찬/app 안민수/server 노푸른` 결과 없음 → 앱·서버·화면 코드 변경 없음 |
+
+- 운영 DB와 운영 업로드 폴더는 건드리지 않았다. `TARGET_DB`·`TARGET_DIR`은 지정하지 않았다.
+- 시간도장은 UTC다(`T010301Z` = KST 10:03). 시간도장 하나로 DB와 업로드가 한 묶음이다.
+- 격리 DB `haven_restore_check`와 격리 폴더는 남겨 두었다(다음 연습 때 스크립트가 지우고 다시 만든다).
+
+**현재 운영 배포:** `a7bfcd6` (main, #86까지). #79는 이번 배포에 포함된다. 이전 `6c98b90`(11/12 17:33).
+
+**다음**
+
+| 할 일 | 메모 |
+|---|---|
+| web-1 역할 교체(보람 #84) | 백업 연습이 끝났으므로 진행 가능. 새 역할에 `db-backups/*` `PutObject`·`GetObject`, `iam:PassRole` 확인 먼저. 교체 뒤 `backup-uploads.sh` 다시 돌려 확인 |
+| 시험 메일 EXT-03·04 | 역할 교체·보람 `ses:SendEmail` 확인 뒤 |
+| 로그인 실패 제한 배포 | 요찬 구현 → 혁민 점검 → 병합 뒤 배포 2회 |
+| 4회차 정식 복원 | 오늘과 같은 순서 ①~⑥ |

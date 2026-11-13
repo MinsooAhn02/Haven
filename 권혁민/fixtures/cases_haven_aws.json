@@ -1,0 +1,60 @@
+
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-cleanup-smoke-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "AWS-SETUP-A-POST",
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "critical": true,
+      "capture_post_id": true,
+      "note": "AWS 전용 시험 게시글 생성 및 ID 기록"
+    },
+    {
+      "case_id": "AWS-A-TXT-UPLOAD",
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "시험용 게시글에 TXT 첨부 업로드"
+    }
+  ],
+  "cleanup_cases": [
+    {
+      "case_id": "AWS-CLEANUP-A-POST",
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "AWS-SETUP-A-POST",
+      "note": "시험용 게시글과 연결된 첨부 정리"
+    }
+  ]
+}

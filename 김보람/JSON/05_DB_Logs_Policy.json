@@ -1,7 +1,12 @@
-
 {
   "Version": "2012-10-17",
   "Statement": [
+    {
+      "Sid": "AllowDBDescribeLogStreams",
+      "Effect": "Allow",
+      "Action": "logs:DescribeLogStreams",
+      "Resource": "arn:aws:logs:ap-northeast-2:${AWS_ACCOUNT_ID}:log-group:/haven/db"
+    },
     {
       "Sid": "AllowDBLogStreamWrite",
       "Effect": "Allow",

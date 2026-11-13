@@ -9,8 +9,9 @@
 |---|---|
 | `baseline.json` | 정답지. 서버 역할별로 허용하는 규칙 목록(허용 목록에 없으면 위반) |
 | `fixtures/*.json` | 가짜 AWS 응답(답안지). AWS 없이 판정 로직을 시험할 때 사용 |
-| `network_audit.py` | 판정 프로그램 (fixture 모드 구현, live 모드는 3회차) |
-| `test_network_audit.py` | 회귀 시험 5개(unittest). 1회차 PR 리뷰에서 팀장 보완 시 추가 |
+| `network_audit.py` | 판정 프로그램 (fixture 모드, live 모드는 11/13 구현) |
+| `test_network_audit.py` | fixture 모드 회귀 시험(unittest). 1회차 PR 리뷰에서 팀장 보완 시 추가, 11/13 1개 추가 |
+| `test_live.py` | live 모드 시험 21개(가짜 AWS 클라이언트, boto3 없이). 설계 L1~L15 + 추가 경우 |
 
 코드가 어떻게 판정하는지는 [코드설명.md](코드설명.md)를 본다.
 
@@ -152,13 +153,14 @@
 | SG-04 | DB TCP 5432의 출발지가 Web SG가 아님 | FAIL |
 | SG-05 | 그 외 baseline에 없는 규칙 / baseline 규칙이 실제로 없음 / 기대 SG 미연결 | FAIL |
 | SG-06 | baseline에 없는 자산, baseline 자산의 수집 결과 없음, 연결되지 않은 SG, 역할을 모르는 SG 참조, SG 규칙 수집 결과 없음 | UNKNOWN |
+| SG-07 | (live만) VPC의 `default` SG에 규칙이 하나라도 있음. 비어 있으면 PASS. default SG는 SG-06 "연결되지 않은 SG"에서 뺀다 | FAIL |
 
 - baseline 규칙과 정확히 일치하는 규칙은 PASS로 기록한다.
 - fixture에 `errors`가 있으면 수집된 개별 finding은 보존하고 전체 판정은 ERROR로 끝낸다. baseline의 기대 자산이 수집 결과에서 누락되면 UNKNOWN으로 남긴다.
 
 ## 실행 방법
 
-요구 사항: Python 3.10 이상(시험 환경 3.13.2), 추가 패키지 없음. 1회차는 `fixture` 모드만 구현했고 `live` 모드는 3회차 예정이다.
+요구 사항: Python 3.10 이상(시험 환경 3.13.2). `fixture` 모드와 시험은 추가 패키지 없음. `live` 모드만 `boto3`가 필요하다(`pip install boto3`).
 
 `sg_audit` 폴더에서 실행한다.
 
@@ -180,6 +182,29 @@ echo $LASTEXITCODE
 
 `out/` 폴더는 실행할 때마다 새로 만들어지는 결과물이라 `.gitignore`로 Git에서 제외한다.
 
+### live 모드 실행 (실제 AWS, 읽기 전용)
+
+AWS에 IAM 사용자로 로그인한 터미널에서 `sg_audit` 폴더로 가서 실행한다. Describe* API만 부르고 아무것도 바꾸지 않는다.
+
+```bash
+cd 이민성/sg_audit
+python network_audit.py live --baseline baseline.json --output-dir out/live-$(date +%Y%m%d-%H%M)
+echo $?
+```
+
+| 옵션 | 뜻 |
+|---|---|
+| `--baseline` | 정답지. 자산마다 `expected_sg_names`(SG 이름)가 있어야 한다 |
+| `--output-dir` | 결과를 저장할 새 폴더. 차 있으면 **AWS를 읽기 전에** ERROR(2) |
+| `--region` | 기본 `ap-northeast-2` |
+| `--project` | 점검할 VPC의 `Project` 태그 값. 기본 `Haven` |
+| `--alb-name` | ALB 이름. 기본 `haven-alb` |
+
+- 필요한 권한: `ec2:DescribeVpcs`·`DescribeSecurityGroups`·`DescribeInstances`·`DescribeNetworkInterfaces`(보람 27번 `Haven-Minchul-SG-Read` 범위).
+- 설치: `python -m pip install --user "boto3[crt]==1.43.120"`. AWS CLI에 `aws login`(브라우저 로그인)으로 들어가 있으면 `[crt]`가 꼭 필요하다. 없으면 `MissingDependencyException` ERROR(2)로 멈춘다.
+- 결과의 계정 번호는 앞 4자리만 남긴다. **SG·VPC ID는 결과 파일에 그대로 남는다**(대조용). 결과를 PR·단톡·증거로 옮길 때는 ID를 가린다.
+- AWS 오류는 코드(예: `UnauthorizedOperation`)만 남기고 원문은 남기지 않는다(원문에 ARN·계정 번호가 들어 있음).
+
 ## 시험 결과
 
 환경: Windows, Python 3.13.2, `network_audit.py` 0.1.0, 2026-11-06 실행.
@@ -194,7 +219,7 @@ echo $LASTEXITCODE
 회귀 시험은 저장소 루트(`C:\Git4\Haven`)에서 실행한다.
 
 ```powershell
-python -B -m unittest discover -s 이민성/sg_audit -p test_network_audit.py -v
+python -B -m unittest discover -s 이민성/sg_audit -p "test_*.py" -v
 ```
 
 2026-11-09 실행 결과: 5개 통과(OK)
@@ -203,7 +228,7 @@ python -B -m unittest discover -s 이민성/sg_audit -p test_network_audit.py -v
 
 - 발견: 구민철(3회차 SG 점검 준비 중). baseline은 11/06 기준이라 11/09 설계 4.2에 추가된 web·db outbound TCP 80(`0.0.0.0/0`, Ubuntu apt)이 없었다. 그대로 실제 AWS를 점검하면 정상 규칙이 SG-05 FAIL로 나온다(오탐).
 - 고친 것: `baseline.json`에 2줄, `fixtures/pass.json`·`fail_public_db.json`·`unknown_role.json`의 sg-web·sg-db egress에 같은 규칙, 시험의 PASS 개수 8 → 10, 새 시험 `test_outbound_80_must_match_baseline`(80이 빠짐 / 8080으로 열림 / `10.0.0.0/8`로 열림 → 모두 FAIL SG-05).
-- 확인(AI 작업 환경 Linux, Python 3.13): 회귀 시험 6개 통과(OK). 고친 baseline을 예전 것으로 되돌리면 시험 3개가 실패하는 것도 확인(시험이 이 누락을 잡는다). 옛 baseline + 새 pass fixture는 PASS 8·FAIL 2(SG-05 web-1·db-1)로 오탐이 재현됨.
+- 확인: 회귀 시험 6개 통과(OK). 고친 baseline을 예전 것으로 되돌리면 시험 3개가 실패하는 것도 확인(시험이 이 누락을 잡는다). 옛 baseline + 새 pass fixture는 PASS 8·FAIL 2(SG-05 web-1·db-1)로 오탐이 재현됨.
 
 | 시험 ID | fixture | 결과 개수 | 판정 | 종료 코드 |
 |---|---|---|---|---|
@@ -222,7 +247,26 @@ python -B -m unittest discover -s 이민성/sg_audit -p test_network_audit.py -v
 
 미구현(다음 회차): `live` 모드(실제 AWS 읽기 전용 수집, 3회차 — 설계는 아래 "live 모드 설계" 절), AUD-03~07·10·11 추가 fixture.
 
-## live 모드 설계 (2026-11-13 확정, 구현 전)
+## live 모드 설계·실행 (2026-11-13)
+
+**구현 상태(11/13):** `network_audit.py` 0.2.0에 live 모드 구현, `test_live.py` 21개. 일부러 코드를 망가뜨린 12가지 경우(다음 페이지 안 읽기, 재시도 안 함, default SG 무시, 계정 번호 안 가림, ALB 중복 안 없앰, VPC 2개 허용, 종료된 서버 포함, AWS 오류 원문 저장 등)를 시험이 모두 잡음(뮤테이션 확인). boto3 없이 실행하면 `Boto3NotInstalled` ERROR(2)로 끝나는 것도 확인.
+
+### 실행 기록 (11/13, 민성 PC Windows Git Bash, IAM 사용자 minsung)
+
+| 시각 | 한 일 | 결과 |
+|---|---|---|
+| 15:38 | 전체 시험 `python -B -m unittest discover -s 이민성/sg_audit -p "test_*.py" -v` | 27개 통과(OK, 1.518s) |
+| 15:41 | live 첫 실행 (boto3만 설치) | ERROR(2) `setup: MissingDependencyException`. `aws login` 로그인 정보를 읽으려면 `botocore[crt]`가 필요. AWS는 읽지 않음 |
+| 15:42~15:45 | `python -m pip install --user "boto3[crt]==1.43.120"` (web-1과 같은 버전) | `boto3.client("ec2")` 생성 OK |
+| 15:45 | live 실행 | COMPLETE, PASS 10, FAIL 2(SG-07 default SG 기본 규칙 2개), 종료 코드 1. 우리 SG 3개 규칙 10개는 설계 4장과 일치 |
+| 15:48 | default SG 사용처 확인(읽기 전용): ENI·EC2(중지 포함)에 붙은 곳, 다른 SG 규칙의 참조 | ENI 0, EC2 0, 참조는 default 자기 자신(기본 규칙)뿐 → 비워도 영향받는 리소스 없음 |
+| 16:14 | 보람이 default SG 하나에 한정한 규칙 삭제 권한 추가 → 삭제 전 규칙 확인 | 들어옴 `-1` ← 자기 자신, 나감 `-1` → `0.0.0.0/0` 두 개뿐 |
+| 16:15 | `revoke-security-group-ingress`·`revoke-security-group-egress` → 다시 확인 | 두 규칙 삭제, `[[], []]`(비어 있음) |
+| 16:15 | live 실행 | **COMPLETE, PASS 11, FAIL 0, UNKNOWN 0, ERROR 0, 종료 코드 0** |
+
+- 기록에는 계정 번호·VPC·SG ID를 적지 않는다(결과 파일 `out/live-*`에는 남아 있고 `out/`은 Git 제외).
+- 되돌리기: 같은 두 규칙을 `authorize-security-group-ingress`·`authorize-security-group-egress`로 다시 넣는다.
+- 남은 범위: 명세 9장 `evidence/<run-id>/` 증거 폴더·가림 처리(3회차 증거 제출 전), 구민철 계정(27번)으로 3회차 실행·대조.
 
 명세 5.1. 실제 AWS에서 SG를 **읽기만** 해서 fixture와 같은 모양으로 바꾼 뒤, 기존 판정 코드(`audit`)로 baseline과 비교한다. AWS 설정은 바꾸지 않는다.
 
@@ -254,7 +298,7 @@ python network_audit.py live --baseline baseline.json --output-dir out/live-YYYY
 
 - VPC를 만들면 생기는 `default` SG는 어느 서버에도 붙이지 않는다. 실수로 붙어도 통신이 안 되도록 **규칙이 하나도 없어야 정상**으로 본다.
 - 새 판정 **SG-07: default SG에 규칙이 있으면 FAIL**. default SG는 "연결 안 된 SG(SG-06 UNKNOWN)" 판정에서는 뺀다.
-- 지금 실제 default SG에는 AWS 기본 규칙(같은 SG끼리 전부 허용, 밖으로 전부 허용)이 있어 SG-07 FAIL이 나온다. PASS를 받으려면 default SG 규칙 2개를 지우는 AWS 변경이 필요하다(민성 담당, default SG를 쓰는 ENI가 없는지 먼저 확인, 실행 전 조장 확인). live 구현 뒤에 한다.
+- 처음 실제 default SG에는 AWS 기본 규칙(같은 SG끼리 전부 허용, 밖으로 전부 허용)이 있어 SG-07 FAIL이 나왔다. 사용 리소스가 없는 것을 확인하고 11/13 16:15 두 규칙을 지웠다(위 실행 기록). 지금은 비어 있어 SG-07 PASS.
 
 ### 일부러 실패시키는 시험 (가짜 AWS 응답, boto3 없이)
 
@@ -274,6 +318,7 @@ python network_audit.py live --baseline baseline.json --output-dir out/live-YYYY
 | L12 | Throttling 계속 | 재시도 후 ERROR (2) |
 | L13 | IPv6 `::/0` 22번·prefix list 규칙 | 기존 규칙대로 FAIL SG-01 / SG-05 |
 | L14 | 출력 폴더가 이미 차 있음 | AWS를 읽기 전에 ERROR (2) |
+| L15 | ALB ENI 2개(같은 SG) | 중복 없이 1개로 판정, PASS |
 
 - 구현 뒤 판정·수집 코드를 일부러 망가뜨려 시험이 실제로 잡는지 확인한다(뮤테이션 확인).
 - 마지막에 민성 계정으로 실제 AWS에서 1회 실행해 결과를 이 절에 남긴다(계정 번호·SG ID 가림).

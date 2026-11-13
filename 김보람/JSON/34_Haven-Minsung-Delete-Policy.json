@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TerminateHavenEC2",
+      "Effect": "Allow",
+      "Action": "ec2:TerminateInstances",
+      "Resource": "arn:aws:ec2:ap-northeast-2:ACCOUNT_ID_MASKED:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Project": "Haven",
+          "aws:ResourceTag/Owner": "minsung"
+        },
+        "StringLike": {
+          "aws:ResourceTag/Name": "haven-test*"
+        }
+      }
+    },
+    {
+      "Sid": "DeleteHavenSG",
+      "Effect": "Allow",
+      "Action": "ec2:DeleteSecurityGroup",
+      "Resource": "arn:aws:ec2:ap-northeast-2:ACCOUNT_ID_MASKED:security-group/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Project": "Haven",
+          "aws:ResourceTag/Name": "haven-sg-test"
+        }
+      }
+    }
+  ]
+}

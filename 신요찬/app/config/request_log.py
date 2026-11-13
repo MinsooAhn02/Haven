@@ -11,11 +11,11 @@
   run_id            X-Haven-Run-ID (CLI 실행 ID)
   method, path      요청 메서드, 경로(쿼리 문자열 제외, 200자까지)
   view              URL 이름(예: posts:edit). 없는 주소는 null
-  action            login_success / login_failure / logout / csrf_failure / body_too_large / 그 외 view 이름
+  action            login_success / login_failure / login_limited / logout / csrf_failure / body_too_large / 그 외 view 이름
   actor_id          로그인 사용자 id, 비로그인은 null
   resource_id       대상 식별자(예: post:1, post:1/attachment:3, user:5). 경로 변수에서만 만든다
   status            응답 코드
-  result            ok(2xx·3xx) / invalid(400) / denied(401·403·404·405·413) / error(5xx)
+  result            ok(2xx·3xx) / invalid(400) / denied(401·403·404·405·413·429) / error(5xx)
   elapsed_ms        처리 시간
 
 남기지 않는 것: 비밀번호, 세션·CSRF 토큰, 쿠키, 쿼리 문자열, 글 본문, 파일 이름·내용, 입력한 아이디.

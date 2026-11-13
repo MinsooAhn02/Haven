@@ -65,6 +65,12 @@
         "logs:PutRetentionPolicy"
       ],
       "Resource": "arn:aws:logs:ap-northeast-2:ACCOUNT_ID_MASKED:log-group:aws-waf-logs-haven*"
+    },
+    {
+      "Sid": "ListHavenWebACLResources",
+      "Effect": "Allow",
+      "Action": "wafv2:ListResourcesForWebACL",
+      "Resource": "arn:aws:wafv2:ap-northeast-2:ACCOUNT_ID_MASKED:regional/webacl/haven-web-acl/WEB_ACL_ID_MASKED"
     }
   ]
 }

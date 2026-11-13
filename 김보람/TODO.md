@@ -49,7 +49,7 @@
 |---|---|---|---|---|
 | 1 | 부분 완료 | **11/06:** 시험용 IAM 사용자 MFA·재로그인, 비용 조회 허용/정보 조회 거부 시험, 서울 리전 자원·크레딧 확인.<br>**11/08:** 루트 MFA·복구 연락처 확인. | [1회차](1~4회차/1회차.md), [결정 현황](민수_인계_결정현황.md), [PR #8](https://github.com/MinsooAhn02/Haven/pull/8) | 예비 MFA·복구 시험, 타 리전 자원 확인 |
 | 2 | IAM·S3 구성 완료 / 실환경 시험 대기 | **11/09:** 민수·민성 IAM 계정, 역할·SSM·PassRole 권한 및 AWS 예산·알림 설정.<br>**11/10:** EC2·VPC 권한 보완, IAM 시뮬레이터 허용/거부 4건 확인, 민수 Session Manager 정책 연결, S3 백업 버킷 생성, 시험용 EC2 삭제 권한 범위 제한. | [2회차](1~4회차/2회차.md), [JSON 정책](JSON/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 민성: EC2·SSM 실환경 시험 / 민수: 접속·백업 복원 시험 / 보람: 결과에 따른 IAM 보완 |
-| 3 | 진행 중 / 일부 시험 대기 | **11/11:** SG 삭제 권한 제한, 민성 Route 53·ALB·ACM·SES 조회 권한 보완, SES 테스트 메일 확인, 도메인 DKIM 인증 결과 인계, AWS 자원·종료 확인 목록 및 비용 기록.<br>**11/12:** AWS 누적 사용 요금 $2.72 확인(크레딧 등 차감 후 청구 화면 $0.00). | [3회차 상세 기록](1~4회차/3회차.md), [SES 인증](SES_도메인_DKIM_인증_2026-11-11.md), [자원 현황](AWS_자원현황_종료확인목록_2026-11-11.md), [비용 기록](비용/AWS_비용실적_2026-11-12.md) | Django 메일 연동 시험, WAF·로그 권한 점검, 담당자 실환경 시험 결과 반영 |
+| 3 | 진행 중 / 일부 시험 대기 | **11/11:** SG 삭제 권한 제한, 민성 Route 53·ALB·ACM·SES 조회 권한 보완, SES 테스트 메일 확인, 도메인 DKIM 인증 결과 인계, AWS 자원·종료 확인 목록 및 비용 기록.<br>**11/12:** AWS 누적 사용 요금 $2.72 확인(크레딧 등 차감 후 청구 화면 $0.00).<br>**20~23번 정책 시험 결과:** 22번 EC2 로그 쓰기 — 민성님 PR #76에서 web-1 nginx-access·앱 로그 CloudWatch 도착 성공(14:44 최종 재시험). 20·21번 혁민님 로그 조회·검색/EC2·WAF 조회 및 SSM 거부 — 개별 명령·결과 증빙 대기. 23번 민성님 로그 관리 — 실제 로그 그룹 설정 사례는 있으나 이 정책으로 수행했는지는 미확인. | [3회차 상세 기록](1~4회차/3회차.md), [SES 인증](SES_도메인_DKIM_인증_2026-11-11.md), [자원 현황](AWS_자원현황_종료확인목록_2026-11-11.md), [비용 기록](비용/AWS_비용실적_2026-11-12.md) | Django 메일 연동 시험, 20·21번 혁민님 명령·결과 및 23번 민성님 권한 시험 결과 확인 |
 | 4 | 미착수 | 완료된 작업 기록 없음 | — | 권한·비용 최종 확인 및 자원 보존·종료 인계 |
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
@@ -311,7 +311,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 정책 JSON을 [19번 민성 SES 조회 정책](JSON/19_Minsung_SES_GetAccount_Read_Policy.json)에 기록. **허용 액션은 `ses:GetAccount`, `ses:ListRecommendations`, `ses:ListEmailIdentities`, `ses:GetEmailIdentity` 4개**이며, 이메일 자격 증명 상세 조회는 서울 리전의 SES identity ARN으로 제한. 메일 발송·SES 설정 변경 권한은 포함하지 않음.
 - [x] **민성님 실제 시험 결과(11/11):** `ses:ListEmailIdentities` 15:16 목록 조회 성공, `ses:GetEmailIdentity` 15:17 CLI 조회 성공. `ses:GetAccount`·`ses:ListRecommendations`는 SES 콘솔 첫 화면 접속으로 간접 확인(각 API 직접 호출 결과는 별도 미확인). 15:51 `ses:SendEmail` AccessDenied 거부 시험 성공(발송 권한 없음). PR #60 코멘트 근거.
 - [x] 11/11 민성님이 `ses:ListRecommendations` 추가 누락 오류 보고 → 보람이 동일 고객 관리형 정책에 조회 액션 추가·저장(정책 버전 2, AWS 권한 요약에 읽기 2개 표시). 추가 정책 연결은 불필요.
-- [x] 11/11 민성님 추가 요청 `ses:ListEmailIdentities`·`ses:GetEmailIdentity` → 보람이 같은 정책에 추가·저장, 정책 버전 3 확인(권한 요약: SES v2 / Pinpoint Email의 나열·읽기). 실제 API 재시험은 대기.
+- [x] 11/11 민성님 추가 요청 `ses:ListEmailIdentities`·`ses:GetEmailIdentity` → 보람이 같은 정책에 추가·저장, 정책 버전 3 확인(권한 요약: SES v2 / Pinpoint Email의 나열·읽기). **민성님 실제 AWS CLI 재시험 성공:** 15:16 `ses:ListEmailIdentities` 목록 조회, 15:17 `ses:GetEmailIdentity` 상세 조회(PR #60 코멘트 근거).
 - **구분:** 보람이 민성에게 조회 권한을 연결한 것과, 보람 자신의 SES 권한·`#58` DKIM 등록 후 인증 완료 여부는 **별도 확인** 대상.
 
 ### 다음 TODO (2026-11-11 기준)

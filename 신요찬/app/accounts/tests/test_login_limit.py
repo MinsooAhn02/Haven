@@ -220,5 +220,5 @@ class StorageAndLogTests(LoginLimitBase):
         raw = "\n".join(record.getMessage() for record in cm.records)
         event = json.loads(cm.records[-1].getMessage())
         self.assertEqual((event["action"], event["status"], event["result"]), ("login_limited", 429, "denied"))
-        for secret in ("member_a", PASSWORD, "198.51.100.1"):
-            self.assertNotIn(secret, raw)
+        for text in ("member_a", PASSWORD, "198.51.100.1"):
+            self.assertNotIn(text, raw)

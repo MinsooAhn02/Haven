@@ -7,6 +7,6 @@
 
 | 규칙 | 자산 | SG | 내용 | 전 | 후 |
 |---|---|---|---|---|---|
-| SG-07 | (default SG) | sg-#d760e060 |   -  | (없음) | PASS |
-| SG-07 | (default SG) | sg-#d760e060 | egress -1 None-None 0.0.0.0/0 | FAIL | (없음) |
-| SG-07 | (default SG) | sg-#d760e060 | ingress -1 None-None sg-#d760e060 | FAIL | (없음) |
+| SG-07 | (default SG) | sg-#d760e060 | (default SG 비어 있음) | (없음) | PASS |
+| SG-07 | (default SG) | sg-#d760e060 | egress 전체 프로토콜 전체 0.0.0.0/0 | FAIL | (없음) |
+| SG-07 | (default SG) | sg-#d760e060 | ingress 전체 프로토콜 전체 sg-#d760e060 | FAIL | (없음) |

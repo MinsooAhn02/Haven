@@ -1,9 +1,9 @@
 {
   "evidence_version": 1,
   "run_id": "80db5e5e-672d-4ee2-a5ec-96503efe04ef",
-  "created_at_utc": "2026-11-13T08:33:41.289544+00:00",
-  "commit": "30f40e4c7a60621138d5fbffa17272932afaeb8e",
-  "commit_dirty": false,
+  "created_at_utc": "2026-11-13T08:50:19.003104+00:00",
+  "commit": "ecfc3a2cdbda298bf0592eb2b6e8443661247f84",
+  "commit_dirty": true,
   "environment": {
     "python": "3.13.2",
     "os": "Windows 11",
@@ -15,7 +15,7 @@
     "baseline_file": "baseline.live.json"
   },
   "mode": "live",
-  "account_id": "7771********",
+  "account_id": "account-masked",
   "region": "ap-northeast-2",
   "scope": {
     "vpc_id": "vpc-#1f23243e",
@@ -32,7 +32,8 @@
     "ERROR": 0
   },
   "known_omissions": [
-    "SG 허용 설정만 본 결과이며 실제 인터넷 도달(공인 IP/route/NACL/listener)은 별도 시험으로 확인함(명세 5.2)"
+    "SG 허용 설정만 본 결과이며 실제 인터넷 도달(공인 IP/route/NACL/listener)은 별도 시험으로 확인함(명세 5.2)",
+    "실행 시 sg_audit 폴더에 커밋 안 된 변경이 있었음"
   ],
   "before_run_id": "1c9e3706-f262-48af-8ea8-ea4f19b64bb2"
 }

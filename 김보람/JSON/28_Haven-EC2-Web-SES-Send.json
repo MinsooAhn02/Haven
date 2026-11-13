@@ -6,8 +6,8 @@
       "Effect": "Allow",
       "Action": "ses:SendEmail",
       "Resource": [
-        "arn:aws:ses:ap-northeast-2:777171525040:identity/orchestration-haven.cloud",
-        "arn:aws:ses:ap-northeast-2:777171525040:identity/kkuik@naver.com"
+        "arn:aws:ses:ap-northeast-2:${ACCOUNT_ID}:identity/orchestration-haven.cloud",
+        "arn:aws:ses:ap-northeast-2:${ACCOUNT_ID}:identity/kkuik@naver.com"
       ],
       "Condition": {
         "StringEquals": {

@@ -11,7 +11,7 @@
         "logs:DescribeLogStreams",
         "logs:FilterLogEvents"
       ],
-      "Resource": "arn:aws:logs:ap-northeast-2:777171525040:log-group:/haven/*"
+      "Resource": "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:/haven/*"
     },
     {
       "Sid": "ListLogGroupsInSeoul",

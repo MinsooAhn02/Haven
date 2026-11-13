@@ -54,18 +54,19 @@
 | 3 | 진행 중 (ALB·HTTPS 완료. SG 실제 수집은 11/12 결정으로 live 모드 구현=민성, 실행·대조=구민철) | 도메인 `orchestration-haven.cloud` 확정(11/11). Route 53 공개 호스팅 영역 1개, 네임서버 4개가 구글 DNS(8.8.8.8) 응답과 일치 확인. `infra/build-alb.sh` 작성(ACM DNS 검증 → 대상 그룹 /healthz → ALB → 443 TLS1.2+·80→301 → apex Alias → healthy·NET-01·01-b 확인). 가짜 시험 `test/alb-fake-test.sh` 39개(일부러 실패: ALB 중복·web-1 꺼짐·호스팅 영역 0/2개·기존 A 레코드·권한 없음·인증서 시간 초과/FAILED·unhealthy·302·가짜 도메인 리다이렉트). 시험이 실제로 버그를 잡는지 스크립트를 일부러 망가뜨려 확인(가드 3곳 제거 → 해당 시험 FAIL). 민성 Windows Git Bash 11:32: 가짜 시험 PASS 39 / FAIL 0, `DRY_RUN=1 bash build-alb.sh` 1/5~5/5 종료 0(실제 state ID로 명령만 출력). 권한: ELB·ACM 읽기부터 AccessDenied(11:1x) → 보람님 추가 → 11:36 1차 실행: 인증서 2초 만에 발급, 대상 그룹까지 만들고 ALB에서 `ec2:GetSecurityGroupsForVpc` 없음으로 멈춤 → 스크립트에 "이 스크립트가 만든 것(state 기록과 같은 ID)만 이어서 쓰기" 추가(가짜 시험 F1~F13) → 보람님 권한 추가 → 11:47 2차: 대상 그룹·인증서 재사용, ALB·리스너·도메인 연결, healthy, NET-01 OK, NET-01-b는 **Windows curl이 `/dev/null`을 몰라서** 확인 단계만 실패 → 고침(가짜 curl도 Windows처럼 바꿔 W1 시험 추가, 옛 코드로 되돌리면 13개 FAIL 확인) → 11:58 3차: 전부 재사용(새로 만든 것 없음), **NET-01 200 ok·인증서 OK, NET-01-b 301 → https, 실제 DNS 접속 OK**. 가짜 시험 최종 PASS 59 / FAIL 0(민성 Git Bash). 남은 것: live SG 읽기 수집·AUD 대조, WAF·ALB 접근 로그(설계 7절) | 증거: 연결확인표 NET-01·01-b, `~/alb-1111.log`(계정 번호·ARN 가려서 첨부). PR 작성 예정 | 노푸른: `https://orchestration-haven.cloud` 접속 가능(11/11 11:59~, 평일 09~21시, 밤에는 EC2가 꺼져 502/503). 안민수: ALB 켜 둠(11/11 결정), CSRF_TRUSTED_ORIGINS가 이 도메인인지 실제 로그인으로 확인 요청. 김보람: ALB 요금 시작(11:47~) 비용 확인 |
 | 4 | 미착수 | 미확인 | — | — |
 
-## 지금 할 일 (11/13 10:55 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
+## 지금 할 일 (11/13 12:40 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
 
 | 할 일 | 상태·선행 |
 |---|---|
 | ~PR #76 로그 수집(OUT-10)·NET-06 기록~ | ✅ 11/12 #76 병합, 최종 판 web-1 실행(14:44)·CloudWatch 도착 확인 |
 | ~#64 서버 쪽 PR (boto3, MAIL_FROM → 메일 환경변수) → 같은 커밋 2번 배포~ | ✅ 11/12 #78 병합(요찬 리뷰), `5bccce1` 2회 배포 + web-setup.sh 재실행 → `HAVEN_MAIL_BACKEND=ses` 등 3줄 (앱계약 E5·E6) |
-| 시험 메일 EXT-03(도착)·EXT-04(실패 표시) | 선행: 보람 Web Role `ses:SendEmail`(11/12 미확인). 서버 실행 민성, 판단 요찬, 수신 확인 보람 |
+| ~web-1 역할 교체 (보람 #84, `haven-ec2-web-role`)~ | ✅ 11/13 12:23 교체, 12:33까지 기능 확인(SES 빼고 전부). 아래 11/13 낮 코멘트 |
+| 시험 메일 EXT-03(도착)·EXT-04(실패 표시) | 역할 교체 ✅. 요찬·보람과 시간 맞추는 중(11/13 12:35 요청). 서버 실행 민성, 판단 요찬, 수신 확인 보람 |
 | SG 점검 도구 live 모드 구현·시험·병합 → VPC ID·실행 방법을 구민철에게 전달 | 명세 5.1, boto3. 선행: 보람 읽기 권한 |
 | ~백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번)~ | ✅ 11/13 10:03 백업 `20261113T010301Z` → 격리 복원 DB 줄 수 일치·업로드 7개 sha256 일치 (아래 11/13 코멘트) |
 | ~15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부)~ | ✅ 11/13 11:38~11:42 허용 1·거부 4 (아래 11/13 코멘트). 보람 기록 반영은 보람에게 전달 |
 | ALB·WAF 밤 처리 결정 → destroy.sh 정리 순서 | #57 약 $4.55/주 |
-| WAF ALB 연결·Block 적용 | 4회차. 보람 #77 26번 정책 반영됨, ALB 연결 액션(`CreateWebACLAssociation` vs `SetWebAcl`)은 연결 시험 때 확인 → 거부되면 보람에게 |
+| WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤. 연결 상태 조회 권한(`GetWebACLForResource`) 범위 조정은 보람에게 요청 |
 | 가상 운영 관리자 계정 생성(make_operator.py) | 4회차 APP-07·09 시험 직전에만, 끝나면 바로 비활성화 |
 | ~로그인 실패 제한 수치 결정~ | ✅ 11/12 결정: 15분·계정 5번·IP 30번(#75). 구현은 요찬(4회차) → 혁민 점검 → 배포. 실제 IP는 X-Forwarded-For 뒤에서 두 번째(nginx가 ALB IP를 붙임) |
 | OUT-10 db-1 범위 결정 (PostgreSQL 로그 수집 여부) | 미정 |
@@ -251,3 +252,49 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 | 시험 메일 EXT-03·04 | 역할 교체·보람 `ses:SendEmail` 확인 뒤 |
 | 로그인 실패 제한 배포 | 요찬 구현 → 혁민 점검 → 병합 뒤 배포 2회 |
 | 4회차 정식 복원 | 오늘과 같은 순서 ①~⑥ |
+
+## 민성's comment · 2026-11-13 낮 · WAF ALB 연결과 web-1 역할 교체
+
+**WAF ALB 연결 (약 12:00~12:10, minsung CLI·Git Bash)**
+
+| 단계 | 결과 |
+|---|---|
+| Web ACL `haven-web-acl`(혁민 구성) 규칙 확인 | 기본 동작 `Allow`. 관리형 규칙 그룹 3개(`AWSManagedRulesCommonRuleSet`·`SQLiRuleSet`·`KnownBadInputsRuleSet`) 모두 `Override: Count` → 연결해도 막지 않고 기록만 함 |
+| 연결 전 사이트 | `https://…/healthz` 200 |
+| `wafv2 associate-web-acl` (`haven-web-acl` → `haven-alb`) | ✅ 성공 (26번 정책 `Haven-Minsung-WAF-Manage`) |
+| 연결 후 사이트 | `/healthz` 200, `/` 302(로그인 이동) → 정상 사용자 영향 없음 |
+
+- 민성 계정으로는 연결 상태 조회가 안 된다: `wafv2:ListResourcesForWebACL`은 정책에 없고, `wafv2:GetWebACLForResource`는 `webacl/haven-*/*`에만 허용돼 AWS가 `webacl/*/*`로 검사할 때 거부된다. 보람에게 조회 범위 조정 요청(급하지 않음, Block 전환 전까지). 연결 여부는 혁민에게 WAF 콘솔 Associated AWS resources 확인을 부탁했다.
+- 되돌리기: `aws wafv2 disassociate-web-acl --resource-arn <haven-alb ARN>` (26번 정책에 있음).
+- 주말 동안 ALB 유지 → Count 로그가 쌓이게 한다. Block 전환은 4회차 혁민 판단 뒤 민성이 적용.
+
+**web-1 역할 교체 (12:23 교체 → 12:33 확인 끝, 교체는 minsung CLI·확인은 web-1 SSM root)**
+
+공통 역할 `haven-ec2-ssm-role`(web·db 같이 사용)에서 web 전용 역할 `haven-ec2-web-role`(보람 #84)로 바꿨다. 최소 권한: web-1이 db-1 권한까지 갖지 않게 한다. EC2는 멈추지 않았다.
+
+| 확인 | 방법 | 결과 |
+|---|---|---|
+| 교체 전 | `describe-iam-instance-profile-associations` | `haven-ec2-ssm-profile` associated |
+| 교체 | `replace-iam-instance-profile-association` → `Name=haven-ec2-web-role` | ✅ associated (새 association ID는 기록하지 않음) |
+| 새 역할 적용 | web-1 `aws sts get-caller-identity` | ✅ `assumed-role/haven-ec2-web-role` |
+| 비밀값 읽기 | `ssm get-parameters` `/haven/django/secret_key`·`/haven/db/app_password`·`/haven/db/owner_password` (이름만 출력) | ✅ 3개, missing 없음 |
+| 업로드 백업·복원 (S3 `db-backups/*` Put·Get) | 웹 잠시 멈춤 → `backup-uploads.sh` `20261113T032444Z` → 웹 켬 → `restore-uploads.sh`(격리 폴더) | ✅ 8 files, sha256 일치. 이 시간도장은 **권한 확인용(업로드만, DB 없음)** 이라 복원 대상으로 쓰지 않는다 |
+| CloudWatch 로그 쓰기 | web-1 `logger -t gunicorn "haven-role-swap-check …"` → PC `logs filter-log-events` | ✅ `/haven/web`에 도착 |
+| SSM 등록 | PC `ssm describe-instance-information` | ✅ `Online` |
+| 배포 | `deploy.sh a7bfcd6…` 2회 | ✅ 2회 OK, migration 없음, active, healthz 200 |
+| SES 발신 | 시험 메일 EXT-03·04 | ⏳ 요찬·보람과 따로 |
+
+- 업로드 파일이 오전 7개 → 8개: 10:22 웹 재시작 뒤 누군가 첨부를 올린 것으로 보인다(백업은 그 시점 상태를 그대로 담음).
+- 처음 `backup-uploads.sh`는 웹이 켜져 있어 `FAIL: haven service is running`으로 멈췄다(스크립트 안전장치, S3 시도 없음). `systemctl stop haven; …; systemctl start haven` 한 줄로 다시 했다.
+- Git Bash에서 `/haven/web`처럼 `/`로 시작하는 인자는 `C:/Program Files/Git/…`로 바뀐다 → `MSYS_NO_PATHCONV=1`을 붙인다.
+- 되돌리기: `replace-iam-instance-profile-association --association-id <교체 뒤 ID> --iam-instance-profile Name=haven-ec2-ssm-profile`.
+- 이제 공통 역할 `haven-ec2-ssm-role`은 db-1만 쓴다. web 전용 권한(SES 발신·web 로그 쓰기)을 뺄지 보람과 정한다. 빼면 db-1 백업·SSM 영향 확인.
+
+**다음 (11/13 오후)**
+
+| 할 일 | 메모 |
+|---|---|
+| 시험 메일 EXT-03·04 | 요찬·보람 답 오면 바로. 받는 주소는 "SES 등록 주소"로만 기록 |
+| SG 점검 도구 live 모드 | 오후 시작(설계부터). 명세 5.1, boto3. 구민철 실행은 3회차 |
+| 보람에게 | 15번 SG 시험 결과 전달, WAF 조회 권한 범위, 공통 역할 정리 |
+| 21:00 `night.sh` | ALB 유지(WAF Count 관찰) |

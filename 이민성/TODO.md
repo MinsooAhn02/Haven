@@ -216,7 +216,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 | ~10:22 | ④ web-1 `systemctl start haven` | ✅ active, healthz 200. 사이트 중단 약 20분(붙여넣기 실수로 길어짐) |
 | 10:25 | ⑤ db-1 `restore.sh "$TS"` → 격리 DB `haven_restore_check` | ✅ `13 tables, row counts match backup`. `NOTICE: database "haven_restore_check" does not exist, skipping`은 첫 복원이라 지울 옛 격리 DB가 없다는 안내 |
 | 10:26 | ⑥ web-1 `restore-uploads.sh "$TS"` → 격리 폴더 `/srv/haven/restore-check/uploads` | ✅ `7 files, sha256 match` |
-| 10:30~10:50 | 최신 main `a7bfcd6`(#86까지) 배포 | ✅ `readlink -f /srv/haven/current` = `/srv/haven/releases/a7bfcd6158f3d42e6a56dd62bb6eda2b7c5391ce`. 배포 전 `git diff --stat 6c98b90 origin/main -- 신요찬/app 안민수/server 노푸른` 결과 없음 → 앱·서버·화면 코드 변경 없음 |
+| 10:30~10:50 | 최신 main `a7bfcd6`(#86까지) 같은 커밋 2회 배포 | ✅ 2회 모두 healthz 200, `readlink -f /srv/haven/current` = `/srv/haven/releases/a7bfcd6158f3d42e6a56dd62bb6eda2b7c5391ce`. 배포 전 `git diff --stat 6c98b90 origin/main -- 신요찬/app 안민수/server 노푸른` 결과 없음 → 앱·서버·화면 코드 변경 없음 |
 
 - 운영 DB와 운영 업로드 폴더는 건드리지 않았다. `TARGET_DB`·`TARGET_DIR`은 지정하지 않았다.
 - 시간도장은 UTC다(`T010301Z` = KST 10:03). 시간도장 하나로 DB와 업로드가 한 묶음이다.

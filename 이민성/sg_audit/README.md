@@ -129,8 +129,10 @@
 | web | ingress | TCP 80 ← alb | ALB를 거친 요청만 허용 |
 | web | egress | TCP 5432 → db | DB 연결 |
 | web | egress | TCP 443 → `0.0.0.0/0` | NAT 경유 SSM·패키지·AWS API·메일 API |
+| web | egress | TCP 80 → `0.0.0.0/0` | Ubuntu apt 저장소(HTTP). 설계 4.2에 11/09 추가, baseline은 11/13 반영 |
 | db | ingress | TCP 5432 ← web | Web에서만 DB 접속 |
 | db | egress | TCP 443 → `0.0.0.0/0` | NAT/S3 경유 SSM·패키지·백업 |
+| db | egress | TCP 80 → `0.0.0.0/0` | Ubuntu apt 저장소(HTTP). 설계 4.2에 11/09 추가, baseline은 11/13 반영 |
 
 ## 판정 원칙
 
@@ -196,6 +198,23 @@ python -B -m unittest discover -s 이민성/sg_audit -p test_network_audit.py -v
 ```
 
 2026-11-09 실행 결과: 5개 통과(OK)
+
+### 2026-11-13 baseline 갱신 (설계 4.2 web·db outbound TCP 80)
+
+- 발견: 구민철(3회차 SG 점검 준비 중). baseline은 11/06 기준이라 11/09 설계 4.2에 추가된 web·db outbound TCP 80(`0.0.0.0/0`, Ubuntu apt)이 없었다. 그대로 실제 AWS를 점검하면 정상 규칙이 SG-05 FAIL로 나온다(오탐).
+- 고친 것: `baseline.json`에 2줄, `fixtures/pass.json`·`fail_public_db.json`·`unknown_role.json`의 sg-web·sg-db egress에 같은 규칙, 시험의 PASS 개수 8 → 10, 새 시험 `test_outbound_80_must_match_baseline`(80이 빠짐 / 8080으로 열림 / `10.0.0.0/8`로 열림 → 모두 FAIL SG-05).
+- 확인(AI 작업 환경 Linux, Python 3.13): 회귀 시험 6개 통과(OK). 고친 baseline을 예전 것으로 되돌리면 시험 3개가 실패하는 것도 확인(시험이 이 누락을 잡는다). 옛 baseline + 새 pass fixture는 PASS 8·FAIL 2(SG-05 web-1·db-1)로 오탐이 재현됨.
+
+| 시험 ID | fixture | 결과 개수 | 판정 | 종료 코드 |
+|---|---|---|---|---|
+| AUD-01 | `pass.json` | PASS 10 | PASS | 0 |
+| AUD-02 | `fail_public_db.json` | PASS 10, FAIL 1 | FAIL (SG-01) | 1 |
+| AUD-09 | `unknown_role.json` | PASS 10, UNKNOWN 1 | UNKNOWN (SG-06) | 3 |
+| AUD-08 | `error_access_denied.json` | UNKNOWN 3, ERROR 1 | ERROR | 2 |
+
+위 11/06 표는 그때 실행 기록이라 그대로 둔다.
+
+2026-11-13 15:20 민성 PC(Windows, Git Bash) 실행: `python -B -m unittest discover -s 이민성/sg_audit -p test_network_audit.py -v` → 6개 통과(OK, 1.356s).
 
 추가 확인:
 - 같은 `--output-dir`로 다시 실행하면 덮어쓰지 않고 ERROR(2)로 멈춘다.

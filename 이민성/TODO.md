@@ -336,3 +336,4 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - EXT-04 코드가 `MessageRejected`가 아니라 `AccessDeniedException`: 28번 정책 Resource가 SES 등록 주소로만 좁혀져 있어 SES 전에 IAM이 먼저 거부. 안내서 기준 "실패로 표시됐으면 통과, 코드만 기록".
 - 출력에 받는 주소 원문 없음(가려진 형태만).
 - 특이사항: 12:54 첫 시도는 주소를 명령 줄에 직접 넣어 web-1 root 명령 기록(bash history)에 주소가 남았다 → 14:2x 해당 1줄 삭제(`history -d` + `history -w`, 파일에서 0건 확인, 개인정보 보호). 이후는 주소를 화면·기록에 남기지 않는 `send_test` 사용.
+- SSM 세션 로그 확인: CloudWatch에는 세션 로그 그룹 없음(14:38 민성 `describe-log-groups`, `/haven/web`·`aws-waf-logs-haven`만). S3는 민성 권한 없음(`ssm:GetDocument` 거부) → 보람 확인(14:4x): 콘솔 Session Manager 기본 설정에서 S3 로깅 비활성, `SSM-SessionManagerRunShell` 문서는 CLI 조회 시 `InvalidDocument`(설정 문서가 없음 = 기본값, 세션 로그 저장 안 함). 12:54 당시 설정·과거 로그는 확정 못 함(CloudTrail에서 이 문서의 생성·삭제 이력을 보면 확정 가능). 지울 로그가 확인되지 않아 삭제 조치는 하지 않음.

@@ -5001,7 +5001,7 @@ def test_share_recipient_uses_actual_login_username():
     assert actual["username"] == "aws_test_b"
     assert actual["csrfmiddlewaretoken"] == "synthetic-csrf"
 
-    # 元の入力は変更しない。
+    # 원본 입력은 변경하지 않는다.
     assert fields["username"] == "member_b"
 
 
@@ -5061,3 +5061,299 @@ def test_share_recipient_role_rejects_invalid_config(
             phase2_make_suite([create, share]),
             ROOT / "fixtures",
         )
+
+
+@pytest.mark.parametrize(
+    "post_id, share_id",
+    [(15, 81), (25, 103), (57, 209)],
+)
+def test_created_share_lookup_uses_actual_ids_and_username(
+    monkeypatch, post_id, share_id
+):
+    owner = Namespace(_haven_username="aws_test_a")
+    recipient = Namespace(_haven_username="aws_test_b")
+
+    sessions = {
+        "member_a": owner,
+        "member_b": recipient,
+    }
+    prepped = {"member_a": True, "member_b": True}
+    sent = []
+
+    html = f"""
+    <section aria-labelledby="share-list-heading">
+      <ul>
+        <li>
+          <h3 class="record-title">another_user</h3>
+          <form method="post"
+                action="/posts/{post_id}/shares/999/revoke/">
+          </form>
+        </li>
+        <li>
+          <h3 class="record-title">aws_test_b</h3>
+          <form method="post"
+                action="/posts/{post_id}/shares/{share_id}/revoke/">
+          </form>
+        </li>
+      </ul>
+    </section>
+    """.encode("utf-8")
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        assert session is owner
+        assert kwargs["capture_html"] is True
+        sent.append((method, path))
+        return phase2_detail(200), html
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    actual = cli.resolve_created_share_id(
+        post_id,
+        "member_a",
+        "member_b",
+        sessions,
+        prepped,
+        cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        None,
+        "synthetic-run",
+        [],
+        cli.MAX_RESPONSE,
+    )
+
+    assert actual == share_id
+    assert sent == [
+        ("GET", f"/posts/{post_id}/shares/")
+    ]
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "/posts/58/shares/209/revoke/",
+        "https://other.invalid/posts/57/shares/209/revoke/",
+    ],
+)
+def test_created_share_lookup_rejects_wrong_revoke_target(
+    monkeypatch, action
+):
+    sessions = {
+        "member_a": Namespace(_haven_username="aws_test_a"),
+        "member_b": Namespace(_haven_username="aws_test_b"),
+    }
+
+    html = f"""
+    <section aria-labelledby="share-list-heading">
+      <ul>
+        <li>
+          <h3 class="record-title">aws_test_b</h3>
+          <form method="post" action="{action}"></form>
+        </li>
+      </ul>
+    </section>
+    """.encode("utf-8")
+
+    monkeypatch.setattr(
+        cli,
+        "bounded_send",
+        lambda *args, **kwargs: (phase2_detail(200), html),
+    )
+
+    with pytest.raises(cli.ConfigError):
+        cli.resolve_created_share_id(
+            57,
+            "member_a",
+            "member_b",
+            sessions,
+            {"member_a": True, "member_b": True},
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            "synthetic-run",
+            [],
+            cli.MAX_RESPONSE,
+        )
+
+
+def test_created_share_lookup_rejects_missing_recipient(
+    monkeypatch,
+):
+    sessions = {
+        "member_a": Namespace(_haven_username="aws_test_a"),
+        "member_b": Namespace(_haven_username="aws_test_b"),
+    }
+
+    html = b"""
+    <section aria-labelledby="share-list-heading">
+      <ul></ul>
+    </section>
+    """
+
+    monkeypatch.setattr(
+        cli,
+        "bounded_send",
+        lambda *args, **kwargs: (phase2_detail(200), html),
+    )
+
+    with pytest.raises(cli.ExecutionError, match="공유 대상 관계"):
+        cli.resolve_created_share_id(
+            57,
+            "member_a",
+            "member_b",
+            sessions,
+            {"member_a": True, "member_b": True},
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            "synthetic-run",
+            [],
+            cli.MAX_RESPONSE,
+        )
+
+
+@pytest.mark.parametrize(
+    "post_id, share_id",
+    [(25, 103), (57, 209)],
+)
+def test_dynamic_share_grant_and_revoke_flow(
+    tmp_path, monkeypatch, post_id, share_id
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    cli.validate_suite(suite, ROOT / "fixtures")
+    cli.validate_aws_cleanup_suite(suite)
+
+    args = phase2_make_args(tmp_path, suite)
+    args.phase = None
+
+    usernames = {
+        "member_a": "aws_test_a",
+        "member_b": "aws_test_b",
+        "member_c": "aws_test_c",
+    }
+    session_roles = {}
+    sent = []
+    shared = False
+
+    def fake_login(session, target, budget, role, *args):
+        session_roles[id(session)] = role
+        session._haven_username = usernames[role]
+        session.cookies.set("csrftoken", "synthetic-csrf")
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        nonlocal shared
+        budget.begin()
+        role = session_roles[id(session)]
+        sent.append((role, method, path))
+
+        if method == "POST" and path == "/posts/new/":
+            assert role == "member_a"
+            return phase2_detail(
+                302, f"/posts/{post_id}/"
+            ), None
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/attachments/"
+        ):
+            assert role == "member_a"
+            return phase2_detail(302), None
+
+        if path == f"/posts/{post_id}/shares/":
+            assert role == "member_a"
+
+            if method == "POST":
+                assert kwargs["fields"]["username"] == "aws_test_b"
+                shared = True
+                return phase2_detail(302), None
+
+            assert method == "GET"
+            assert shared is True
+
+            html = f"""
+            <section aria-labelledby="share-list-heading">
+              <ul>
+                <li>
+                  <h3 class="record-title">aws_test_b</h3>
+                  <form method="post"
+                    action="/posts/{post_id}/shares/{share_id}/revoke/">
+                  </form>
+                </li>
+              </ul>
+            </section>
+            """.encode("utf-8")
+
+            return phase2_detail(200), html
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/shares/{share_id}/revoke/"
+        ):
+            assert role == "member_a"
+            assert shared is True
+            shared = False
+            return phase2_detail(302), None
+
+        if method == "GET" and path == f"/posts/{post_id}/":
+            allowed = (
+                role == "member_a"
+                or (role == "member_b" and shared)
+            )
+            return phase2_detail(200 if allowed else 404), None
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/delete/"
+        ):
+            assert role == "member_a"
+            assert shared is False
+            return phase2_detail(302), None
+
+        pytest.fail(f"예상하지 않은 요청: {role} {method} {path}")
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        cli,
+        "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf",
+    )
+
+    assert cli.run(args) == 3
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+    rows = {
+        row["case_id"]: row
+        for row in result["results"]
+    }
+
+    assert len(rows) == 9
+    assert result["unexecuted_cases"] == 0
+    assert result["cleanup_complete"] is True
+    assert all(
+        row["http_expectation_match"]
+        for row in rows.values()
+    )
+
+    assert rows["AWS-B-POST-DENIED"]["http_status"] == 404
+    assert rows["AWS-B-SHARED-READ"]["http_status"] == 200
+    assert rows["AWS-B-REVOKED-DENIED"]["http_status"] == 404
+
+    revoke = rows["AWS-A-REVOKE-B"]
+    assert revoke["resolved_share_id"] == share_id
+    assert revoke["path"] == (
+        f"/posts/{post_id}/shares/{share_id}/revoke/"
+    )
+
+    assert sent[-1] == (
+        "member_a", "POST", f"/posts/{post_id}/delete/"
+    )

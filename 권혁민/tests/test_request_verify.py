@@ -4673,16 +4673,13 @@ def test_aws_recover_dry_run_no_network(
     assert '"member_a"' in output
 
 
+@pytest.mark.parametrize(
+    "mode",
+    ["remaining", "already_empty", "lookup_failed"],
+)
 def test_aws_recover_apply_uses_marker_verified_id(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, mode
 ):
-    # 공유 정리 자체는 별도 테스트에서 검증한다.
-    monkeypatch.setattr(
-        cli,
-        "cleanup_post_shares",
-        lambda *args, **kwargs: 0,
-    )
-    
     suite = cli.load_json(
         ROOT / "fixtures" / "cases_haven_aws.json"
     )
@@ -4713,13 +4710,24 @@ def test_aws_recover_apply_uses_marker_verified_id(
     run_json.write_text(
         json.dumps(state), encoding="utf-8"
     )
+    original_bytes = run_json.read_bytes()
 
+    shared = mode == "remaining"
+    deleted = False
     sent = []
+    login_roles = []
+
+    def fake_login(session, target, budget, role, *args):
+        login_roles.append(role)
+        assert role == "member_a"
+        session._haven_username = "aws_test_a"
+        session.cookies.set("csrftoken", "synthetic-csrf")
 
     def fake_lookup(
         session, target, budget, run_id_arg, marker
     ):
         budget.begin()
+        assert run_id_arg == run_id
         assert marker == cli.aws_post_marker(
             run_id, "AWS-SETUP-A-POST"
         )
@@ -4729,27 +4737,68 @@ def test_aws_recover_apply_uses_marker_verified_id(
         session, method, target, path,
         budget, request_id, **kwargs
     ):
+        nonlocal shared, deleted
+
         budget.begin()
         sent.append((method, path))
-        return phase2_detail(
-            302 if method == "POST" else 404
-        ), None
 
+        on_send = kwargs.get("on_send")
+        if on_send:
+            on_send(cli.utc_now())
+
+        if method == "GET" and path == "/posts/57/shares/":
+            if mode == "lookup_failed":
+                return phase2_detail(403), None
+
+            row = ""
+            if shared:
+                row = """
+                <li>
+                  <h3 class="record-title">aws_test_b</h3>
+                  <form method="post"
+                        action="/posts/57/shares/209/revoke/">
+                  </form>
+                </li>
+                """
+
+            html = f"""
+            <section aria-labelledby="share-list-heading">
+              <ul>{row}</ul>
+            </section>
+            """.encode("utf-8")
+
+            return phase2_detail(200), html
+
+        if method == "POST" and path == (
+            "/posts/57/shares/209/revoke/"
+        ):
+            assert shared is True
+            shared = False
+            return phase2_detail(302), None
+
+        if method == "POST" and path == "/posts/57/delete/":
+            assert shared is False
+            deleted = True
+            return phase2_detail(302), None
+
+        if method == "GET" and path == "/posts/57/":
+            assert deleted is True
+            return phase2_detail(404), None
+
+        pytest.fail(f"예상하지 않은 요청: {method} {path}")
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
     monkeypatch.setattr(
         cli, "find_aws_post_by_marker", fake_lookup
     )
     monkeypatch.setattr(cli, "bounded_send", fake_send)
     monkeypatch.setattr(
-        cli, "prep_login",
-        lambda session, *args: session.cookies.set(
-            "csrftoken", "synthetic-csrf"
-        )
-    )
-    monkeypatch.setattr(
-        cli, "csrf_for_post",
-        lambda *args, **kwargs: "synthetic-csrf"
+        cli,
+        "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf",
     )
 
+    # cleanup_post_shares는 실제 함수를 실행한다.
     output_dir = tmp_path / "recovery_output"
 
     result = cli.main([
@@ -4765,19 +4814,53 @@ def test_aws_recover_apply_uses_marker_verified_id(
         "--apply",
     ])
 
-    assert result == 0
+    recovery = cli.load_json(
+        output_dir / "results.json"
+    )
+    cleanup = recovery["cleanup_results"][0]
 
-    assert sent == [
+    # 이전 실행의 B 세션 없이 A 로그인만으로 복구한다.
+    assert login_roles == ["member_a"]
+    assert cleanup["verified_post_id"] == 57
+    assert run_json.read_bytes() == original_bytes
+
+    if mode == "lookup_failed":
+        assert result == 2
+        assert recovery["cleanup_complete"] is False
+        assert cleanup["transport_status"] == "ERROR"
+        assert deleted is False
+        assert sent == [
+            ("GET", "/posts/57/shares/")
+        ]
+        return
+
+    assert result == 0
+    assert recovery["cleanup_complete"] is True
+    assert cleanup["shares_absent_verified"] is True
+    assert cleanup["revoked_share_count"] == (
+        1 if mode == "remaining" else 0
+    )
+    assert cleanup["response_summary"]["verification"][
+        "post_inaccessible"
+    ] is True
+
+    assert shared is False
+    assert deleted is True
+
+    expected = [("GET", "/posts/57/shares/")]
+
+    if mode == "remaining":
+        expected += [
+            ("POST", "/posts/57/shares/209/revoke/"),
+            ("GET", "/posts/57/shares/"),
+        ]
+
+    expected += [
         ("POST", "/posts/57/delete/"),
         ("GET", "/posts/57/"),
     ]
 
-    recovery = cli.load_json(output_dir / "results.json")
-    assert recovery["cleanup_complete"] is True
-    assert recovery["cleanup_results"][0]["verified_post_id"] == 57
-
-    # 원본 실행 결과는 변경하지 않는다.
-    assert cli.load_json(run_json) == state
+    assert sent == expected
 
 
 @pytest.mark.parametrize(
@@ -5757,3 +5840,288 @@ def test_aws_interrupted_share_runs_cleanup(
         ("member_a", "POST", f"/posts/{post_id}/delete/"),
         ("member_a", "GET", f"/posts/{post_id}/"),
     ]
+
+
+def admin_account_page_html(
+    *,
+    active=True,
+    action="/admin/accounts/37/status/",
+    duplicate=False,
+    page=1,
+):
+    status = "활성" if active else "비활성"
+    next_state = "false" if active else "true"
+
+    row = f"""
+    <tr>
+      <th scope="row">aws_test_b</th>
+      <td>{status}</td>
+      <td>가입일</td>
+      <td>최근 로그인</td>
+      <td>
+        <form method="post" action="{action}">
+          <input type="hidden" name="is_active"
+                 value="{next_state}">
+        </form>
+      </td>
+    </tr>
+    """
+
+    return f"""
+    <section aria-labelledby="accounts-heading">
+      <h2 id="accounts-heading">계정 목록</h2>
+      <table>
+        <thead><tr><th scope="col">아이디</th></tr></thead>
+        <tbody>{row}{row if duplicate else ""}</tbody>
+      </table>
+      <span aria-current="page">{page} / 3 페이지</span>
+    </section>
+    """.encode("utf-8")
+
+
+@pytest.mark.parametrize("active", [True, False])
+def test_parse_admin_account_actual_id_and_state(active):
+    accounts, total_pages = cli.parse_admin_account_page(
+        admin_account_page_html(active=active),
+        1,
+    )
+
+    assert accounts == [{
+        "username": "aws_test_b",
+        "account_id": 37,
+        "is_active": active,
+    }]
+    assert total_pages == 3
+
+
+@pytest.mark.parametrize("action", [
+    "https://other.invalid/admin/accounts/37/status/",
+    "/admin/accounts/0/status/",
+])
+def test_parse_admin_account_rejects_invalid_action(action):
+    with pytest.raises(cli.ConfigError, match="경로"):
+        cli.parse_admin_account_page(
+            admin_account_page_html(action=action),
+            1,
+        )
+
+
+def test_parse_admin_account_rejects_duplicate():
+    with pytest.raises(cli.ConfigError, match="중복"):
+        cli.parse_admin_account_page(
+            admin_account_page_html(duplicate=True),
+            1,
+        )
+
+
+def test_parse_admin_account_rejects_wrong_page():
+    with pytest.raises(cli.ConfigError, match="페이지 번호"):
+        cli.parse_admin_account_page(
+            admin_account_page_html(page=2),
+            1,
+        )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["found", "missing", "duplicate", "page_count_changed", "forbidden"],
+)
+def test_find_admin_account_across_pages(monkeypatch, mode):
+    sent = []
+    events = []
+    operator_session = object()
+
+    def make_page(page, username, account_id, active, total=2):
+        html = admin_account_page_html(
+            active=active,
+            action=f"/admin/accounts/{account_id}/status/",
+            page=page,
+        ).decode("utf-8")
+
+        html = html.replace("aws_test_b", username)
+        html = html.replace(
+            f"{page} / 3 페이지",
+            f"{page} / {total} 페이지",
+        )
+        return html.encode("utf-8")
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        assert session is operator_session
+        assert method == "GET"
+        assert kwargs["capture_html"] is True
+        sent.append(path)
+
+        if mode == "forbidden":
+            return phase2_detail(403), None
+
+        if path == "/admin/accounts/":
+            # 접두사가 같아도 다른 계정으로 취급해야 한다.
+            if mode == "duplicate":
+                name, account_id = "aws_test_b", 37
+            else:
+                name, account_id = "aws_test_b_extra", 12
+
+            return phase2_detail(200), make_page(
+                1, name, account_id, True
+            )
+
+        assert path == "/admin/accounts/?page=2"
+
+        name = (
+            "another_user"
+            if mode == "missing"
+            else "aws_test_b"
+        )
+        total = 3 if mode == "page_count_changed" else 2
+
+        return phase2_detail(200), make_page(
+            2, name, 37, False, total=total
+        )
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    def lookup():
+        return cli.find_admin_account(
+            operator_session,
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            "synthetic-run",
+            "aws_test_b",
+            events,
+            cli.MAX_RESPONSE,
+        )
+
+    if mode == "found":
+        assert lookup() == {
+            "username": "aws_test_b",
+            "account_id": 37,
+            "is_active": False,
+        }
+    else:
+        with pytest.raises(cli.ExecutionError):
+            lookup()
+
+    expected_paths = ["/admin/accounts/"]
+    if mode != "forbidden":
+        expected_paths.append("/admin/accounts/?page=2")
+
+    assert sent == expected_paths
+    assert len(events) == len(sent)
+    assert all(
+        event["stage"] == "admin_account_lookup"
+        and event["request_id"]
+        and event["trace_id"]
+        for event in events
+    )
+
+
+@pytest.mark.parametrize("active", [True, False])
+def test_inspect_accounts_command(
+    tmp_path, monkeypatch, capsys, active
+):
+    allowlist = tmp_path / "allowlist.json"
+    allowlist.write_text(
+        json.dumps({
+            "approved_origins": [
+                "https://orchestration-haven.cloud"
+            ]
+        }),
+        encoding="utf-8",
+    )
+
+    login_roles = []
+    looked_up = []
+
+    def fake_login(session, target, budget, role, *args):
+        login_roles.append(role)
+        session._haven_username = "aws_operator"
+
+    def fake_lookup(
+        session, target, budget, run_id,
+        username, prep_events, max_response_bytes
+    ):
+        assert session._haven_username == "aws_operator"
+        looked_up.append(username)
+
+        return {
+            "username": username,
+            "account_id": {
+                "aws_test_a": 15,
+                "aws_test_b": 37,
+            }[username],
+            "is_active": active,
+        }
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(
+        cli, "find_admin_account", fake_lookup
+    )
+    monkeypatch.setattr(
+        cli,
+        "bounded_send",
+        lambda *args, **kwargs: pytest.fail(
+            "모의 처리 밖의 HTTP 요청이 발생했습니다"
+        ),
+    )
+
+    result = cli.main([
+        "inspect-accounts",
+        "--target", "https://orchestration-haven.cloud",
+        "--allowlist", str(allowlist),
+        "--username", "aws_test_a",
+        "--username", "aws_test_b",
+    ])
+
+    assert result == 0
+    assert login_roles == ["operator"]
+    assert looked_up == ["aws_test_a", "aws_test_b"]
+
+    report = json.loads(capsys.readouterr().out)
+    assert report["account_state_changed"] is False
+    assert report["accounts"] == [
+        {
+            "username": "aws_test_a",
+            "account_id": 15,
+            "is_active": active,
+        },
+        {
+            "username": "aws_test_b",
+            "account_id": 37,
+            "is_active": active,
+        },
+    ]
+
+
+def test_inspect_accounts_rejects_duplicate_before_login(
+    tmp_path, monkeypatch
+):
+    allowlist = tmp_path / "allowlist.json"
+    allowlist.write_text(
+        json.dumps({
+            "approved_origins": [
+                "https://orchestration-haven.cloud"
+            ]
+        }),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "prep_login",
+        lambda *args, **kwargs: pytest.fail(
+            "설정 오류인데 로그인이 실행됐습니다"
+        ),
+    )
+
+    assert cli.main([
+        "inspect-accounts",
+        "--target", "https://orchestration-haven.cloud",
+        "--allowlist", str(allowlist),
+        "--username", "aws_test_a",
+        "--username", "aws_test_a",
+    ]) == 2

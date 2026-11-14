@@ -963,6 +963,292 @@ def find_aws_post_by_marker(
     return found_ids[0] if found_ids else None
 
 
+class AdminAccountHtmlParser(HTMLParser):
+    """계정 목록에서 사용자명, 상태, 변경 경로, 페이지를 읽는다."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.rows = []
+        self.row = None
+        self.capture = None
+        self.parts = []
+        self.page_parts = None
+        self.pages = []
+        self.has_list = False
+        self.has_empty = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+
+        if tag == "h2" and attrs.get("id") == "accounts-heading":
+            self.has_list = True
+
+        if (
+            tag == "section"
+            and "empty-state" in (attrs.get("class") or "").split()
+        ):
+            self.has_empty = True
+
+        if tag == "span" and attrs.get("aria-current") == "page":
+            if self.page_parts is not None:
+                raise ConfigError("계정 목록 페이지 구조 오류")
+            self.page_parts = []
+
+        if tag == "tr":
+            if self.row is not None:
+                raise ConfigError("계정 목록 행 중첩 오류")
+            self.row = {
+                "names": [],
+                "cells": [],
+                "actions": [],
+                "next_states": [],
+            }
+
+        elif self.row is not None:
+            if tag == "th" and attrs.get("scope") == "row":
+                self.capture = "names"
+                self.parts = []
+            elif tag == "td":
+                self.capture = "cells"
+                self.parts = []
+            elif tag == "form":
+                self.row["actions"].append((
+                    attrs.get("method", "get").lower(),
+                    attrs.get("action", ""),
+                ))
+            elif tag == "input" and attrs.get("name") == "is_active":
+                self.row["next_states"].append(attrs.get("value"))
+
+    def handle_data(self, data):
+        if self.capture is not None:
+            self.parts.append(data)
+        if self.page_parts is not None:
+            self.page_parts.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "span" and self.page_parts is not None:
+            self.pages.append("".join(self.page_parts).strip())
+            self.page_parts = None
+
+        if self.row is None:
+            return
+
+        if (
+            (tag == "th" and self.capture == "names")
+            or (tag == "td" and self.capture == "cells")
+        ):
+            self.row[self.capture].append(
+                "".join(self.parts).strip()
+            )
+            self.capture = None
+            self.parts = []
+
+        elif tag == "tr":
+            if self.capture is not None:
+                raise ConfigError("계정 목록 셀이 완결되지 않았습니다")
+
+            # 표 머리글 행은 제외한다.
+            if self.row["names"]:
+                self.rows.append(self.row)
+            elif self.row["cells"] or self.row["actions"]:
+                raise ConfigError("사용자명을 확인할 수 없는 계정 행입니다")
+
+            self.row = None
+
+
+def parse_admin_account_page(html, expected_page):
+    """계정 목록 한 페이지를 (계정 목록, 전체 페이지 수)로 반환한다."""
+    if (
+        not isinstance(html, bytes)
+        or len(html) > 65536
+        or type(expected_page) is not int
+        or expected_page < 1
+    ):
+        raise ConfigError("계정 목록 입력 형식 오류")
+
+    parser = AdminAccountHtmlParser()
+
+    try:
+        parser.feed(html.decode("utf-8"))
+        parser.close()
+    except UnicodeError as exc:
+        raise ConfigError("계정 목록 UTF-8 오류") from exc
+
+    if (
+        parser.row is not None
+        or parser.capture is not None
+        or parser.page_parts is not None
+        or len(parser.pages) != 1
+    ):
+        raise ConfigError("계정 목록 HTML 구조 오류")
+
+    match = re.fullmatch(
+        r"(\d+)\s*/\s*(\d+)\s*페이지",
+        parser.pages[0],
+    )
+    if match is None:
+        raise ConfigError("계정 목록 페이지 형식 오류")
+
+    current_page, total_pages = map(int, match.groups())
+
+    if current_page != expected_page or total_pages < current_page:
+        raise ConfigError("계정 목록 페이지 번호 불일치")
+
+    if not parser.rows:
+        if not parser.has_empty:
+            raise ConfigError("빈 계정 목록을 확인하지 못했습니다")
+        return [], total_pages
+
+    if not parser.has_list or parser.has_empty:
+        raise ConfigError("계정 목록 영역이 없거나 모호합니다")
+
+    accounts = []
+    seen_names = set()
+    seen_ids = set()
+
+    for row in parser.rows:
+        if (
+            len(row["names"]) != 1
+            or not row["names"][0]
+            or len(row["cells"]) != 4
+            or len(row["actions"]) != 1
+            or len(row["next_states"]) != 1
+        ):
+            raise ConfigError("계정 행의 필수 정보가 없거나 중복되었습니다")
+
+        username = row["names"][0]
+        status = row["cells"][0]
+        method, action = row["actions"][0]
+
+        match = re.fullmatch(
+            r"/admin/accounts/([1-9]\d{0,18})/status/",
+            action,
+        )
+        if method != "post" or match is None:
+            raise ConfigError("계정 상태 변경 경로 오류")
+
+        account_id = int(match.group(1))
+        if account_id > 2**63 - 1:
+            raise ConfigError("계정 ID 범위 초과")
+
+        if status not in {"활성", "비활성"}:
+            raise ConfigError("계정 활성 상태를 확인하지 못했습니다")
+
+        is_active = status == "활성"
+        expected_next = "false" if is_active else "true"
+
+        if row["next_states"][0] != expected_next:
+            raise ConfigError("계정 상태 표시와 변경 값이 모순됩니다")
+
+        if username in seen_names or account_id in seen_ids:
+            raise ConfigError("계정 목록에 중복된 계정이 있습니다")
+
+        seen_names.add(username)
+        seen_ids.add(account_id)
+        accounts.append({
+            "username": username,
+            "account_id": account_id,
+            "is_active": is_active,
+        })
+
+    return accounts, total_pages
+
+
+def find_admin_account(
+    session, target, budget, run_id,
+    username, prep_events, max_response_bytes,
+):
+    """관리자 세션으로 전체 목록을 확인해 계정명과 정확히 일치하는 계정을 찾는다."""
+    if (
+        not isinstance(username, str)
+        or not username
+        or username.strip() != username
+    ):
+        raise ConfigError("조회할 계정명 형식 오류")
+
+    found = None
+    expected_total = None
+    seen_names = set()
+    seen_ids = set()
+
+    for page in range(1, 26):
+        path = (
+            "/admin/accounts/"
+            if page == 1
+            else f"/admin/accounts/?page={page}"
+        )
+        request_id = str(uuid.uuid4())
+        trace_id = new_trace_id()
+
+        detail, html = bounded_send(
+            session,
+            "GET",
+            target,
+            path,
+            budget,
+            request_id,
+            headers={RUN_ID_HEADER: run_id},
+            trace_id=trace_id,
+            max_response_bytes=min(max_response_bytes, 65536),
+            capture_html=True,
+        )
+
+        prep_events.append({
+            "stage": "admin_account_lookup",
+            "page": page,
+            "http_status": detail["status"],
+            "request_id": request_id,
+            "trace_id": trace_id,
+        })
+
+        if detail["status"] != 200 or html is None:
+            raise ExecutionError(
+                "관리자 계정 목록 조회 실패"
+            )
+
+        accounts, total_pages = parse_admin_account_page(
+            html, page
+        )
+
+        if total_pages > 25:
+            raise ExecutionError(
+                "계정 목록이 25페이지를 초과합니다"
+            )
+
+        if expected_total is None:
+            expected_total = total_pages
+        elif total_pages != expected_total:
+            raise ExecutionError(
+                "조회 중 계정 목록 페이지 수가 변경되었습니다"
+            )
+
+        for account in accounts:
+            name = account["username"]
+            account_id = account["account_id"]
+
+            if name in seen_names or account_id in seen_ids:
+                raise ExecutionError(
+                    "페이지 간 계정 중복으로 조회 결과를 확정할 수 없습니다"
+                )
+
+            seen_names.add(name)
+            seen_ids.add(account_id)
+
+            # 부분 일치나 역할명 추측을 사용하지 않는다.
+            if name == username:
+                found = dict(account)
+
+        if page == total_pages:
+            break
+
+    if found is None:
+        raise ExecutionError(
+            "관리자 목록에서 시험 계정을 찾지 못했습니다"
+        )
+
+    return found
+
+
 class RequestBudget:
     """로그인/CSRF 준비 포함 전체 요청 수·속도·시간 예산 관리."""
     def __init__(self, args):
@@ -3055,6 +3341,96 @@ def extract_count_rule_ids(event: dict) -> list[str]:
     return list(dict.fromkeys(counts))
 
 
+def inspect_accounts(args) -> int:
+    """관리자 로그인 후 지정한 시험 계정의 ID와 활성 상태를 조회한다."""
+    validate_limits(args)
+    target = canonical_origin(args.target)
+
+    if target != canonical_origin(
+        "https://orchestration-haven.cloud"
+    ):
+        raise ConfigError(
+            "inspect-accounts는 Haven AWS 대상만 지원합니다"
+        )
+
+    allow = load_json(args.allowlist)
+    if (
+        not isinstance(allow, dict)
+        or not isinstance(allow.get("approved_origins"), list)
+    ):
+        raise ConfigError("allowlist 형식 오류")
+
+    approved = {
+        canonical_origin(origin)
+        for origin in allow["approved_origins"]
+    }
+    if target not in approved:
+        raise ConfigError("대상 origin이 allowlist에 없습니다")
+
+    usernames = args.username
+    if (
+        not usernames
+        or any(
+            not isinstance(name, str)
+            or not name
+            or name.strip() != name
+            for name in usernames
+        )
+        or len(set(usernames)) != len(usernames)
+    ):
+        raise ConfigError("조회 계정명이 비어 있거나 중복되었습니다")
+
+    run_id = str(uuid.uuid4())
+    budget = RequestBudget(args)
+    prep_events = []
+    accounts = []
+
+    with new_session() as session:
+        # 일반 시험 계정과 별도로 관리자 계정 정보를 입력받는다.
+        prep_login(
+            session,
+            target,
+            budget,
+            "operator",
+            run_id,
+            prep_events,
+            args.max_response_bytes,
+        )
+
+        for username in usernames:
+            account = find_admin_account(
+                session,
+                target,
+                budget,
+                run_id,
+                username,
+                prep_events,
+                args.max_response_bytes,
+            )
+
+            if any(
+                previous["account_id"] == account["account_id"]
+                for previous in accounts
+            ):
+                raise ExecutionError(
+                    "서로 다른 계정명이 같은 ID로 조회되었습니다"
+                )
+
+            accounts.append(account)
+
+    print(json.dumps({
+        "source": "aws_account_inspection",
+        "run_id": run_id,
+        "target_origin": target,
+        "inspected_utc": utc_now(),
+        "accounts": accounts,
+        "account_state_changed": False,
+        "total_http_requests": budget.count,
+    }, ensure_ascii=False, indent=2))
+
+    return 0
+
+
 def create_parser():
     """명령행 인터페이스 run / correlate 옵션 정의."""
     parser = argparse.ArgumentParser(description="Haven 승인된 요청 재현 / WAF·앱 로그 대조 CLI")
@@ -3108,6 +3484,30 @@ def create_parser():
     c.add_argument("--app-log", required=True, type=Path)
     c.add_argument("--output-dir", required=True, type=Path)
 
+    inspect = commands.add_parser(
+        "inspect-accounts",
+        help="관리자 로그인 후 시험 계정 ID와 활성 상태 조회",
+    )
+    inspect.add_argument("--target", required=True)
+    inspect.add_argument(
+        "--allowlist", required=True, type=Path
+    )
+    inspect.add_argument(
+        "--username",
+        action="append",
+        required=True,
+        help="조회할 실제 계정명. 여러 계정은 옵션을 반복 지정",
+    )
+    inspect.add_argument("--timeout", type=float, default=10)
+    inspect.add_argument("--max-requests", type=int, default=100)
+    inspect.add_argument("--rate", type=float, default=1)
+    inspect.add_argument("--max-duration", type=float, default=300)
+    inspect.add_argument(
+        "--max-response-bytes",
+        type=int,
+        default=MAX_RESPONSE,
+    )
+
     return parser
 
 
@@ -3120,6 +3520,8 @@ def main(argv=None) -> int:
             return run(args)
         if args.command == "recover":
             return recover(args)
+        if args.command == "inspect-accounts":
+            return inspect_accounts(args)
         return correlate(args)
     except KeyboardInterrupt:
         print("중단됨: 사용자가 Ctrl+C를 눌렀습니다", file=sys.stderr)

@@ -1354,8 +1354,12 @@ def resolve_created_share_id(
     post_id, owner_role, recipient_role,
     sessions, prepped, target, budget,
     run_id, prep_events, max_response_bytes,
+    *, allow_missing=False,
 ):
     """실제로 생성한 게시글에서 로그인한 수신자의 공유 ID를 찾는다."""
+    if type(allow_missing) is not bool:
+        raise ConfigError("allow_missing은 bool이어야 합니다")
+
     if type(post_id) is not int or not 1 <= post_id <= 2**63 - 1:
         raise ConfigError("공유 조회 게시글 ID 오류")
 
@@ -1387,7 +1391,7 @@ def resolve_created_share_id(
             "post_id": post_id,
             "recipient": fields["username"],
             "lookup_role": owner_role,
-            "allow_missing": False,
+            "allow_missing": allow_missing,
         }
     }
 
@@ -1692,6 +1696,128 @@ def build_aws_recovery_plan(state: dict, suite: dict) -> list[dict]:
     return plan
 
 
+def cleanup_post_shares(
+    session, post_id, target, budget, run_id,
+    prep_events, max_response_bytes, events,
+):
+    """표식 검증이 끝난 시험 게시글의 남은 공유를 해제한다."""
+
+    def read_share_ids():
+        request_id = str(uuid.uuid4())
+        trace_id = new_trace_id()
+        path = f"/posts/{post_id}/shares/"
+
+        detail, html = bounded_send(
+            session,
+            "GET",
+            target,
+            path,
+            budget,
+            request_id,
+            headers={RUN_ID_HEADER: run_id},
+            trace_id=trace_id,
+            max_response_bytes=min(max_response_bytes, 65536),
+            capture_html=True,
+        )
+
+        events.append({
+            "stage": "cleanup_share_lookup",
+            "path": path,
+            "http_status": detail["status"],
+            "request_id": request_id,
+            "trace_id": trace_id,
+        })
+
+        if detail["status"] != 200 or html is None:
+            raise ExecutionError("복구용 공유 목록 조회 실패")
+
+        if not isinstance(html, bytes) or len(html) > 65536:
+            raise ConfigError("복구용 공유 목록 크기 또는 형식 오류")
+
+        parser = ShareHtmlParser(post_id, "")
+
+        try:
+            parser.feed(html.decode("utf-8"))
+            parser.close()
+        except UnicodeError as exc:
+            raise ConfigError("복구용 공유 목록 UTF-8 오류") from exc
+
+        if not parser.has_share_list or parser.open_rows:
+            raise ConfigError("복구용 공유 목록 구조를 확인하지 못했습니다")
+
+        share_ids = []
+
+        for row in parser.rows:
+            if len(row["names"]) != 1 or not row["names"][0]:
+                raise ConfigError("복구용 공유 대상 식별 오류")
+
+            # 기존 파서로 같은 게시글의 POST 해제 경로인지 검증한다.
+            share_id = parse_share_id(
+                html, post_id, row["names"][0]
+            )
+
+            if share_id is None or share_id in share_ids:
+                raise ConfigError("복구용 공유 ID가 없거나 중복되었습니다")
+
+            share_ids.append(share_id)
+
+        return share_ids
+
+    share_ids = read_share_ids()
+
+    # 이미 해제된 상태라면 추가 POST 없이 완료한다.
+    if not share_ids:
+        return 0
+
+    for share_id in share_ids:
+        path = f"/posts/{post_id}/shares/{share_id}/revoke/"
+        csrf = csrf_for_post(
+            session,
+            target,
+            budget,
+            prep_events,
+            max_response_bytes,
+            "valid",
+            run_id,
+        )
+        request_id = str(uuid.uuid4())
+        trace_id = new_trace_id()
+
+        detail, _ = bounded_send(
+            session,
+            "POST",
+            target,
+            path,
+            budget,
+            request_id,
+            fields={"csrfmiddlewaretoken": csrf},
+            headers={
+                RUN_ID_HEADER: run_id,
+                "Origin": serialize_origin_header(target),
+                "X-CSRFToken": csrf,
+            },
+            trace_id=trace_id,
+            max_response_bytes=max_response_bytes,
+        )
+
+        events.append({
+            "stage": "cleanup_share_revoke",
+            "path": path,
+            "http_status": detail["status"],
+            "request_id": request_id,
+            "trace_id": trace_id,
+        })
+
+        if detail["status"] != 302:
+            raise ExecutionError("복구용 공유 해제 HTTP 기대값 불일치")
+
+    # 302 응답만으로 완료하지 않고 실제 목록에서 사라졌는지 확인한다.
+    if read_share_ids():
+        raise ExecutionError("복구 후에도 공유 관계가 남아 있습니다")
+
+    return len(share_ids)
+
+
 def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: dict,
                     target: str, budget: RequestBudget, run_id: str, prep_events: list,
                     fixture_root: Path, max_response_bytes: int, results: list, created_post_ids: dict | None = None) -> bool:
@@ -1756,6 +1882,19 @@ def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: d
 
                     record["verified_post_id"] = post_id
                     record["verified_post_marker"] = marker
+
+                    record["share_cleanup_events"] = []
+                    record["revoked_share_count"] = cleanup_post_shares(
+                        session,
+                        post_id,
+                        target,
+                        budget,
+                        run_id,
+                        prep_events,
+                        max_response_bytes,
+                        record["share_cleanup_events"],
+                    )
+                    record["shares_absent_verified"] = True
 
                 elif post_id is None:
                     raise ExecutionError(

@@ -118,6 +118,40 @@
       "max_requests": 1,
       "verification_mode": "manual_required",
       "note": "공유받은 B의 시험 게시글 조회 허용"
+    },
+    {
+      "case_id": "AWS-A-REVOKE-B",
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/{share_id}/revoke/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "share_revoke_role": "member_b",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "critical": true,
+      "note": "실제 B 계정의 공유 ID를 조회하여 A가 공유 해제"
+    },
+    {
+      "case_id": "AWS-B-REVOKED-DENIED",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 해제 후 기존 B 세션의 게시글 접근 거부"
     }
   ],
   "cleanup_cases": [

@@ -4278,6 +4278,13 @@ def test_aws_cleanup_suite_rejects_fixed_post_mutation():
 def test_aws_cleanup_verifies_post_inaccessible(
     monkeypatch, get_status, expected_complete
 ):
+    # 공유 정리 자체는 별도 테스트에서 검증한다.
+    monkeypatch.setattr(
+        cli,
+        "cleanup_post_shares",
+        lambda *args, **kwargs: 0,
+    )
+    
     suite = cli.load_json(
         ROOT / "fixtures" / "cases_haven_aws.json"
     )
@@ -4449,6 +4456,13 @@ def test_aws_post_parser_rejects_wrong_page():
 def test_aws_cleanup_recovers_post_by_marker(
     monkeypatch, saved_id, expected_complete
 ):
+    # 공유 정리 자체는 별도 테스트에서 검증한다.
+    monkeypatch.setattr(
+        cli,
+        "cleanup_post_shares",
+        lambda *args, **kwargs: 0,
+    )
+    
     suite = cli.load_json(
         ROOT / "fixtures" / "cases_haven_aws.json"
     )
@@ -4662,6 +4676,13 @@ def test_aws_recover_dry_run_no_network(
 def test_aws_recover_apply_uses_marker_verified_id(
     tmp_path, monkeypatch
 ):
+    # 공유 정리 자체는 별도 테스트에서 검증한다.
+    monkeypatch.setattr(
+        cli,
+        "cleanup_post_shares",
+        lambda *args, **kwargs: 0,
+    )
+    
     suite = cli.load_json(
         ROOT / "fixtures" / "cases_haven_aws.json"
     )
@@ -5357,3 +5378,382 @@ def test_dynamic_share_grant_and_revoke_flow(
     assert sent[-1] == (
         "member_a", "POST", f"/posts/{post_id}/delete/"
     )
+
+
+@pytest.mark.parametrize("allow_missing", [False, True])
+def test_created_share_lookup_missing_policy(
+    monkeypatch, allow_missing
+):
+    sessions = {
+        "member_a": Namespace(_haven_username="aws_test_a"),
+        "member_b": Namespace(_haven_username="aws_test_b"),
+    }
+    sent = []
+
+    # B의 공유는 없지만, 다른 사용자의 공유는 남아 있다.
+    html = b"""
+    <section aria-labelledby="share-list-heading">
+      <ul>
+        <li>
+          <h3 class="record-title">another_user</h3>
+          <form method="post"
+                action="/posts/57/shares/999/revoke/">
+          </form>
+        </li>
+      </ul>
+    </section>
+    """
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        assert session is sessions["member_a"]
+        sent.append((method, path))
+        return phase2_detail(200), html
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    def lookup():
+        return cli.resolve_created_share_id(
+            57,
+            "member_a",
+            "member_b",
+            sessions,
+            {"member_a": True, "member_b": True},
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            "synthetic-run",
+            [],
+            cli.MAX_RESPONSE,
+            allow_missing=allow_missing,
+        )
+
+    if allow_missing:
+        assert lookup() is None
+    else:
+        with pytest.raises(
+            cli.ExecutionError, match="공유 대상 관계"
+        ):
+            lookup()
+
+    # 다른 사용자의 공유를 해제하는 POST는 발생하지 않는다.
+    assert sent == [("GET", "/posts/57/shares/")]
+
+
+@pytest.mark.parametrize("value", [None, 1, "true"])
+def test_created_share_lookup_rejects_invalid_missing_policy(
+    monkeypatch, value
+):
+    monkeypatch.setattr(
+        cli,
+        "bounded_send",
+        lambda *args, **kwargs: pytest.fail(
+            "설정 오류에서 HTTP 요청이 발생했습니다"
+        ),
+    )
+
+    with pytest.raises(cli.ConfigError, match="allow_missing"):
+        cli.resolve_created_share_id(
+            57,
+            "member_a",
+            "member_b",
+            {},
+            {},
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            "synthetic-run",
+            [],
+            cli.MAX_RESPONSE,
+            allow_missing=value,
+        )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["already_empty", "remaining", "still_present", "lookup_failed"],
+)
+def test_cleanup_post_shares(monkeypatch, mode):
+    target = cli.canonical_origin(
+        "https://orchestration-haven.cloud"
+    )
+    sent = []
+    events = []
+    lookups = 0
+
+    empty_html = b"""
+    <section aria-labelledby="share-list-heading">
+      <ul></ul>
+    </section>
+    """
+
+    shared_html = b"""
+    <section aria-labelledby="share-list-heading">
+      <ul>
+        <li>
+          <h3 class="record-title">aws_test_b</h3>
+          <form method="post"
+                action="/posts/57/shares/209/revoke/">
+          </form>
+        </li>
+      </ul>
+    </section>
+    """
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        nonlocal lookups
+        sent.append((method, path))
+
+        if method == "GET":
+            assert path == "/posts/57/shares/"
+            lookups += 1
+
+            if mode == "lookup_failed":
+                return phase2_detail(403), None
+
+            if mode == "already_empty":
+                return phase2_detail(200), empty_html
+
+            if lookups == 1 or mode == "still_present":
+                return phase2_detail(200), shared_html
+
+            return phase2_detail(200), empty_html
+
+        assert method == "POST"
+        assert path == "/posts/57/shares/209/revoke/"
+        assert kwargs["fields"] == {
+            "csrfmiddlewaretoken": "synthetic-csrf"
+        }
+        return phase2_detail(302), None
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        cli,
+        "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf",
+    )
+
+    with cli.new_session() as session:
+        def cleanup():
+            return cli.cleanup_post_shares(
+                session,
+                57,
+                target,
+                None,
+                "synthetic-run",
+                [],
+                cli.MAX_RESPONSE,
+                events,
+            )
+
+        if mode in {"still_present", "lookup_failed"}:
+            with pytest.raises(cli.ExecutionError):
+                cleanup()
+        else:
+            assert cleanup() == (
+                0 if mode == "already_empty" else 1
+            )
+
+    if mode in {"already_empty", "lookup_failed"}:
+        assert sent == [
+            ("GET", "/posts/57/shares/")
+        ]
+    else:
+        assert sent == [
+            ("GET", "/posts/57/shares/"),
+            ("POST", "/posts/57/shares/209/revoke/"),
+            ("GET", "/posts/57/shares/"),
+        ]
+
+    assert len(events) == len(sent)
+    assert all(
+        event["request_id"] and event["trace_id"]
+        for event in events
+    )
+
+
+@pytest.mark.parametrize("interruption", ["network_error", "ctrl_c"])
+def test_aws_interrupted_share_runs_cleanup(
+    tmp_path, monkeypatch, interruption
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    args = phase2_make_args(tmp_path, suite)
+    args.phase = None
+    args.target = "https://orchestration-haven.cloud"
+
+    args.allowlist.write_text(
+        json.dumps({"approved_origins": [args.target]}),
+        encoding="utf-8",
+    )
+
+    post_id = 57
+    share_id = 209
+    shared = False
+    deleted = False
+    sent = []
+    session_roles = {}
+
+    usernames = {
+        "member_a": "aws_test_a",
+        "member_b": "aws_test_b",
+        "member_c": "aws_test_c",
+    }
+
+    def fake_login(session, target, budget, role, *args):
+        session_roles[id(session)] = role
+        session._haven_username = usernames[role]
+        session.cookies.set("csrftoken", "synthetic-csrf")
+
+    def fake_lookup(session, target, budget, run_id, marker):
+        assert session_roles[id(session)] == "member_a"
+        assert marker == cli.aws_post_marker(
+            run_id, "AWS-SETUP-A-POST"
+        )
+        budget.begin()
+        return post_id
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        nonlocal shared, deleted
+
+        budget.begin()
+        role = session_roles[id(session)]
+        sent.append((role, method, path))
+
+        # 실제 전송 직전의 기록 처리도 재현한다.
+        on_send = kwargs.get("on_send")
+        if on_send:
+            on_send(cli.utc_now())
+
+        if method == "POST" and path == "/posts/new/":
+            assert role == "member_a"
+            return phase2_detail(
+                302, f"/posts/{post_id}/"
+            ), None
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/attachments/"
+        ):
+            assert role == "member_a"
+            return phase2_detail(302), None
+
+        if path == f"/posts/{post_id}/shares/":
+            assert role == "member_a"
+
+            if method == "POST":
+                assert kwargs["fields"]["username"] == "aws_test_b"
+                shared = True
+
+                if interruption == "ctrl_c":
+                    raise KeyboardInterrupt()
+
+                raise cli.ExecutionError(
+                    "synthetic response failure after share creation"
+                )
+
+            assert method == "GET"
+
+            row = ""
+            if shared:
+                row = f"""
+                <li>
+                  <h3 class="record-title">aws_test_b</h3>
+                  <form method="post"
+                    action="/posts/{post_id}/shares/{share_id}/revoke/">
+                  </form>
+                </li>
+                """
+
+            html = f"""
+            <section aria-labelledby="share-list-heading">
+              <ul>{row}</ul>
+            </section>
+            """.encode("utf-8")
+
+            return phase2_detail(200), html
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/shares/{share_id}/revoke/"
+        ):
+            assert role == "member_a"
+            assert shared is True
+            shared = False
+            return phase2_detail(302), None
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/delete/"
+        ):
+            assert role == "member_a"
+            assert shared is False
+            deleted = True
+            return phase2_detail(302), None
+
+        if method == "GET" and path == f"/posts/{post_id}/":
+            allowed = not deleted and (
+                role == "member_a"
+                or (role == "member_b" and shared)
+            )
+            return phase2_detail(200 if allowed else 404), None
+
+        pytest.fail(f"예상하지 않은 요청: {role} {method} {path}")
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(
+        cli, "find_aws_post_by_marker", fake_lookup
+    )
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        cli,
+        "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf",
+    )
+
+    # 본 시험의 중단은 복구 성공 후에도 ERROR로 남긴다.
+    assert cli.run(args) == 2
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+
+    assert result["stopped_reason"]
+    assert result["unexecuted_cases"] == 3
+    assert result["cleanup_complete"] is True
+
+    failed = result["results"][-1]
+    assert failed["case_id"] == "AWS-A-SHARE-B"
+    assert failed["request_attempted"] is True
+    assert failed["transport_status"] == "ERROR"
+
+    cleanup = result["cleanup_results"][0]
+    assert cleanup["verified_post_id"] == post_id
+    assert cleanup["revoked_share_count"] == 1
+    assert cleanup["shares_absent_verified"] is True
+    assert cleanup["response_summary"]["verification"][
+        "post_inaccessible"
+    ] is True
+
+    assert shared is False
+    assert deleted is True
+
+    assert sent[-5:] == [
+        ("member_a", "GET", f"/posts/{post_id}/shares/"),
+        (
+            "member_a",
+            "POST",
+            f"/posts/{post_id}/shares/{share_id}/revoke/",
+        ),
+        ("member_a", "GET", f"/posts/{post_id}/shares/"),
+        ("member_a", "POST", f"/posts/{post_id}/delete/"),
+        ("member_a", "GET", f"/posts/{post_id}/"),
+    ]

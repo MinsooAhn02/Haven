@@ -246,18 +246,43 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
         post_ref = item.get("post_reference")
 
         if post_ref is not None:
+            allowed_post_path = (
+                item["method"] == "GET"
+                and item["path"] == "/posts/{post_id}/"
+            ) or (
+                item["method"] == "POST"
+                and re.fullmatch(
+                    r"/posts/\{post_id\}/(?:attachments/|delete/|shares/|edit/)",
+                    item["path"],
+                ) is not None
+            )
+
             if (
                 not isinstance(post_ref, str)
                 or not re.fullmatch(r"[A-Za-z0-9_-]{2,64}", post_ref)
-                or not re.fullmatch(
-                    r"/posts/\{post_id\}/(?:attachments/|delete/|shares/|edit/)",
-                    item["path"],
-                )
+                or not allowed_post_path
             ):
                 raise ConfigError(f"{cid}: post_reference 설정 오류")
 
         elif "{post_id}" in item["path"]:
             raise ConfigError(f"{cid}: post_id 참조가 없습니다")
+        if "share_recipient_role" in item:
+            recipient_role = item["share_recipient_role"]
+
+            if (
+                not isinstance(recipient_role, str)
+                or recipient_role not in {
+                    "member_a", "member_b", "member_c"
+                }
+                or recipient_role == item["auth_role"]
+                or item["method"] != "POST"
+                or item["path"] != "/posts/{post_id}/shares/"
+                or post_ref is None
+                or _cleanup
+            ):
+                raise ConfigError(
+                    f"{cid}: share_recipient_role 설정 오류"
+                )
         if "critical" in item and type(item["critical"]) is not bool:
             raise ConfigError(f"{cid}: critical은 bool이어야 합니다")
 
@@ -377,7 +402,16 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
             ref = case.get("post_reference")
             if ref is not None:
                 source = creators.get(ref)
-                if source is None or source["auth_role"] != case["auth_role"]:
+
+                if source is None:
+                    raise ConfigError(
+                        f"{case['case_id']}: 게시글 생성 선행조건 오류"
+                    )
+
+                if (
+                    case["method"] != "GET"
+                    and source["auth_role"] != case["auth_role"]
+                ):
                     raise ConfigError(
                         f"{case['case_id']}: 게시글 생성 선행조건 오류"
                     )
@@ -1124,6 +1158,8 @@ def get_csrf_token(s: requests.Session) -> str | None:
 def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: str,
                run_id: str, prep_events: list, max_response_bytes: int) -> None:
     """역할별 시험 계정으로 로그인한다. 비밀번호는 대화형 입력하고 기록 금지."""
+    # 재로그인 실패 시 이전 인증 정보가 남지 않도록 제거한다.
+    s.__dict__.pop("_haven_username", None)
     local_test_account = (
         target == "http://127.0.0.1:8000"
         and role in {"member_a", "member_b", "member_c", "operator"}
@@ -1189,6 +1225,10 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
     if detail["status"] != 302 or not s.cookies.get("sessionid") or not login_redirect or login_redirect.startswith("/accounts/login/"):
         raise ExecutionError("로그인 인증 준비 실패 (상태/세션 확인)")
 
+    # 성공한 로그인에 사용한 계정명만 메모리에 유지한다.
+    # 공유 대상 및 시험 계정 식별에 사용하며 비밀번호는 저장하지 않는다.
+    s._haven_username = username
+
 
 def resolve_share_id(case: dict, sessions: dict, prepped: dict, target: str,
                      budget: RequestBudget, run_id: str, prep_events: list,
@@ -1239,6 +1279,47 @@ def csrf_for_post(s: requests.Session, target: str, budget: RequestBudget,
         raise ExecutionError("CSRF 토큰 준비 실패")
     return csrf
 
+
+def bind_share_recipient(case, fields, sessions, prepped):
+    """공유 대상 역할을 로그인에 성공한 실제 계정명으로 변환한다."""
+    role = case.get("share_recipient_role")
+
+    if role is None:
+        return fields
+
+    recipient_session = sessions.get(role)
+    owner_session = sessions.get(case["auth_role"])
+
+    recipient = getattr(
+        recipient_session, "_haven_username", None
+    )
+    owner = getattr(
+        owner_session, "_haven_username", None
+    )
+
+    if (
+        not prepped.get(role)
+        or not prepped.get(case["auth_role"])
+        or not isinstance(recipient, str)
+        or not recipient.strip()
+        or not isinstance(owner, str)
+        or not owner.strip()
+    ):
+        raise ExecutionError(
+            "공유 전 소유자와 수신자 로그인이 필요합니다"
+        )
+
+    if recipient == owner:
+        raise ExecutionError(
+            "소유자와 공유 수신자가 동일한 계정입니다"
+        )
+
+    if not isinstance(fields, dict):
+        raise ConfigError("공유 요청 fields 형식 오류")
+
+    resolved = dict(fields)
+    resolved["username"] = recipient
+    return resolved
 
 
 def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, target: str,
@@ -2175,6 +2256,10 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                 # 인가/CSRF 준비와 HTTP 전송을 분리해 run()의 흐름을 단순하게 유지한다.
                 fields, headers, file_info = prepare_case_request(
                     sess, case, root, target, budget, run_id, prep_events, args.max_response_bytes
+                )
+
+                fields = bind_share_recipient(
+                    case, fields, sessions, prepped
                 )
 
                 # AWS 게시글 생성 전 복구 식별자를 디스크에 기록.

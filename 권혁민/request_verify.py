@@ -252,7 +252,7 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
             ) or (
                 item["method"] == "POST"
                 and re.fullmatch(
-                    r"/posts/\{post_id\}/(?:attachments/|delete/|shares/|edit/)",
+                    r"/posts/\{post_id\}/(?:attachments/|delete/|shares/|edit/|shares/\{share_id\}/revoke/)",
                     item["path"],
                 ) is not None
             )
@@ -307,8 +307,35 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                 raise ConfigError(f"{cid}: 동적 공유 ID는 공유 해제 POST 경로에서만 사용할 수 있습니다")
             if share_ref.get("allow_missing") and not _cleanup:
                 raise ConfigError(f"{cid}: allow_missing은 cleanup_cases에서만 허용합니다")
-        elif "{share_id}" in item["path"]:
-            raise ConfigError(f"{cid}: 공유 ID 경로에는 share_reference가 필요합니다")
+        elif (
+            "{share_id}" in item["path"]
+            and "share_revoke_role" not in item
+        ):
+            raise ConfigError(
+                f"{cid}: 공유 ID 경로에는 공유 대상 참조가 필요합니다"
+            )
+
+        if "share_revoke_role" in item:
+            revoke_role = item["share_revoke_role"]
+
+            if (
+                not isinstance(revoke_role, str)
+                or revoke_role not in {
+                    "member_a", "member_b", "member_c"
+                }
+                or revoke_role == item["auth_role"]
+                or item["method"] != "POST"
+                or item["path"] != (
+                    "/posts/{post_id}/shares/{share_id}/revoke/"
+                )
+                or post_ref is None
+                or "share_reference" in item
+                or "share_recipient_role" in item
+                or _cleanup
+            ):
+                raise ConfigError(
+                    f"{cid}: share_revoke_role 설정 오류"
+                )
         if "after_case" in item and not _cleanup:
             raise ConfigError(f"{cid}: after_case는 cleanup_cases에서만 허용합니다")
         if not isinstance(item["category"], str) or not item["category"].strip() or not isinstance(item["note"], str):
@@ -445,6 +472,7 @@ def validate_aws_cleanup_suite(suite: dict) -> None:
         "/posts/{post_id}/edit/",
         "/posts/{post_id}/shares/",
         "/posts/{post_id}/attachments/",
+        "/posts/{post_id}/shares/{share_id}/revoke/",
     }
 
     for case in cases:
@@ -1322,6 +1350,59 @@ def bind_share_recipient(case, fields, sessions, prepped):
     return resolved
 
 
+def resolve_created_share_id(
+    post_id, owner_role, recipient_role,
+    sessions, prepped, target, budget,
+    run_id, prep_events, max_response_bytes,
+):
+    """실제로 생성한 게시글에서 로그인한 수신자의 공유 ID를 찾는다."""
+    if type(post_id) is not int or not 1 <= post_id <= 2**63 - 1:
+        raise ConfigError("공유 조회 게시글 ID 오류")
+
+    member_roles = {"member_a", "member_b", "member_c"}
+
+    if (
+        not isinstance(owner_role, str)
+        or owner_role not in member_roles
+        or not isinstance(recipient_role, str)
+        or recipient_role not in member_roles
+        or owner_role == recipient_role
+    ):
+        raise ConfigError("공유 조회 계정 역할 오류")
+
+    # 로그인 완료 여부, 실제 계정명, 동일 계정 여부를 함께 확인한다.
+    fields = bind_share_recipient(
+        {
+            "auth_role": owner_role,
+            "share_recipient_role": recipient_role,
+        },
+        {},
+        sessions,
+        prepped,
+    )
+
+    # 기존 조회 함수를 재사용하되 실제 게시글 ID와 계정명을 전달한다.
+    lookup_case = {
+        "share_reference": {
+            "post_id": post_id,
+            "recipient": fields["username"],
+            "lookup_role": owner_role,
+            "allow_missing": False,
+        }
+    }
+
+    return resolve_share_id(
+        lookup_case,
+        sessions,
+        prepped,
+        target,
+        budget,
+        run_id,
+        prep_events,
+        max_response_bytes,
+    )
+
+
 def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, target: str,
                          budget: RequestBudget, run_id: str, prep_events: list,
                          max_response_bytes: int):
@@ -1879,7 +1960,11 @@ def run(args) -> int:
             "execution_cases": execution_cases, "cleanup_cases": len(cleanup_cases),
             "authenticated_roles": sorted(roles), "minimum_login_requests": 2 * len(roles),
             "minimum_http_requests_excluding_extra_preparation_and_cleanup": execution_cases + 2 * len(roles),
-            "share_lookup_case_count": sum("share_reference" in case for case in all_cases),
+            "share_lookup_case_count": sum(
+                "share_reference" in case
+                or "share_revoke_role" in case
+                for case in all_cases
+            ),
             "request_budget": args.max_requests, "max_duration_seconds": args.max_duration,
             "output_dir": str(args.output_dir),
             "count_note": "실행 전 하한이며 실제 요청 수가 아닙니다. 추가 CSRF·공유 ID 조회·조건부 복구도 같은 예산에 포함합니다.",
@@ -2246,6 +2331,30 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                         "action": "deactivate_member_b_confirmed",
                         "timestamp_utc": utc_now(),
                     })
+
+                if "share_revoke_role" in case:
+                    resolved_post_id = created_post_ids.get(
+                        case["post_reference"]
+                    )
+
+                    share_id = resolve_created_share_id(
+                        resolved_post_id,
+                        role,
+                        case["share_revoke_role"],
+                        sessions,
+                        prepped,
+                        target,
+                        budget,
+                        run_id,
+                        prep_events,
+                        args.max_response_bytes,
+                    )
+
+                    case["path"] = case["path"].replace(
+                        "{share_id}", str(share_id)
+                    )
+                    record["path"] = safe_path_log(case["path"])
+                    record["resolved_share_id"] = share_id
 
                 if "share_reference" in case:
                     share_id = resolve_share_id(case, sessions, prepped, target, budget,

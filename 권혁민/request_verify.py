@@ -1662,6 +1662,9 @@ def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: d
                     "request_id": verify_request_id,
                     "trace_id": verify_trace_id,
                     "post_inaccessible": inaccessible,
+                    "verification_level": "HTTP_ONLY",
+                    "db_cleanup_verified": False,
+                    "file_cleanup_verified": False,
                 }
 
                 if not inaccessible:
@@ -1922,6 +1925,10 @@ def recover(args) -> int:
         "recovery_count": len(plan),
     }
 
+    recovery_state["cleanup_verification_level"] = "HTTP_ONLY"
+    recovery_state["db_cleanup_verified"] = False
+    recovery_state["file_cleanup_verified"] = False
+
     try:
         recovery_state["cleanup_complete"] = execute_cleanup(
             cases=selected_cleanup,
@@ -2010,6 +2017,12 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
         cleanup_results=[], cleanup_complete=None, cleanup_http_requests=0,
         test_http_requests=0, preparation_http_requests=0, http_responses_received=0,
     )
+
+    if aws_mode:
+        state["cleanup_verification_level"] = "HTTP_ONLY"
+        state["db_cleanup_verified"] = False
+        state["file_cleanup_verified"] = False
+
     records = []
     attempted = set()
     created_post_ids = {}

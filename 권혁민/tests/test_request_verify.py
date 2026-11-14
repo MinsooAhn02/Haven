@@ -4757,3 +4757,307 @@ def test_aws_recover_apply_uses_marker_verified_id(
 
     # 원본 실행 결과는 변경하지 않는다.
     assert cli.load_json(run_json) == state
+
+
+@pytest.mark.parametrize(
+    "role",
+    ["member_a", "member_b", "member_c", "anonymous"],
+)
+def test_dynamic_post_detail_allows_read_by_other_roles(role):
+    create = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        role="member_a",
+        status=302,
+        capture_post_id=True,
+    )
+    read = phase2_make_case(
+        "READ",
+        method="GET",
+        path="/posts/{post_id}/",
+        role=role,
+        status=200 if role == "member_a" else (
+            302 if role == "anonymous" else 404
+        ),
+        post_reference="CREATE",
+    )
+
+    cli.validate_suite(
+        phase2_make_suite([create, read]),
+        ROOT / "fixtures",
+    )
+
+
+def test_dynamic_post_cleanup_rejects_other_role():
+    create = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        role="member_a",
+        status=302,
+        capture_post_id=True,
+    )
+    cleanup = phase2_make_case(
+        "CLEANUP",
+        method="POST",
+        path="/posts/{post_id}/delete/",
+        role="member_b",
+        status=302,
+        post_reference="CREATE",
+        after_case="CREATE",
+    )
+
+    with pytest.raises(cli.ConfigError, match="복구 게시글 참조"):
+        cli.validate_suite(
+            phase2_make_suite(
+                [create],
+                cleanup_cases=[cleanup],
+            ),
+            ROOT / "fixtures",
+        )
+
+
+@pytest.mark.parametrize("post_id", [15, 25, 57])
+def test_dynamic_post_reads_use_actual_created_id(
+    tmp_path, monkeypatch, post_id
+):
+    create = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        role="member_a",
+        status=302,
+        capture_post_id=True,
+    )
+
+    reads = [
+        phase2_make_case(
+            f"READ-{role}",
+            method="GET",
+            path="/posts/{post_id}/",
+            role=role,
+            status=200 if role == "member_a" else 404,
+            post_reference="CREATE",
+        )
+        for role in ("member_a", "member_b", "member_c")
+    ]
+
+    args = phase2_make_args(
+        tmp_path,
+        phase2_make_suite([create, *reads]),
+    )
+
+    session_roles = {}
+    sent = []
+
+    def fake_login(session, target, budget, role, *args):
+        session_roles[id(session)] = role
+        session.cookies.set("csrftoken", "synthetic-csrf")
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        budget.begin()
+        role = session_roles[id(session)]
+        sent.append((role, method, path))
+
+        if method == "POST":
+            return phase2_detail(
+                302, f"/posts/{post_id}/"
+            ), None
+
+        return phase2_detail(
+            200 if role == "member_a" else 404
+        ), None
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        cli,
+        "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf",
+    )
+
+    # 로그 대조 전이므로 UNKNOWN 종료 코드가 정상이다.
+    assert cli.run(args) == 3
+
+    assert sent == [
+        ("member_a", "POST", "/posts/new/"),
+        ("member_a", "GET", f"/posts/{post_id}/"),
+        ("member_b", "GET", f"/posts/{post_id}/"),
+        ("member_c", "GET", f"/posts/{post_id}/"),
+    ]
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+    assert result["unexecuted_cases"] == 0
+    assert all(
+        row["http_expectation_match"]
+        for row in result["results"]
+    )
+
+
+@pytest.mark.parametrize("login_ok", [True, False])
+def test_login_remembers_username_only_after_success(
+    monkeypatch, login_ok
+):
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: "aws_test_b",
+    )
+    monkeypatch.setattr(
+        cli.getpass,
+        "getpass",
+        lambda prompt: "synthetic-password",
+    )
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        if method == "GET":
+            session.cookies.set(
+                "csrftoken", "synthetic-csrf"
+            )
+            return phase2_detail(200), None
+
+        assert kwargs["fields"]["username"] == "aws_test_b"
+        assert kwargs["fields"]["password"] == "synthetic-password"
+
+        if login_ok:
+            session.cookies.set(
+                "sessionid", "synthetic-session"
+            )
+            return phase2_detail(302, "/posts/"), None
+
+        return phase2_detail(200), None
+
+    monkeypatch.setattr(
+        cli, "bounded_send", fake_send
+    )
+
+    with cli.new_session() as session:
+        session._haven_username = "old-account"
+        prep_events = []
+
+        def login():
+            cli.prep_login(
+                session,
+                cli.canonical_origin(
+                    "https://orchestration-haven.cloud"
+                ),
+                None,
+                "member_b",
+                "synthetic-run",
+                prep_events,
+                cli.MAX_RESPONSE,
+            )
+
+        if login_ok:
+            login()
+            assert session._haven_username == "aws_test_b"
+        else:
+            with pytest.raises(
+                cli.ExecutionError,
+                match="로그인 인증 준비 실패",
+            ):
+                login()
+
+            assert not hasattr(
+                session, "_haven_username"
+            )
+
+        assert "synthetic-password" not in json.dumps(
+            prep_events
+        )
+        assert "synthetic-password" not in repr(
+            vars(session)
+        )
+
+
+def test_share_recipient_uses_actual_login_username():
+    case = {
+        "auth_role": "member_a",
+        "share_recipient_role": "member_b",
+    }
+    fields = {
+        "username": "member_b",
+        "csrfmiddlewaretoken": "synthetic-csrf",
+    }
+
+    sessions = {
+        "member_a": Namespace(_haven_username="aws_test_a"),
+        "member_b": Namespace(_haven_username="aws_test_b"),
+    }
+    prepped = {"member_a": True, "member_b": True}
+
+    actual = cli.bind_share_recipient(
+        case, fields, sessions, prepped
+    )
+
+    assert actual["username"] == "aws_test_b"
+    assert actual["csrfmiddlewaretoken"] == "synthetic-csrf"
+
+    # 元の入力は変更しない。
+    assert fields["username"] == "member_b"
+
+
+@pytest.mark.parametrize("recipient, logged_in", [
+    (None, True),
+    ("aws_test_b", False),
+    ("aws_test_a", True),
+])
+def test_share_recipient_rejects_unready_or_same_account(
+    recipient, logged_in
+):
+    case = {
+        "auth_role": "member_a",
+        "share_recipient_role": "member_b",
+    }
+    sessions = {
+        "member_a": Namespace(_haven_username="aws_test_a"),
+        "member_b": Namespace(_haven_username=recipient),
+    }
+
+    with pytest.raises(cli.ExecutionError):
+        cli.bind_share_recipient(
+            case,
+            {"username": "member_b"},
+            sessions,
+            {"member_a": True, "member_b": logged_in},
+        )
+
+
+@pytest.mark.parametrize("recipient_role", [
+    "operator", "anonymous", "member_a", "", None, [],
+])
+def test_share_recipient_role_rejects_invalid_config(
+    recipient_role
+):
+    create = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        status=302,
+        capture_post_id=True,
+    )
+    share = phase2_make_case(
+        "SHARE",
+        method="POST",
+        path="/posts/{post_id}/shares/",
+        status=302,
+        post_reference="CREATE",
+        share_recipient_role=recipient_role,
+        input_reference="basic_share_grant.json",
+    )
+
+    with pytest.raises(
+        cli.ConfigError, match="share_recipient_role"
+    ):
+        cli.validate_suite(
+            phase2_make_suite([create, share]),
+            ROOT / "fixtures",
+        )

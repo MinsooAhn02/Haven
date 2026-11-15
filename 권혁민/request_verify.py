@@ -3442,6 +3442,279 @@ def get_aws_identity(profile: str, region: str = "ap-northeast-2") -> dict:
     }
 
 
+def cloudwatch_window_from_run(state, *, padding_seconds=120):
+    """실행 시작·종료 시각을 CloudWatch 조회용 epoch 밀리초로 변환한다."""
+    if not isinstance(state, dict):
+        raise ConfigError("실행 결과 형식 오류")
+
+    if (
+        type(padding_seconds) is not int
+        or not 0 <= padding_seconds <= 300
+    ):
+        raise ConfigError("로그 조회 여유 시간은 0~300초 정수여야 합니다")
+
+    def parse_time(field):
+        value = state.get(field)
+
+        if not isinstance(value, str) or not value.strip():
+            raise ConfigError(f"실행 결과에 {field} 시각이 없습니다")
+
+        try:
+            parsed = datetime.fromisoformat(
+                value.replace("Z", "+00:00")
+            )
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise ValueError("timezone missing")
+
+            return parsed.astimezone(timezone.utc)
+        except (ValueError, OverflowError) as exc:
+            raise ConfigError(
+                f"{field}는 시간대가 포함된 ISO 시각이어야 합니다"
+            ) from exc
+
+    started = parse_time("started_utc")
+    ended = parse_time("ended_utc")
+
+    if ended < started:
+        raise ConfigError("실행 종료 시각이 시작 시각보다 빠릅니다")
+
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    def epoch_ms(value):
+        delta = value - epoch
+        return (
+            delta.days * 86400000
+            + delta.seconds * 1000
+            + delta.microseconds // 1000
+        )
+
+    started_ms = epoch_ms(started)
+    ended_ms = epoch_ms(ended)
+
+    if started_ms < 0:
+        raise ConfigError("실행 시각은 Unix epoch 이후여야 합니다")
+
+    padding_ms = padding_seconds * 1000
+    start_ms = max(0, started_ms - padding_ms)
+
+    # 종료 시각이 속한 밀리초까지 조회 범위에 포함한다.
+    end_ms = ended_ms + padding_ms + 1
+
+    if end_ms - start_ms > 60 * 60 * 1000:
+        raise ConfigError(
+            "여유 시간을 포함한 로그 조회 범위가 1시간을 초과합니다"
+        )
+
+    return {
+        "start_ms": start_ms,
+        "end_ms": end_ms,
+        "padding_seconds": padding_seconds,
+    }
+
+
+def fetch_cloudwatch_page(
+    profile, region, log_group,
+    start_ms, end_ms, *, next_token=None,
+):
+    """지정한 시간 범위의 CloudWatch 로그 한 페이지를 가져온다."""
+    if (
+        not isinstance(profile, str)
+        or not re.fullmatch(
+            r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", profile
+        )
+        or not isinstance(region, str)
+        or not re.fullmatch(
+            r"[a-z]{2}(?:-[a-z]+)+-\d+", region
+        )
+    ):
+        raise ConfigError("AWS 프로필명 또는 리전 형식 오류")
+
+    if (
+        not isinstance(log_group, str)
+        or log_group not in {
+            "aws-waf-logs-haven", "/haven/web"
+        }
+    ):
+        raise ConfigError("허용되지 않은 로그 그룹입니다")
+
+    if (
+        type(start_ms) is not int
+        or type(end_ms) is not int
+        or start_ms < 0
+        or end_ms <= start_ms
+        or end_ms - start_ms > 60 * 60 * 1000
+    ):
+        raise ConfigError(
+            "로그 조회 범위는 밀리초 정수이며 1시간 이하여야 합니다"
+        )
+
+    if next_token is not None and (
+        not isinstance(next_token, str)
+        or not next_token
+    ):
+        raise ConfigError("CloudWatch 다음 페이지 토큰 형식 오류")
+
+    request = {
+        "logGroupName": log_group,
+        "startTime": start_ms,
+        "endTime": end_ms,
+        "limit": 1000,
+    }
+    if next_token is not None:
+        request["nextToken"] = next_token
+
+    command = [
+        "aws",
+        "logs",
+        "filter-log-events",
+        "--cli-input-json", json.dumps(request),
+        "--profile", profile,
+        "--region", region,
+        "--no-paginate",
+        "--output", "json",
+        "--no-cli-pager",
+        "--no-cli-auto-prompt",
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            shell=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            timeout=60,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise ExecutionError("AWS CLI를 찾을 수 없습니다") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ExecutionError("CloudWatch 로그 조회 시간 초과") from exc
+    except UnicodeError as exc:
+        raise ExecutionError("CloudWatch 응답 인코딩 오류") from exc
+    except OSError as exc:
+        raise ExecutionError("AWS CLI 실행 실패") from exc
+
+    if result.returncode != 0:
+        raise ExecutionError(
+            f"CloudWatch 로그 조회 실패 "
+            f"(종료 코드 {result.returncode}, 그룹 {log_group})"
+        )
+
+    try:
+        page = json.loads(result.stdout)
+    except (ValueError, TypeError) as exc:
+        raise ExecutionError("CloudWatch 응답 JSON 오류") from exc
+
+    if (
+        not isinstance(page, dict)
+        or not isinstance(page.get("events"), list)
+    ):
+        raise ExecutionError("CloudWatch 이벤트 목록 형식 오류")
+
+    token = page.get("nextToken")
+    if token is not None and (
+        not isinstance(token, str) or not token
+    ):
+        raise ExecutionError("CloudWatch 응답 토큰 형식 오류")
+
+    for event in page["events"]:
+        if (
+            not isinstance(event, dict)
+            or not isinstance(event.get("eventId"), str)
+            or not event["eventId"]
+            or not isinstance(event.get("logStreamName"), str)
+            or not event["logStreamName"]
+            or type(event.get("timestamp")) is not int
+            or event["timestamp"] < 0
+            or not isinstance(event.get("message"), str)
+        ):
+            raise ExecutionError("CloudWatch 이벤트 필수 정보 오류")
+
+    return {
+        "events": page["events"],
+        "next_token": token,
+    }
+
+
+def collect_cloudwatch_events(
+    profile, region, log_group, start_ms, end_ms,
+    *, max_pages=20, max_events=10000,
+):
+    """마지막 페이지까지 조회하고 이벤트 ID 기준으로 중복을 제거한다."""
+    if (
+        type(max_pages) is not int
+        or not 1 <= max_pages <= 100
+        or type(max_events) is not int
+        or not 1 <= max_events <= 100000
+    ):
+        raise ConfigError("CloudWatch 수집 한도 설정 오류")
+
+    next_token = None
+    seen_tokens = set()
+    unique_events = {}
+
+    for page_number in range(1, max_pages + 1):
+        page = fetch_cloudwatch_page(
+            profile,
+            region,
+            log_group,
+            start_ms,
+            end_ms,
+            next_token=next_token,
+        )
+
+        for event in page["events"]:
+            # 스트림이 다른 이벤트를 잘못 합치지 않는다.
+            key = (event["logStreamName"], event["eventId"])
+
+            if key in unique_events:
+                if unique_events[key] != event:
+                    raise ExecutionError(
+                        "동일 CloudWatch 이벤트 ID의 내용이 충돌합니다"
+                    )
+                continue
+
+            if len(unique_events) >= max_events:
+                raise ExecutionError(
+                    "CloudWatch 이벤트 수집 한도를 초과했습니다"
+                )
+
+            unique_events[key] = dict(event)
+
+        next_token = page["next_token"]
+
+        # 이벤트가 0건이어도 종료 여부는 토큰으로 판단한다.
+        if next_token is None:
+            events = sorted(
+                unique_events.values(),
+                key=lambda event: (
+                    event["timestamp"],
+                    event["logStreamName"],
+                    event["eventId"],
+                ),
+            )
+            return {
+                "events": events,
+                "pages_fetched": page_number,
+                "event_count": len(events),
+                "pagination_complete": True,
+            }
+
+        if next_token in seen_tokens:
+            raise ExecutionError(
+                "CloudWatch 다음 페이지 토큰이 반복되었습니다"
+            )
+
+        seen_tokens.add(next_token)
+
+    raise ExecutionError(
+        "CloudWatch 페이지 수집 한도를 초과했습니다. "
+        "조회 시간 범위를 줄이거나 수집 한도를 조정하세요"
+    )
+
+
 def check_aws_account(args) -> int:
     """AWS 프로필의 인증 계정이 예상한 프로젝트 계정인지 확인한다."""
     expected_account = args.expected_account
@@ -3564,6 +3837,137 @@ def inspect_accounts(args) -> int:
     return 0
 
 
+def collect_logs(args) -> int:
+    """AWS 실행 결과의 시간 범위에 해당하는 WAF·앱 로그를 수집한다."""
+    if not re.fullmatch(r"[0-9]{12}", args.expected_account):
+        raise ConfigError("예상 AWS 계정 ID는 12자리 숫자여야 합니다")
+
+    state = load_json(args.run_json)
+
+    if (
+        not isinstance(state, dict)
+        or state.get("source") != "live_http_run"
+        or state.get("target_origin") != canonical_origin(
+            "https://orchestration-haven.cloud"
+        )
+        or not isinstance(state.get("results"), list)
+        or not state["results"]
+    ):
+        raise ConfigError("AWS 시험의 원본 results.json이 필요합니다")
+
+    run_id = state.get("run_id")
+    try:
+        if not isinstance(run_id, str):
+            raise ValueError("run_id")
+        if str(uuid.UUID(run_id)) != run_id:
+            raise ValueError("run_id")
+    except ValueError as exc:
+        raise ConfigError("실행 결과의 run_id 형식 오류") from exc
+
+    window = cloudwatch_window_from_run(
+        state,
+        padding_seconds=args.padding_seconds,
+    )
+
+    if args.output_dir.exists():
+        raise ConfigError("로그 출력 폴더가 이미 존재합니다")
+
+    identity = get_aws_identity(args.profile, args.region)
+    if identity["account_id"] != args.expected_account:
+        raise ExecutionError(
+            "AWS 계정 불일치: "
+            f"예상={args.expected_account}, "
+            f"실제={identity['account_id']}"
+        )
+
+    args.output_dir.mkdir(parents=True, exist_ok=False)
+
+    manifest = {
+        "schema_version": 1,
+        "source": "cloudwatch_log_collection",
+        "run_id": run_id,
+        "source_run_json": str(args.run_json.resolve()),
+        "profile": args.profile,
+        "region": args.region,
+        "account_id": identity["account_id"],
+        "started_utc": utc_now(),
+        "window": window,
+        "groups": [],
+        "collection_complete": False,
+        "error_type": None,
+    }
+
+    def write_manifest():
+        temporary = args.output_dir / "collection_manifest.json.tmp"
+        destination = args.output_dir / "collection_manifest.json"
+
+        temporary.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporary.replace(destination)
+
+    try:
+        write_manifest()
+
+        for group, filename in (
+            ("aws-waf-logs-haven", "waf_events.jsonl"),
+            ("/haven/web", "app_events.jsonl"),
+        ):
+            collected = collect_cloudwatch_events(
+                args.profile,
+                args.region,
+                group,
+                window["start_ms"],
+                window["end_ms"],
+            )
+
+            destination = args.output_dir / filename
+            temporary = args.output_dir / (filename + ".tmp")
+
+            with temporary.open(
+                "w", encoding="utf-8", newline="\n"
+            ) as output:
+                for event in collected["events"]:
+                    output.write(
+                        json.dumps(event, ensure_ascii=False) + "\n"
+                    )
+
+            temporary.replace(destination)
+
+            manifest["groups"].append({
+                "log_group": group,
+                "file": filename,
+                "event_count": collected["event_count"],
+                "pages_fetched": collected["pages_fetched"],
+                "pagination_complete": collected["pagination_complete"],
+            })
+            write_manifest()
+
+        manifest["collection_complete"] = True
+
+    except (
+        ConfigError, ExecutionError, OSError, KeyboardInterrupt
+    ) as exc:
+        manifest["error_type"] = type(exc).__name__
+        raise
+
+    finally:
+        manifest["ended_utc"] = utc_now()
+        write_manifest()
+
+    print(json.dumps({
+        "run_id": run_id,
+        "collection_complete": True,
+        "groups": manifest["groups"],
+        "manifest": str(
+            args.output_dir / "collection_manifest.json"
+        ),
+    }, ensure_ascii=False, indent=2))
+
+    return 0
+
+
 def create_parser():
     """명령행 인터페이스 run / correlate 옵션 정의."""
     parser = argparse.ArgumentParser(description="Haven 승인된 요청 재현 / WAF·앱 로그 대조 CLI")
@@ -3655,6 +4059,27 @@ def create_parser():
         help="사용하려는 프로젝트 AWS 계정의 12자리 ID",
     )
 
+    collect = commands.add_parser(
+        "collect-logs",
+        help="AWS 시험 결과의 시간 범위로 CloudWatch 로그 수집",
+    )
+    collect.add_argument(
+        "--run-json", required=True, type=Path
+    )
+    collect.add_argument("--profile", required=True)
+    collect.add_argument(
+        "--region", default="ap-northeast-2"
+    )
+    collect.add_argument(
+        "--expected-account", required=True
+    )
+    collect.add_argument(
+        "--output-dir", required=True, type=Path
+    )
+    collect.add_argument(
+        "--padding-seconds", type=int, default=120
+    )
+
     return parser
 
 
@@ -3671,6 +4096,8 @@ def main(argv=None) -> int:
             return inspect_accounts(args)
         if args.command == "aws-check":
             return check_aws_account(args)
+        if args.command == "collect-logs":
+            return collect_logs(args)
         return correlate(args)
     except KeyboardInterrupt:
         print("중단됨: 사용자가 Ctrl+C를 눌렀습니다", file=sys.stderr)

@@ -6256,3 +6256,397 @@ def test_aws_check_command(monkeypatch, capsys, mode):
         if mode == "invalid_expected"
         else [("hyeokmin", "ap-northeast-2")]
     )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["event", "empty_next", "empty_end", "cli_error", "invalid_json"],
+)
+def test_fetch_cloudwatch_page(monkeypatch, mode):
+    calls = []
+    start_ms = 1700000000000
+    end_ms = start_ms + 60000
+
+    event = {
+        "eventId": "synthetic-event-1",
+        "logStreamName": "synthetic-stream",
+        "timestamp": start_ms + 1000,
+        "message": '{"synthetic_fixture": true}',
+    }
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        assert kwargs["shell"] is False
+        assert kwargs["timeout"] == 60
+
+        request = json.loads(
+            command[command.index("--cli-input-json") + 1]
+        )
+        assert request == {
+            "logGroupName": "/haven/web",
+            "startTime": start_ms,
+            "endTime": end_ms,
+            "limit": 1000,
+            "nextToken": "previous-page-token",
+        }
+        assert "--no-paginate" in command
+
+        if mode == "cli_error":
+            return Namespace(
+                returncode=255,
+                stdout="",
+                stderr="synthetic-private-error",
+            )
+
+        if mode == "invalid_json":
+            return Namespace(
+                returncode=0,
+                stdout="not-json",
+                stderr="",
+            )
+
+        page = {
+            "events": [event] if mode == "event" else []
+        }
+        if mode == "empty_next":
+            page["nextToken"] = "next-page-token"
+
+        return Namespace(
+            returncode=0,
+            stdout=json.dumps(page),
+            stderr="",
+        )
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    def fetch():
+        return cli.fetch_cloudwatch_page(
+            "hyeokmin",
+            "ap-northeast-2",
+            "/haven/web",
+            start_ms,
+            end_ms,
+            next_token="previous-page-token",
+        )
+
+    if mode in {"cli_error", "invalid_json"}:
+        with pytest.raises(cli.ExecutionError) as caught:
+            fetch()
+
+        assert "synthetic-private-error" not in str(caught.value)
+    else:
+        page = fetch()
+        assert page["events"] == (
+            [event] if mode == "event" else []
+        )
+        assert page["next_token"] == (
+            "next-page-token"
+            if mode == "empty_next"
+            else None
+        )
+
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "success",
+        "empty_end",
+        "token_loop",
+        "page_limit",
+        "event_limit",
+        "conflicting_duplicate",
+    ],
+)
+def test_collect_cloudwatch_events(monkeypatch, mode):
+    start_ms = 1700000000000
+    end_ms = start_ms + 60000
+    tokens = []
+
+    first = {
+        "eventId": "event-1",
+        "logStreamName": "stream-a",
+        "timestamp": start_ms + 1000,
+        "message": '{"value": 1}',
+    }
+    second = {
+        "eventId": "event-2",
+        "logStreamName": "stream-a",
+        "timestamp": start_ms + 2000,
+        "message": '{"value": 2}',
+    }
+
+    def fake_page(
+        profile, region, log_group, start, end,
+        *, next_token=None,
+    ):
+        assert profile == "hyeokmin"
+        assert region == "ap-northeast-2"
+        assert log_group == "/haven/web"
+        assert (start, end) == (start_ms, end_ms)
+        tokens.append(next_token)
+
+        if mode == "empty_end":
+            return {"events": [], "next_token": None}
+
+        # 첫 페이지가 비어 있어도 다음 페이지로 진행해야 한다.
+        if next_token is None:
+            return {"events": [], "next_token": "token-1"}
+
+        if mode == "token_loop":
+            return {"events": [], "next_token": "token-1"}
+
+        if next_token == "token-1":
+            return {
+                "events": [dict(first)],
+                "next_token": "token-2",
+            }
+
+        assert next_token == "token-2"
+
+        duplicate = dict(first)
+        if mode == "conflicting_duplicate":
+            duplicate["message"] = '{"value": "changed"}'
+
+        return {
+            "events": [duplicate, dict(second)],
+            "next_token": None,
+        }
+
+    monkeypatch.setattr(
+        cli, "fetch_cloudwatch_page", fake_page
+    )
+
+    def collect():
+        return cli.collect_cloudwatch_events(
+            "hyeokmin",
+            "ap-northeast-2",
+            "/haven/web",
+            start_ms,
+            end_ms,
+            max_pages=2 if mode == "page_limit" else 5,
+            max_events=1 if mode == "event_limit" else 10,
+        )
+
+    errors = {
+        "token_loop": "토큰이 반복",
+        "page_limit": "페이지 수집 한도",
+        "event_limit": "이벤트 수집 한도",
+        "conflicting_duplicate": "내용이 충돌",
+    }
+
+    if mode in errors:
+        with pytest.raises(
+            cli.ExecutionError, match=errors[mode]
+        ):
+            collect()
+    else:
+        result = collect()
+        assert result["pagination_complete"] is True
+
+        if mode == "empty_end":
+            assert result["events"] == []
+            assert result["event_count"] == 0
+            assert result["pages_fetched"] == 1
+        else:
+            assert result["events"] == [first, second]
+            assert result["event_count"] == 2
+            assert result["pages_fetched"] == 3
+
+    expected_tokens = {
+        "empty_end": [None],
+        "token_loop": [None, "token-1"],
+        "page_limit": [None, "token-1"],
+    }.get(mode, [None, "token-1", "token-2"])
+
+    assert tokens == expected_tokens
+
+
+@pytest.mark.parametrize(
+    "started, ended",
+    [
+        (
+            "2023-11-14T22:13:20.123Z",
+            "2023-11-14T22:14:20.789Z",
+        ),
+        (
+            "2023-11-15T07:13:20.123+09:00",
+            "2023-11-15T07:14:20.789+09:00",
+        ),
+    ],
+)
+def test_cloudwatch_window_normalizes_timezone(started, ended):
+    state = {
+        "started_utc": started,
+        "ended_utc": ended,
+    }
+    original = dict(state)
+
+    actual = cli.cloudwatch_window_from_run(state)
+
+    assert actual == {
+        "start_ms": 1699999880123,
+        "end_ms": 1700000180790,
+        "padding_seconds": 120,
+    }
+    assert state == original
+
+
+@pytest.mark.parametrize(
+    "state, expected_error",
+    [
+        (
+            {
+                "started_utc": "2023-11-14T22:14:00Z",
+                "ended_utc": "2023-11-14T22:13:00Z",
+            },
+            "종료 시각",
+        ),
+        (
+            {
+                "started_utc": "2023-11-14T22:13:00",
+                "ended_utc": "2023-11-14T22:14:00Z",
+            },
+            "시간대",
+        ),
+        (
+            {
+                "started_utc": "2023-11-14T22:13:00Z",
+            },
+            "ended_utc",
+        ),
+        (
+            {
+                "started_utc": "not-a-time",
+                "ended_utc": "2023-11-14T22:14:00Z",
+            },
+            "ISO",
+        ),
+        (
+            {
+                "started_utc": "2023-11-14T22:00:00Z",
+                "ended_utc": "2023-11-14T23:00:00Z",
+            },
+            "1시간",
+        ),
+    ],
+)
+def test_cloudwatch_window_rejects_invalid_run_times(
+    state, expected_error
+):
+    with pytest.raises(cli.ConfigError, match=expected_error):
+        cli.cloudwatch_window_from_run(state)
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["success", "wrong_account", "app_failure"],
+)
+def test_collect_logs_command(tmp_path, monkeypatch, mode):
+    run_id = "11111111-2222-4333-8444-555555555555"
+    state = {
+        "source": "live_http_run",
+        "run_id": run_id,
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "started_utc": "2023-11-14T22:13:20.123Z",
+        "ended_utc": "2023-11-14T22:14:20.789Z",
+        "results": [{"case_id": "SYNTHETIC-01"}],
+    }
+
+    run_json = tmp_path / "results.json"
+    run_json.write_text(json.dumps(state), encoding="utf-8")
+    original_bytes = run_json.read_bytes()
+    output_dir = tmp_path / "logs"
+
+    monkeypatch.setattr(
+        cli,
+        "get_aws_identity",
+        lambda *args: {
+            "account_id": (
+                "999999999999"
+                if mode == "wrong_account"
+                else "123456789012"
+            ),
+        },
+    )
+
+    groups = []
+
+    def fake_collect(
+        profile, region, log_group, start_ms, end_ms
+    ):
+        assert profile == "hyeokmin"
+        assert region == "ap-northeast-2"
+        assert start_ms == 1699999880123
+        assert end_ms == 1700000180790
+        groups.append(log_group)
+
+        if mode == "app_failure" and log_group == "/haven/web":
+            raise cli.ExecutionError("synthetic collection failure")
+
+        events = []
+        if log_group == "aws-waf-logs-haven":
+            events = [{
+                "eventId": "synthetic-event",
+                "logStreamName": "synthetic-stream",
+                "timestamp": 1700000001123,
+                "message": '{"action": "ALLOW"}',
+            }]
+
+        return {
+            "events": events,
+            "event_count": len(events),
+            "pages_fetched": 1,
+            "pagination_complete": True,
+        }
+
+    monkeypatch.setattr(
+        cli, "collect_cloudwatch_events", fake_collect
+    )
+
+    result = cli.main([
+        "collect-logs",
+        "--run-json", str(run_json),
+        "--profile", "hyeokmin",
+        "--expected-account", "123456789012",
+        "--output-dir", str(output_dir),
+    ])
+
+    assert run_json.read_bytes() == original_bytes
+
+    if mode == "wrong_account":
+        assert result == 2
+        assert groups == []
+        assert not output_dir.exists()
+        return
+
+    assert groups == ["aws-waf-logs-haven", "/haven/web"]
+
+    manifest = cli.load_json(
+        output_dir / "collection_manifest.json"
+    )
+    assert manifest["run_id"] == run_id
+
+    waf_lines = (
+        output_dir / "waf_events.jsonl"
+    ).read_text(encoding="utf-8").splitlines()
+    assert len(waf_lines) == 1
+    assert json.loads(waf_lines[0])["eventId"] == "synthetic-event"
+
+    if mode == "app_failure":
+        assert result == 2
+        assert manifest["collection_complete"] is False
+        assert manifest["error_type"] == "ExecutionError"
+        assert len(manifest["groups"]) == 1
+        assert not (output_dir / "app_events.jsonl").exists()
+    else:
+        assert result == 0
+        assert manifest["collection_complete"] is True
+        assert manifest["error_type"] is None
+        assert len(manifest["groups"]) == 2
+        assert (output_dir / "app_events.jsonl").read_text(
+            encoding="utf-8"
+        ) == ""

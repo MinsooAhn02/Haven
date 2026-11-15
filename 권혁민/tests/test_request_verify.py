@@ -6650,3 +6650,366 @@ def test_collect_logs_command(tmp_path, monkeypatch, mode):
         assert (output_dir / "app_events.jsonl").read_text(
             encoding="utf-8"
         ) == ""
+
+
+def test_select_cloudwatch_run_logs_preserves_evidence():
+    root = "1-6553f100-111111111111111111111111"
+    other_root = "1-6553f100-222222222222222222222222"
+
+    state = {
+        "results": [{"trace_id": f"Root={root}"}],
+    }
+
+    app_event = {
+        "trace_id": root,
+        "ts": "2023-11-14T22:13:20Z",
+        "status": 200,
+    }
+    conflicting_event = {
+        "trace_id": root,
+        "run_id": "different-run",
+        "ts": "2020-01-01T00:00:00Z",
+        "status": 403,
+    }
+    waf_event = {
+        "timestamp": 1700000000000,
+        "action": "ALLOW",
+        "httpRequest": {
+            "headers": [{
+                "name": "x-amzn-trace-id",
+                "value": f"Root={root}",
+            }],
+        },
+    }
+
+    raw_events = [
+        {"message": json.dumps(app_event)},
+        {"message": json.dumps(conflicting_event)},
+        {"message": json.dumps(waf_event)},
+        {"message": json.dumps({
+            "trace_id": other_root, "status": 200
+        })},
+        {"message": "plain nginx access log"},
+        {"message": "[]"},
+        {"message": '{"status": 200}'},
+    ]
+    original = json.dumps(raw_events)
+
+    result = cli.select_cloudwatch_run_logs(
+        raw_events, state
+    )
+
+    assert result["events"] == [
+        app_event,
+        conflicting_event,
+        waf_event,
+    ]
+    assert result["counts"] == {
+        "raw_events": 7,
+        "non_json": 1,
+        "non_object": 1,
+        "missing_trace": 1,
+        "other_trace": 1,
+        "selected": 3,
+    }
+    assert json.dumps(raw_events) == original
+
+
+@pytest.mark.parametrize("trace_id", [None, "", "invalid"])
+def test_select_cloudwatch_run_logs_rejects_invalid_trace(
+    trace_id,
+):
+    with pytest.raises(cli.ConfigError, match="Trace ID"):
+        cli.select_cloudwatch_run_logs(
+            [],
+            {"results": [{"trace_id": trace_id}]},
+        )
+
+
+def test_select_cloudwatch_run_logs_rejects_duplicate_run_trace():
+    trace_id = "Root=1-6553f100-111111111111111111111111"
+
+    with pytest.raises(cli.ConfigError, match="중복"):
+        cli.select_cloudwatch_run_logs(
+            [],
+            {
+                "results": [
+                    {"trace_id": trace_id},
+                    {"trace_id": trace_id},
+                ]
+            },
+        )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["success", "wrong_run", "incomplete", "wrong_count"],
+)
+def test_load_cloudwatch_collection(tmp_path, mode):
+    run_id = "11111111-2222-4333-8444-555555555555"
+
+    state = {
+        "source": "live_http_run",
+        "run_id": run_id,
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "started_utc": "2023-11-14T22:13:20.123Z",
+        "ended_utc": "2023-11-14T22:14:20.789Z",
+        "results": [{
+            "trace_id": (
+                "Root=1-6553f100-111111111111111111111111"
+            ),
+        }],
+    }
+
+    run_json = tmp_path / "results.json"
+    run_json.write_text(json.dumps(state), encoding="utf-8")
+
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+
+    event = {
+        "eventId": "synthetic-event",
+        "logStreamName": "synthetic-stream",
+        "timestamp": 1700000001123,
+        "message": '{"action": "ALLOW"}',
+    }
+
+    (logs_dir / "waf_events.jsonl").write_text(
+        json.dumps(event) + "\n",
+        encoding="utf-8",
+    )
+    (logs_dir / "app_events.jsonl").write_text(
+        "", encoding="utf-8"
+    )
+
+    manifest = {
+        "schema_version": 1,
+        "source": "cloudwatch_log_collection",
+        "run_id": (
+            "99999999-2222-4333-8444-555555555555"
+            if mode == "wrong_run"
+            else run_id
+        ),
+        "account_id": "123456789012",
+        "collection_complete": mode != "incomplete",
+        "error_type": None,
+        "window": cli.cloudwatch_window_from_run(state),
+        "groups": [
+            {
+                "log_group": "aws-waf-logs-haven",
+                "file": "waf_events.jsonl",
+                "event_count": 2 if mode == "wrong_count" else 1,
+                "pages_fetched": 1,
+                "pagination_complete": True,
+            },
+            {
+                "log_group": "/haven/web",
+                "file": "app_events.jsonl",
+                "event_count": 0,
+                "pages_fetched": 1,
+                "pagination_complete": True,
+            },
+        ],
+    }
+
+    (logs_dir / "collection_manifest.json").write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+
+    if mode == "success":
+        loaded = cli.load_cloudwatch_collection(
+            run_json, logs_dir
+        )
+        assert loaded["state"] == state
+        assert loaded["waf_events"] == [event]
+        assert loaded["app_events"] == []
+    else:
+        expected_error = {
+            "wrong_run": "run_id 불일치",
+            "incomplete": "완료되지 않은",
+            "wrong_count": "건수 불일치",
+        }[mode]
+
+        with pytest.raises(
+            cli.ConfigError, match=expected_error
+        ):
+            cli.load_cloudwatch_collection(
+                run_json, logs_dir
+            )
+
+
+@pytest.mark.parametrize(
+    "mode, expected_code, expected_verdict",
+    [
+        ("matched", 0, "PASS"),
+        ("app_missing", 3, "UNKNOWN"),
+        ("app_mismatch", 1, "FAIL"),
+        ("wrong_account", 2, None),
+    ],
+)
+def test_correlate_cloudwatch_command(
+    tmp_path, monkeypatch, mode,
+    expected_code, expected_verdict
+):
+    run_id = "11111111-2222-4333-8444-555555555555"
+    root = "1-6553f100-111111111111111111111111"
+    timestamp = "2023-11-14T22:13:20Z"
+
+    case = phase2_make_case(
+        "CW-TEST",
+        status=200,
+        expected_waf="ALLOW",
+        verification_mode="http_only",
+    )
+    row = cli.base_record(run_id, case)
+    row.update(
+        trace_id=f"Root={root}",
+        timestamp_utc=timestamp,
+        transport_status="OK",
+        request_attempted=True,
+        http_status=200,
+        http_expectation_match=True,
+    )
+
+    state = {
+        "schema_version": 1,
+        "source": "live_http_run",
+        "run_id": run_id,
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "started_utc": timestamp,
+        "ended_utc": "2023-11-14T22:13:21Z",
+        "cleanup_complete": True,
+        "unexecuted_cases": 0,
+        "stopped_reason": None,
+        "results": [row],
+    }
+
+    run_json = tmp_path / "results.json"
+    run_json.write_text(json.dumps(state), encoding="utf-8")
+
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    output_dir = tmp_path / "correlation"
+
+    waf_event = {
+        "synthetic_fixture": True,
+        "timestamp": 1700000000000,
+        "action": "ALLOW",
+        "httpRequest": {
+            "headers": [{
+                "name": "x-amzn-trace-id",
+                "value": f"Root={root}",
+            }],
+        },
+    }
+    app_event = {
+        "synthetic_fixture": True,
+        "trace_id": root,
+        "run_id": run_id,
+        "ts": timestamp,
+        "status": 403 if mode == "app_mismatch" else 200,
+    }
+
+    groups = []
+    for group, filename, payloads in (
+        (
+            "aws-waf-logs-haven",
+            "waf_events.jsonl",
+            [waf_event],
+        ),
+        (
+            "/haven/web",
+            "app_events.jsonl",
+            [] if mode == "app_missing" else [app_event],
+        ),
+    ):
+        raw_events = [
+            {
+                "eventId": f"synthetic-{index}",
+                "logStreamName": "synthetic-stream",
+                "timestamp": 1700000000000,
+                "message": json.dumps(payload),
+            }
+            for index, payload in enumerate(payloads)
+        ]
+
+        (logs_dir / filename).write_text(
+            "".join(
+                json.dumps(event) + "\n"
+                for event in raw_events
+            ),
+            encoding="utf-8",
+        )
+
+        groups.append({
+            "log_group": group,
+            "file": filename,
+            "event_count": len(raw_events),
+            "pages_fetched": 1,
+            "pagination_complete": True,
+        })
+
+    manifest = {
+        "schema_version": 1,
+        "source": "cloudwatch_log_collection",
+        "run_id": run_id,
+        "account_id": "123456789012",
+        "collection_complete": True,
+        "error_type": None,
+        "window": cli.cloudwatch_window_from_run(state),
+        "groups": groups,
+    }
+    (logs_dir / "collection_manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    original_files = {
+        path: path.read_bytes()
+        for path in [run_json, *logs_dir.iterdir()]
+    }
+
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail(
+            "오프라인 상관분석에서 AWS CLI가 실행됐습니다"
+        ),
+    )
+
+    code = cli.main([
+        "correlate-cloudwatch",
+        "--run-json", str(run_json),
+        "--logs-dir", str(logs_dir),
+        "--expected-account",
+        "999999999999" if mode == "wrong_account"
+        else "123456789012",
+        "--output-dir", str(output_dir),
+    ])
+
+    assert code == expected_code
+    assert all(
+        path.read_bytes() == contents
+        for path, contents in original_files.items()
+    )
+
+    if mode == "wrong_account":
+        assert not output_dir.exists()
+        return
+
+    result = cli.load_json(
+        output_dir / "correlated" / "correlated_results.json"
+    )
+    assert result["results"][0]["verdict"] == expected_verdict
+
+    summary = cli.load_json(
+        output_dir / "selection_summary.json"
+    )
+    assert summary["waf"]["selected"] == 1
+    assert summary["app"]["selected"] == (
+        0 if mode == "app_missing" else 1
+    )

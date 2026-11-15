@@ -3837,6 +3837,189 @@ def inspect_accounts(args) -> int:
     return 0
 
 
+def select_cloudwatch_run_logs(raw_events, state):
+    """CloudWatch message를 해석하고 이번 시험의 Trace Root로 선별한다."""
+    if (
+        not isinstance(raw_events, list)
+        or not isinstance(state, dict)
+        or not isinstance(state.get("results"), list)
+        or not state["results"]
+    ):
+        raise ConfigError("로그 선별 입력 형식 오류")
+
+    expected_roots = set()
+
+    for row in state["results"]:
+        if not isinstance(row, dict):
+            raise ConfigError("실행 결과의 요청 기록 형식 오류")
+
+        root = extract_trace_root(row.get("trace_id"))
+        if root is None:
+            raise ConfigError(
+                "실행 결과에 유효한 Trace ID가 없는 요청이 있습니다"
+            )
+
+        if root in expected_roots:
+            raise ConfigError("실행 결과의 Trace ID가 중복되었습니다")
+
+        expected_roots.add(root)
+
+    selected = []
+    counts = {
+        "raw_events": len(raw_events),
+        "non_json": 0,
+        "non_object": 0,
+        "missing_trace": 0,
+        "other_trace": 0,
+        "selected": 0,
+    }
+
+    for raw in raw_events:
+        if (
+            not isinstance(raw, dict)
+            or not isinstance(raw.get("message"), str)
+        ):
+            raise ConfigError("CloudWatch 원본 이벤트 형식 오류")
+
+        try:
+            event = json.loads(raw["message"])
+        except ValueError:
+            # Nginx 일반 텍스트 등은 임의로 JSON 부분을 잘라내지 않는다.
+            counts["non_json"] += 1
+            continue
+
+        if not isinstance(event, dict):
+            counts["non_object"] += 1
+            continue
+
+        root = log_trace_root(event)
+
+        if root is None:
+            counts["missing_trace"] += 1
+            continue
+
+        if root not in expected_roots:
+            counts["other_trace"] += 1
+            continue
+
+        # run_id·시각·HTTP 상태의 충돌은 correlate에서 판정한다.
+        # 여기서 정상값으로 덮어쓰거나 충돌 로그를 제거하지 않는다.
+        selected.append(event)
+        counts["selected"] += 1
+
+    return {
+        "events": selected,
+        "counts": counts,
+    }
+
+
+def load_cloudwatch_collection(run_json, logs_dir):
+    """실행 결과와 수집 명세를 대조하고 원본 로그 두 개를 읽는다."""
+    state = load_json(run_json)
+
+    if (
+        not isinstance(state, dict)
+        or state.get("source") != "live_http_run"
+        or state.get("target_origin") != canonical_origin(
+            "https://orchestration-haven.cloud"
+        )
+        or not isinstance(state.get("results"), list)
+        or not state["results"]
+    ):
+        raise ConfigError("AWS 시험의 원본 results.json이 필요합니다")
+
+    run_id = state.get("run_id")
+    try:
+        if not isinstance(run_id, str):
+            raise ValueError("run_id")
+        if str(uuid.UUID(run_id)) != run_id:
+            raise ValueError("run_id")
+    except ValueError as exc:
+        raise ConfigError("실행 결과의 run_id 형식 오류") from exc
+
+    manifest = load_json(
+        safe_relative(logs_dir, "collection_manifest.json")
+    )
+
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schema_version") != 1
+        or manifest.get("source") != "cloudwatch_log_collection"
+    ):
+        raise ConfigError("CloudWatch 수집 명세 형식 오류")
+
+    if manifest.get("run_id") != run_id:
+        raise ConfigError("실행 결과와 수집 로그의 run_id 불일치")
+
+    if (
+        manifest.get("collection_complete") is not True
+        or manifest.get("error_type") is not None
+    ):
+        raise ConfigError("완료되지 않은 로그 수집 결과입니다")
+
+    account_id = manifest.get("account_id")
+    if (
+        not isinstance(account_id, str)
+        or not re.fullmatch(r"[0-9]{12}", account_id)
+    ):
+        raise ConfigError("수집 명세의 AWS 계정 ID 형식 오류")
+
+    window = manifest.get("window")
+    if not isinstance(window, dict):
+        raise ConfigError("수집 명세의 조회 시간 범위가 없습니다")
+
+    expected_window = cloudwatch_window_from_run(
+        state,
+        padding_seconds=window.get("padding_seconds"),
+    )
+    if window != expected_window:
+        raise ConfigError("실행 결과와 로그 조회 시간 범위 불일치")
+
+    groups = manifest.get("groups")
+    if not isinstance(groups, list) or len(groups) != 2:
+        raise ConfigError("WAF와 앱 로그 수집 정보가 모두 필요합니다")
+
+    expected_files = {
+        "aws-waf-logs-haven": "waf_events.jsonl",
+        "/haven/web": "app_events.jsonl",
+    }
+    raw_logs = {}
+
+    for group in groups:
+        if not isinstance(group, dict):
+            raise ConfigError("로그 그룹 명세 형식 오류")
+
+        name = group.get("log_group")
+
+        if (
+            not isinstance(name, str)
+            or name not in expected_files
+            or name in raw_logs
+            or group.get("file") != expected_files[name]
+            or group.get("pagination_complete") is not True
+            or type(group.get("pages_fetched")) is not int
+            or not 1 <= group["pages_fetched"] <= 100
+            or type(group.get("event_count")) is not int
+            or not 0 <= group["event_count"] <= 100000
+        ):
+            raise ConfigError("로그 그룹·파일·수집 건수 설정 오류")
+
+        path = safe_relative(logs_dir, expected_files[name])
+        events = log_lines(path)
+
+        if len(events) != group["event_count"]:
+            raise ConfigError("수집 명세와 로그 파일의 이벤트 건수 불일치")
+
+        raw_logs[name] = events
+
+    return {
+        "state": state,
+        "manifest": manifest,
+        "waf_events": raw_logs["aws-waf-logs-haven"],
+        "app_events": raw_logs["/haven/web"],
+    }
+
+
 def collect_logs(args) -> int:
     """AWS 실행 결과의 시간 범위에 해당하는 WAF·앱 로그를 수집한다."""
     if not re.fullmatch(r"[0-9]{12}", args.expected_account):
@@ -3968,6 +4151,73 @@ def collect_logs(args) -> int:
     return 0
 
 
+def correlate_cloudwatch(args) -> int:
+    """수집한 CloudWatch 로그를 검증·선별하고 기존 상관분석을 실행한다."""
+    if not re.fullmatch(r"[0-9]{12}", args.expected_account):
+        raise ConfigError("예상 AWS 계정 ID는 12자리 숫자여야 합니다")
+
+    if args.output_dir.exists():
+        raise ConfigError("상관분석 출력 폴더가 이미 존재합니다")
+
+    loaded = load_cloudwatch_collection(
+        args.run_json, args.logs_dir
+    )
+    manifest = loaded["manifest"]
+
+    if manifest["account_id"] != args.expected_account:
+        raise ConfigError("수집 로그의 AWS 계정이 예상 계정과 다릅니다")
+
+    selected = {
+        "waf": select_cloudwatch_run_logs(
+            loaded["waf_events"], loaded["state"]
+        ),
+        "app": select_cloudwatch_run_logs(
+            loaded["app_events"], loaded["state"]
+        ),
+    }
+
+    args.output_dir.mkdir(parents=True, exist_ok=False)
+
+    for kind in ("waf", "app"):
+        path = args.output_dir / f"{kind}_selected.jsonl"
+        with path.open(
+            "w", encoding="utf-8", newline="\n"
+        ) as output:
+            for event in selected[kind]["events"]:
+                output.write(
+                    json.dumps(event, ensure_ascii=False) + "\n"
+                )
+
+    selection_report = {
+        "schema_version": 1,
+        "source": "cloudwatch_log_selection",
+        "run_id": loaded["state"]["run_id"],
+        "account_id": manifest["account_id"],
+        "source_run_json": str(args.run_json.resolve()),
+        "source_collection_manifest": str(
+            (args.logs_dir / "collection_manifest.json").resolve()
+        ),
+        "selected_utc": utc_now(),
+        "waf": selected["waf"]["counts"],
+        "app": selected["app"]["counts"],
+    }
+
+    (args.output_dir / "selection_summary.json").write_text(
+        json.dumps(
+            selection_report, ensure_ascii=False, indent=2
+        ),
+        encoding="utf-8",
+    )
+
+    # PASS/FAIL/UNKNOWN 판정과 종료 코드는 기존 함수를 그대로 사용한다.
+    return correlate(argparse.Namespace(
+        run_json=args.run_json,
+        waf_log=args.output_dir / "waf_selected.jsonl",
+        app_log=args.output_dir / "app_selected.jsonl",
+        output_dir=args.output_dir / "correlated",
+    ))
+
+
 def create_parser():
     """명령행 인터페이스 run / correlate 옵션 정의."""
     parser = argparse.ArgumentParser(description="Haven 승인된 요청 재현 / WAF·앱 로그 대조 CLI")
@@ -4080,6 +4330,23 @@ def create_parser():
         "--padding-seconds", type=int, default=120
     )
 
+    cw = commands.add_parser(
+        "correlate-cloudwatch",
+        help="수집한 CloudWatch 로그를 선별하여 상관분석",
+    )
+    cw.add_argument(
+        "--run-json", required=True, type=Path
+    )
+    cw.add_argument(
+        "--logs-dir", required=True, type=Path
+    )
+    cw.add_argument(
+        "--expected-account", required=True
+    )
+    cw.add_argument(
+        "--output-dir", required=True, type=Path
+    )
+
     return parser
 
 
@@ -4098,6 +4365,8 @@ def main(argv=None) -> int:
             return check_aws_account(args)
         if args.command == "collect-logs":
             return collect_logs(args)
+        if args.command == "correlate-cloudwatch":
+            return correlate_cloudwatch(args)
         return correlate(args)
     except KeyboardInterrupt:
         print("중단됨: 사용자가 Ctrl+C를 눌렀습니다", file=sys.stderr)

@@ -6125,3 +6125,134 @@ def test_inspect_accounts_rejects_duplicate_before_login(
         "--username", "aws_test_a",
         "--username", "aws_test_a",
     ]) == 2
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["success", "cli_error", "invalid_json", "timeout"],
+)
+def test_get_aws_identity(monkeypatch, mode):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+
+        assert kwargs["shell"] is False
+        assert kwargs["capture_output"] is True
+        assert kwargs["timeout"] == 60
+
+        if mode == "timeout":
+            raise cli.subprocess.TimeoutExpired(
+                command, kwargs["timeout"]
+            )
+
+        if mode == "cli_error":
+            return Namespace(
+                returncode=255,
+                stdout="",
+                stderr="synthetic-private-error-detail",
+            )
+
+        if mode == "invalid_json":
+            return Namespace(
+                returncode=0,
+                stdout="not-json",
+                stderr="",
+            )
+
+        return Namespace(
+            returncode=0,
+            stdout=json.dumps({
+                "Account": "123456789012",
+                "Arn": "arn:aws:iam::123456789012:user/test-auditor",
+                "UserId": "SYNTHETIC_USER_ID",
+            }),
+            stderr="",
+        )
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    if mode == "success":
+        assert cli.get_aws_identity("hyeokmin") == {
+            "profile": "hyeokmin",
+            "region": "ap-northeast-2",
+            "account_id": "123456789012",
+            "arn": "arn:aws:iam::123456789012:user/test-auditor",
+            "user_id": "SYNTHETIC_USER_ID",
+        }
+    else:
+        with pytest.raises(cli.ExecutionError) as caught:
+            cli.get_aws_identity("hyeokmin")
+
+        assert "synthetic-private-error-detail" not in str(
+            caught.value
+        )
+
+    assert calls == [[
+        "aws",
+        "sts",
+        "get-caller-identity",
+        "--profile", "hyeokmin",
+        "--region", "ap-northeast-2",
+        "--output", "json",
+        "--no-cli-pager",
+        "--no-cli-auto-prompt",
+    ]]
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["matched", "mismatched", "invalid_expected"],
+)
+def test_aws_check_command(monkeypatch, capsys, mode):
+    calls = []
+
+    def fake_identity(profile, region):
+        calls.append((profile, region))
+        return {
+            "profile": profile,
+            "region": region,
+            "account_id": "123456789012",
+            "arn": "arn:aws:iam::123456789012:user/test-auditor",
+            "user_id": "SYNTHETIC_USER_ID",
+        }
+
+    monkeypatch.setattr(
+        cli, "get_aws_identity", fake_identity
+    )
+
+    expected_account = {
+        "matched": "123456789012",
+        "mismatched": "999999999999",
+        "invalid_expected": "invalid",
+    }[mode]
+
+    result = cli.main([
+        "aws-check",
+        "--profile", "hyeokmin",
+        "--region", "ap-northeast-2",
+        "--expected-account", expected_account,
+    ])
+
+    captured = capsys.readouterr()
+
+    if mode == "matched":
+        assert result == 0
+        report = json.loads(captured.out)
+        assert report["account_match"] is True
+        assert report["account_id"] == expected_account
+        assert report["profile"] == "hyeokmin"
+    else:
+        assert result == 2
+        assert captured.out == ""
+
+        if mode == "mismatched":
+            assert "AWS 계정 불일치" in captured.err
+        else:
+            assert "12자리" in captured.err
+
+    assert calls == (
+        []
+        if mode == "invalid_expected"
+        else [("hyeokmin", "ap-northeast-2")]
+    )

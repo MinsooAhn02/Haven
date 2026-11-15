@@ -25,6 +25,7 @@ import threading
 import os
 import warnings
 import requests
+import subprocess
 
 ROLES = {"anonymous", "member_a", "member_b", "member_c", "operator"}
 METHODS = {"GET", "POST"}
@@ -3341,6 +3342,138 @@ def extract_count_rule_ids(event: dict) -> list[str]:
     return list(dict.fromkeys(counts))
 
 
+def get_aws_identity(profile: str, region: str = "ap-northeast-2") -> dict:
+    """AWS CLI 프로필로 현재 인증된 계정과 사용자·역할을 확인한다."""
+    if (
+        not isinstance(profile, str)
+        or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", profile)
+    ):
+        raise ConfigError("AWS 프로필명 형식 오류")
+
+    if (
+        not isinstance(region, str)
+        or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-\d+", region)
+    ):
+        raise ConfigError("AWS 리전 형식 오류")
+
+    command = [
+        "aws",
+        "sts",
+        "get-caller-identity",
+        "--profile", profile,
+        "--region", region,
+        "--output", "json",
+        "--no-cli-pager",
+        "--no-cli-auto-prompt",
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            shell=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise ExecutionError(
+            "AWS CLI를 찾을 수 없습니다. 설치와 PATH를 확인하세요"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ExecutionError(
+            "AWS 인증 확인 시간이 초과되었습니다"
+        ) from exc
+    except OSError as exc:
+        raise ExecutionError(
+            "AWS CLI 프로세스를 실행하지 못했습니다"
+        ) from exc
+
+    if result.returncode != 0:
+        # 원본 stderr를 결과 파일이나 예외 메시지에 그대로 넣지 않는다.
+        raise ExecutionError(
+            f"AWS 인증 확인 실패 (종료 코드 {result.returncode}). "
+            f"터미널에서 aws sts get-caller-identity "
+            f"--profile {profile} --region {region}로 원인을 확인하세요"
+        )
+
+    try:
+        identity = json.loads(result.stdout)
+    except (ValueError, TypeError) as exc:
+        raise ExecutionError(
+            "AWS 인증 응답이 올바른 JSON이 아닙니다"
+        ) from exc
+
+    if not isinstance(identity, dict):
+        raise ExecutionError("AWS 인증 응답 형식 오류")
+
+    account = identity.get("Account")
+    arn = identity.get("Arn")
+    user_id = identity.get("UserId")
+
+    if (
+        not isinstance(account, str)
+        or not re.fullmatch(r"\d{12}", account)
+        or not isinstance(arn, str)
+        or not isinstance(user_id, str)
+        or not user_id.strip()
+    ):
+        raise ExecutionError("AWS 인증 응답의 필수 정보가 잘못되었습니다")
+
+    arn_parts = arn.split(":", 5)
+    if (
+        len(arn_parts) != 6
+        or arn_parts[0] != "arn"
+        or arn_parts[1] not in {"aws", "aws-cn", "aws-us-gov"}
+        or arn_parts[2] not in {"iam", "sts"}
+        or arn_parts[4] != account
+        or not arn_parts[5]
+    ):
+        raise ExecutionError("AWS 인증 응답의 ARN과 계정이 일치하지 않습니다")
+
+    return {
+        "profile": profile,
+        "region": region,
+        "account_id": account,
+        "arn": arn,
+        "user_id": user_id,
+    }
+
+
+def check_aws_account(args) -> int:
+    """AWS 프로필의 인증 계정이 예상한 프로젝트 계정인지 확인한다."""
+    expected_account = args.expected_account
+
+    if (
+        not isinstance(expected_account, str)
+        or not re.fullmatch(r"\d{12}", expected_account)
+    ):
+        raise ConfigError("예상 AWS 계정 ID는 12자리 숫자여야 합니다")
+
+    identity = get_aws_identity(
+        args.profile,
+        args.region,
+    )
+
+    if identity["account_id"] != expected_account:
+        raise ExecutionError(
+            "AWS 계정 불일치: "
+            f"예상={expected_account}, "
+            f"실제={identity['account_id']}"
+        )
+
+    print(json.dumps({
+        "source": "aws_identity_check",
+        "checked_utc": utc_now(),
+        "account_match": True,
+        **identity,
+    }, ensure_ascii=False, indent=2))
+
+    return 0
+
+
 def inspect_accounts(args) -> int:
     """관리자 로그인 후 지정한 시험 계정의 ID와 활성 상태를 조회한다."""
     validate_limits(args)
@@ -3508,6 +3641,20 @@ def create_parser():
         default=MAX_RESPONSE,
     )
 
+    aws_check = commands.add_parser(
+        "aws-check",
+        help="AWS 프로필 인증 및 프로젝트 계정 일치 확인",
+    )
+    aws_check.add_argument("--profile", required=True)
+    aws_check.add_argument(
+        "--region", default="ap-northeast-2"
+    )
+    aws_check.add_argument(
+        "--expected-account",
+        required=True,
+        help="사용하려는 프로젝트 AWS 계정의 12자리 ID",
+    )
+
     return parser
 
 
@@ -3522,6 +3669,8 @@ def main(argv=None) -> int:
             return recover(args)
         if args.command == "inspect-accounts":
             return inspect_accounts(args)
+        if args.command == "aws-check":
+            return check_aws_account(args)
         return correlate(args)
     except KeyboardInterrupt:
         print("중단됨: 사용자가 Ctrl+C를 눌렀습니다", file=sys.stderr)

@@ -1,7 +1,7 @@
 # SG 설정 점검 CLI (이민성)
 
 `network/설계.md` 4장의 SG 연결표를 기준으로, 실제(또는 가짜) SG 규칙이 설계와 맞는지 판정하는 읽기 전용 점검 도구.
-명세: `docs/구현명세/기본프로젝트_구현명세.md` 5장. 최종 경로(`scripts/network_audit.py`)는 통합 때 조장(이민성)이 맞춘다(11/11 조장 인계).
+명세: `docs/구현명세/기본프로젝트_구현명세.md` 5장. 명세의 경로는 `scripts/network_audit.py`이지만 **지금 실제 위치는 `이민성/sg_audit/network_audit.py`**이다. 최종 경로는 통합 때 조장(이민성)이 맞춘다(11/11 조장 인계).
 
 ## 파일 구성
 
@@ -11,7 +11,7 @@
 | `fixtures/*.json` | 가짜 AWS 응답(답안지). AWS 없이 판정 로직을 시험할 때 사용 |
 | `network_audit.py` | 판정 프로그램 (fixture 모드, live 모드 11/13 구현·명세 5.1 맞춤) |
 | `test_network_audit.py` | fixture 모드 회귀 시험(unittest). 1회차 PR 리뷰에서 팀장 보완 시 추가, 11/13 1개 추가 |
-| `test_live.py` | live 모드 시험(가짜 EC2·STS, boto3 없이). L1~L20 + 명령 형식 시험 |
+| `test_live.py` | live 모드 시험(가짜 EC2·STS, boto3 없이). L1~L22 + 명령 형식 시험 |
 | `make_evidence.py` | 결과 폴더로 공개용 증거 묶음 `evidence/<run-id>/`을 만든다(명세 9장) |
 | `test_evidence.py` | 증거 묶음 시험(가림·manifest·전후 비교·덮어쓰기 금지) |
 | `baseline.live.json` | (Git 제외) live용 baseline. `baseline.json`을 복사해 실제 SG ID를 넣는다 |
@@ -225,8 +225,11 @@ echo $?
 ### 증거 묶음 만들기 (명세 9장)
 
 ```bash
-python make_evidence.py --results-dir out/live-YYYYMMDD-HHMM --baseline baseline.live.json [--before out/<이전 실행>] [--omission "알려진 누락"]
+python make_evidence.py --results-dir out/live-YYYYMMDD-HHMM --baseline baseline.live.json [--before out/<이전 실행>] [--omission "알려진 누락"] [--evidence-root <저장할 폴더>]
 ```
+
+- `--evidence-root`를 빼면 이 폴더의 `evidence/`에 만든다. 다른 사람이 실행할 때는 자기 폴더에 저장한다(다른 팀원 폴더를 고치지 않기 위해). 예: `--evidence-root ../../구민철/sg_evidence`
+- 실제 ID가 남지 않았는지 확인: `grep -rcE 'sg-0|vpc-0' <저장할 폴더>/` → 파일마다 0
 
 `evidence/<run-id>/`에 아래 6개 파일을 만든다. 같은 run-id 폴더가 있으면 덮어쓰지 않고 ERROR(2).
 
@@ -317,6 +320,9 @@ python -B -m unittest discover -s 이민성/sg_audit -p "test_*.py" -v
 - ENI에 붙은 SG 중 baseline `expected_sg_ids`에 있는 것으로 주인 자산을 정하고, 그 ENI의 SG 전부를 그 자산의 연결로 본다(ALB ENI 2개처럼 여러 개면 합침).
 - 한 ENI에 서로 다른 자산의 기대 SG가 같이 있으면 **역할 미확정 UNKNOWN**(SG-06).
 - 기대 SG가 하나도 없는 ENI(VPC 엔드포인트, 새로 바뀐 SG 등)는 `eni:<ID>` 자산으로 두어 **baseline에 없는 자산 UNKNOWN**.
+- (0.3.1) **서버에 연결된(`Status=in-use`) ENI만** 자산으로 본다. 기대 SG가 붙었는데 분리된 ENI(`available` 등, 상태 값 없음 포함)는 **분리된 ENI UNKNOWN**. 연결된 ENI가 없는 자산은 "수집 결과 없음"이 아니라 이 이유로 남는다. 밤에 중지한 EC2의 ENI와 ALB ENI는 `in-use`라 해당 없음.
+- (0.3.1) 역할 미확정 ENI 때문에 매핑에서 빠진 자산은 "ENI는 수집됐지만 매핑에서 제외됨" UNKNOWN(이전에는 "수집 결과 없음"으로 잘못 나옴).
+- (0.3.1) 판정 근거(`evidence`) 끝에 그 SG가 붙은 ENI ID를 붙인다(`… | eni: eni-…`). 같은 역할 서버가 여러 대일 때 콘솔 대조(AUD-10)용. 증거 묶음에서는 가려진다.
 - default SG는 AWS가 정한 이름 `default`로 찾는다(역할 추정이 아니라 AWS 고정값). SG-07은 `--vpc-id`에서만 판정한다.
 - 요청 제한(Throttling)·일시 오류는 3번까지 시도하고, 그래도 실패하면 ERROR. 결과의 계정 번호는 앞 4자리만 남긴다.
 
@@ -344,9 +350,26 @@ python -B -m unittest discover -s 이민성/sg_audit -p "test_*.py" -v
 | L18 | `sg-fixture-...` baseline 그대로 | AWS 읽기 전 ERROR (2) |
 | L19 | db SG가 새 SG로 바뀜 | db-1 UNKNOWN + 모르는 ENI UNKNOWN (PASS 아님) |
 | L20 | VPC 엔드포인트 ENI | UNKNOWN `eni:...` |
+| L20-b | NAT Gateway ENI(SG 없음, 11/16 실제 VPC에 있음) | 판정에 영향 없음, PASS 11 |
+| L21 / L21-b / L21-c | web SG가 분리된 ENI에만 / 연결된 ENI + 분리된 ENI / ENI 상태 값 없음 | 분리된 ENI UNKNOWN(3), web-1 PASS 없음 / web 규칙은 그대로 PASS 11 + 분리 ENI만 UNKNOWN / UNKNOWN |
+| L22 | web ENI 2개 중 1개에만 22번 공개 SG | FAIL 1건, 근거에 그 ENI만. PASS 근거에는 ENI 2개, ALB는 ENI 2개 |
+| L11-c | web의 유일한 ENI에 db SG도 붙음 | UNKNOWN 2건: 역할 미확정 + web-1 "매핑에서 제외됨"("수집 결과 없음" 아님) |
 | CLI 4개 | `--profile`·`--region` 빠짐 / 범위 없음 / `--vpc-id`+`--sg-id` | 명령 오류 (2) |
 
 - 뮤테이션 확인(11/13, 0.3.0): 합집합 안 읽기, 역할 미확정 무시, VPC 소유 계정 무시, 모르는 ENI 무시, `--sg-id` 범위 밖 자산을 UNKNOWN으로 셈, ENI 실패를 PASS로, SG 범위에서 SG-07 판정, 계정 번호 안 가림, fixture baseline 허용 — 9가지 모두 시험이 잡음.
+
+- 뮤테이션 확인(11/16, 0.3.1): 분리 ENI를 서버로 봄, 상태 값 없음을 연결로 봄, 매핑 제외 자산에 "수집 결과 없음" 다시 냄, 역할 미확정 이유 빠짐, ENI 근거 안 붙임, ENI 근거 중복, 분리 ENI의 SG를 "연결 안 된 SG"로 다시 셈, 분리 ENI 자산에 이유 중복 — 8가지 모두 시험이 잡음.
+
+### 0.3.0 → 0.3.1: 구민철 짝 리뷰 반영 (11/16)
+
+| 리뷰 | 내용 | 반영 |
+|---|---|---|
+| 질문 1 | 분리된(`available`) ENI도 서버로 봐서, 서버가 없어도 PASS가 나올 수 있음 | `in-use` ENI만 자산으로. 기대 SG가 붙은 분리 ENI는 UNKNOWN(SG-06) |
+| 제안 2 | 같은 역할 서버가 여러 대면 어느 ENI 문제인지 결과에 없음 | 판정 근거에 ENI ID(증거 묶음에서 가림) |
+| 제안 3 | 역할 미확정으로 빠진 자산에 "수집 결과 없음" 문구 | "ENI는 수집됐지만 매핑에서 제외됨"으로 구분 |
+| 제안 4 | README에 `--evidence-root`·실제 경로 없음, 확인 명령 오타 | 위 증거 묶음 절·맨 위 경로 문장에 반영 |
+
+11/16 10:06 VPC의 ENI 5개 확인(읽기 전용): ALB 2·EC2 2(web-1·db-1)·NAT Gateway 1(SG 없음), 모두 `in-use`. 분리된 ENI가 없으므로 11/13 실제 실행(PASS 11)은 0.3.1 기준으로도 같은 결과다(실제 재실행으로 다시 확인 예정).
 
 ### 실행 기록 — 0.2.0 (11/13, 민성 PC Windows Git Bash, IAM 사용자 minsung)
 

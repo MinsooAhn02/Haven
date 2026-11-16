@@ -3837,7 +3837,38 @@ def inspect_accounts(args) -> int:
     return 0
 
 
-def select_cloudwatch_run_logs(raw_events, state):
+def parse_cloudwatch_message(raw, *, allow_app_prefix=False):
+    """순수 JSON 또는 확인된 앱 스트림의 Gunicorn JSON을 해석한다."""
+    message = raw["message"]
+
+    try:
+        return json.loads(message)
+    except ValueError:
+        if not allow_app_prefix:
+            raise
+
+    stream = raw.get("logStreamName")
+    if (
+        not isinstance(stream, str)
+        or re.fullmatch(r"i-[0-9a-f]+/app", stream) is None
+    ):
+        raise ValueError("지원하지 않는 앱 로그 스트림")
+
+    match = re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T"
+        r"\d{2}:\d{2}:\d{2}(?:\.\d+)?"
+        r"(?:Z|[+-]\d{2}:\d{2}) "
+        r"[A-Za-z0-9_.-]+ gunicorn\[[0-9]+\]: "
+        r"(?P<payload>\{[^\r\n]*\})[ \t]*",
+        message,
+    )
+    if match is None:
+        raise ValueError("지원하지 않는 앱 로그 접두사")
+
+    return json.loads(match.group("payload"))
+
+
+def select_cloudwatch_run_logs(raw_events, state, *, allow_app_prefix=False):
     """CloudWatch message를 해석하고 이번 시험의 Trace Root로 선별한다."""
     if (
         not isinstance(raw_events, list)
@@ -3882,9 +3913,12 @@ def select_cloudwatch_run_logs(raw_events, state):
             raise ConfigError("CloudWatch 원본 이벤트 형식 오류")
 
         try:
-            event = json.loads(raw["message"])
+            event = parse_cloudwatch_message(
+                raw,
+                allow_app_prefix=allow_app_prefix,
+            )
         except ValueError:
-            # Nginx 일반 텍스트 등은 임의로 JSON 부분을 잘라내지 않는다.
+            # 지원하지 않는 텍스트 형식은 판정 근거로 사용하지 않는다.
             counts["non_json"] += 1
             continue
 
@@ -4172,7 +4206,9 @@ def correlate_cloudwatch(args) -> int:
             loaded["waf_events"], loaded["state"]
         ),
         "app": select_cloudwatch_run_logs(
-            loaded["app_events"], loaded["state"]
+            loaded["app_events"],
+            loaded["state"],
+            allow_app_prefix=True,
         ),
     }
 

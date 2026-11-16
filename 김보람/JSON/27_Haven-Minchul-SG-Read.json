@@ -8,7 +8,6 @@
         "ec2:DescribeSecurityGroups",
         "ec2:DescribeSecurityGroupRules",
         "ec2:DescribeVpcs",
-        "ec2:DescribeSubnets",
         "ec2:DescribeNetworkInterfaces"
       ],
       "Resource": "*",

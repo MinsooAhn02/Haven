@@ -41,6 +41,12 @@
       "Effect": "Allow",
       "Action": "logs:GetLogEvents",
       "Resource": "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:aws-waf-logs-haven*:log-stream:*"
+    },
+    {
+      "Sid": "ReadHavenDBLogEvents",
+      "Effect": "Allow",
+      "Action": "logs:FilterLogEvents",
+      "Resource": "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:/haven/db"
     }
   ]
 }

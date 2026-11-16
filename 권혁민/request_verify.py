@@ -1922,7 +1922,11 @@ def save_results(outdir: Path, state: dict, records: list, *, correlation=False)
     with csvpath.open("w", encoding="utf-8-sig", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=RESULT_FIELDS + ["http_expectation_match", "verdict"], extrasaction="ignore")
         w.writeheader()
-        for record in records + state.get("cleanup_results", []):
+        for record in (
+            records
+            + state.get("cleanup_results", [])
+            + state.get("cleanup_verification_results", [])
+        ):
             row = {**record}
             row["expected_app"] = json.dumps(row["expected_app"], ensure_ascii=False)
             row["response_summary"] = json.dumps(row["response_summary"], ensure_ascii=False)
@@ -2293,6 +2297,7 @@ def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: d
                 verify_path = f"/posts/{post_id}/"
                 verify_request_id = str(uuid.uuid4())
                 verify_trace_id = new_trace_id()
+                verify_timing = {"timestamp_utc": None}
 
                 verify_detail, _ = bounded_send(
                     session,
@@ -2304,6 +2309,7 @@ def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: d
                     headers={RUN_ID_HEADER: run_id},
                     trace_id=verify_trace_id,
                     max_response_bytes=max_response_bytes,
+                    on_send=lambda timestamp: verify_timing.update(timestamp_utc=timestamp),
                 )
 
                 inaccessible = verify_detail["status"] == 404
@@ -2317,6 +2323,8 @@ def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: d
                     "verification_level": "HTTP_ONLY",
                     "db_cleanup_verified": False,
                     "file_cleanup_verified": False,
+                    "method": "GET",
+                    "timestamp_utc": verify_timing["timestamp_utc"],
                 }
 
                 if not inaccessible:
@@ -3214,6 +3222,77 @@ def correlation_cleanup_records(state):
     return rows
 
 
+def correlation_verification_records(state):
+    """삭제 후 확인 GET을 독립적인 상관분석 기록으로 만든다."""
+    records = []
+
+    for parent in correlation_cleanup_records(state):
+        summary = parent.get("response_summary") or {}
+        verification = summary.get("verification")
+
+        if verification is None:
+            continue
+        if not isinstance(verification, dict):
+            raise ConfigError("삭제 후 확인 기록 형식 오류")
+
+        post_id = parent.get("verified_post_id")
+        if (
+            type(post_id) is not int
+            or not 1 <= post_id <= 2**63 - 1
+            or parent.get("method") != "POST"
+            or parent.get("path") != f"/posts/{post_id}/delete/"
+            or verification.get("path") != f"/posts/{post_id}/"
+            or verification.get("method", "GET") != "GET"
+        ):
+            raise ConfigError("삭제 요청과 확인 요청의 대상 불일치")
+
+        status = verification.get("http_status")
+        request_id = verification.get("request_id")
+        trace_id = verification.get("trace_id")
+
+        if (
+            type(status) is not int
+            or not 100 <= status <= 599
+            or not isinstance(request_id, str)
+            or not request_id.strip()
+            or extract_trace_root(trace_id) is None
+        ):
+            raise ConfigError("삭제 후 확인 요청의 응답·식별자 오류")
+
+        row = base_record(parent["run_id"], {
+            "case_id": parent["case_id"] + "-VERIFY",
+            "category": "cleanup_verification",
+            "method": "GET",
+            "path": verification["path"],
+            "auth_role": parent["auth_role"],
+            "expected_app": {"http_status": 404},
+            "expected_waf": "ALLOW",
+            "verification_mode": "http_only",
+        })
+
+        row.update(
+            parent_case_id=parent["case_id"],
+            execution_stage="cleanup_verification",
+            request_id=request_id,
+            trace_id=trace_id,
+            # 과거 기록에 없는 시각을 생성하거나 추정하지 않는다.
+            timestamp_utc=verification.get("timestamp_utc"),
+            http_status=status,
+            transport_status="OK",
+            request_attempted=True,
+            http_expectation_match=(status == 404),
+            response_summary={
+                "verification_level": "HTTP_ONLY",
+                "db_cleanup_verified": False,
+                "file_cleanup_verified": False,
+            },
+            verdict="UNKNOWN",
+        )
+        records.append(row)
+
+    return records
+
+
 def correlate(args) -> int:
     """실행 결과와 WAF·앱 로그를 Trace Root 기준으로 연결하고 검증한다."""
     state = load_json(args.run_json)
@@ -3222,7 +3301,9 @@ def correlate(args) -> int:
     if not state["results"]:
         raise ConfigError("대조할 run 결과가 비어 있습니다")
     cleanup_sources = correlation_cleanup_records(state)
+    verification_sources = correlation_verification_records(state)
     test_count = len(state["results"])
+    cleanup_count = len(cleanup_sources)
     # 로그는 별도 로컬 파일을 읽으며 인터넷에서 직접 수집하지 않는다.
     waf = log_lines(args.waf_log)
     app = log_lines(args.app_log)
@@ -3231,7 +3312,7 @@ def correlate(args) -> int:
     args.output_dir.mkdir(parents=True, exist_ok=False)
     records = []
     origin = state.get("target_origin", "")
-    for src in state["results"] + cleanup_sources:
+    for src in (state["results"] + cleanup_sources + verification_sources):
         row = dict(src)
         if row.get("transport_status") != "OK":
             records.append(row)
@@ -3365,17 +3446,23 @@ def correlate(args) -> int:
                 row["verdict"] = "UNKNOWN"
 
         records.append(row)
+    cleanup_end = test_count + cleanup_count
     test_records = records[:test_count]
-    cleanup_records = records[test_count:]
+    cleanup_records = records[test_count:cleanup_end]
+    verification_records = records[cleanup_end:]
 
     out = {
         k: v
         for k, v in state.items()
         if k not in {
-            "results", "preparation_events", "cleanup_results"
+            "results",
+            "preparation_events",
+            "cleanup_results",
+            "cleanup_verification_results",
         }
     }
     out["cleanup_results"] = cleanup_records
+    out["cleanup_verification_results"] = verification_records
     out["source"] = "correlated_from_local_logs"
     out["correlated_utc"] = utc_now()
     out["source_run_json"] = args.run_json.name
@@ -3392,7 +3479,7 @@ def correlate(args) -> int:
     verdict_records = test_records + [
         row for row in cleanup_records
         if row.get("transport_status") != "SKIPPED"
-    ]
+    ] + verification_records
     code = get_exit_code(
         verdict_records,
         incomplete=(
@@ -4007,8 +4094,9 @@ def select_cloudwatch_run_logs(raw_events, state, *, allow_app_prefix=False):
 
     expected_roots = set()
     cleanup_rows = correlation_cleanup_records(state)
+    verification_rows = correlation_verification_records(state)
 
-    for row in state["results"] + cleanup_rows:
+    for row in state["results"] + cleanup_rows + verification_rows:
         if not isinstance(row, dict):
             raise ConfigError("실행 결과의 요청 기록 형식 오류")
 

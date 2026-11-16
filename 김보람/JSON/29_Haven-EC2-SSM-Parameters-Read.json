@@ -5,7 +5,7 @@
       "Sid": "ReadHavenParameters",
       "Effect": "Allow",
       "Action": "ssm:GetParameter",
-      "Resource": "arn:aws:ssm:ap-northeast-2:777171525040:parameter/haven/*"
+      "Resource": "arn:aws:ssm:ap-northeast-2:${ACCOUNT_ID}:parameter/haven/*"
     }
   ]
 }

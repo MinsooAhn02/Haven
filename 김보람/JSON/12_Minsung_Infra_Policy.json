@@ -96,7 +96,7 @@
         "ec2:StartInstances",
         "ec2:StopInstances"
       ],
-      "Resource": "arn:aws:ec2:ap-northeast-2:777171525040:instance/*",
+      "Resource": "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:instance/*",
       "Condition": {
         "StringEquals": {
           "aws:RequestedRegion": "ap-northeast-2",
@@ -134,8 +134,8 @@
       "Effect": "Allow",
       "Action": "ec2:RunInstances",
       "Resource": [
-        "arn:aws:ec2:ap-northeast-2:777171525040:instance/*",
-        "arn:aws:ec2:ap-northeast-2:777171525040:volume/*"
+        "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:instance/*",
+        "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:volume/*"
       ],
       "Condition": {
         "StringEquals": {
@@ -150,8 +150,8 @@
       "Effect": "Allow",
       "Action": "ec2:RunInstances",
       "Resource": [
-        "arn:aws:ec2:ap-northeast-2:777171525040:subnet/*",
-        "arn:aws:ec2:ap-northeast-2:777171525040:security-group/*"
+        "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:subnet/*",
+        "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:security-group/*"
       ],
       "Condition": {
         "StringEquals": {
@@ -168,7 +168,7 @@
       "Resource": [
         "arn:aws:ec2:ap-northeast-2::image/*",
         "arn:aws:ec2:ap-northeast-2:*:snapshot/*",
-        "arn:aws:ec2:ap-northeast-2:777171525040:network-interface/*"
+        "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:network-interface/*"
       ],
       "Condition": {
         "StringEquals": {
@@ -180,7 +180,7 @@
       "Sid": "DenyOtherInstanceTypes",
       "Effect": "Deny",
       "Action": "ec2:RunInstances",
-      "Resource": "arn:aws:ec2:ap-northeast-2:777171525040:instance/*",
+      "Resource": "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:instance/*",
       "Condition": {
         "StringNotEquals": {
           "ec2:InstanceType": [
@@ -194,12 +194,18 @@
       "Sid": "DenyPublicIPOnLaunch",
       "Effect": "Deny",
       "Action": "ec2:RunInstances",
-      "Resource": "arn:aws:ec2:ap-northeast-2:777171525040:network-interface/*",
+      "Resource": "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:network-interface/*",
       "Condition": {
         "Bool": {
           "ec2:AssociatePublicIpAddress": "true"
         }
       }
+    },
+    {
+      "Sid": "AllowDefaultSGIngressCleanup",
+      "Effect": "Allow",
+      "Action": "ec2:RevokeSecurityGroupIngress",
+      "Resource": "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:security-group/<default SG ID>"
     }
   ]
 }

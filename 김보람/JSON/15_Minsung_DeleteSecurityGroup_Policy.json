@@ -5,7 +5,7 @@
       "Sid": "DeleteHavenSecurityGroupsOnly",
       "Effect": "Allow",
       "Action": "ec2:DeleteSecurityGroup",
-      "Resource": "arn:aws:ec2:ap-northeast-2:777171525040:security-group/*",
+      "Resource": "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:security-group/*",
       "Condition": {
         "StringEquals": {
           "aws:RequestedRegion": "ap-northeast-2",

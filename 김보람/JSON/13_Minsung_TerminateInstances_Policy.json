@@ -5,7 +5,7 @@
       "Sid": "TerminateTaggedHavenInstancesOnly",
       "Effect": "Allow",
       "Action": "ec2:TerminateInstances",
-      "Resource": "arn:aws:ec2:ap-northeast-2:777171525040:instance/*",
+      "Resource": "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:instance/*",
       "Condition": {
         "StringEquals": {
           "aws:RequestedRegion": "ap-northeast-2",

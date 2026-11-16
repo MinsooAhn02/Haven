@@ -192,7 +192,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] `ec2:DescribeInstances` 서울 허용/타 리전 거부 **시뮬레이터** 시험
 - [x] `iam:PassRole` 지정 EC2 Role 전달 허용/Lambda 전달 거부 **시뮬레이터** 시험
 - [x] `minsoo` Session Manager 인라인 정책 생성·연결, GitHub 정책 기록
-- [x] `haven-backup-ACCOUNT_ID_MASKED` S3 버킷 생성 (서울·퍼블릭 차단·SSE-S3)
+- [x] `haven-backup-${ACCOUNT_ID}` S3 버킷 생성 (서울·퍼블릭 차단·SSE-S3)
 - [x] EC2 공통 Role S3 `db-backups/*`, SSM 파라미터 및 minsoo 파라미터 계정 범위 확인
 
 ### 담당자 실제 시험·인계 대기(보람이 대신 실행하지 않음)
@@ -353,7 +353,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - **병합됨:** #77 (IAM 정책 기록). 혁민 24·25·20·21번, 민성 26번, 구민철 27번, 16·17·18번 정정과 파일명 정리. 조장 승인: 혁민 `wafv2:DeleteWebACL`(범위 `haven-*`), `logs:PutResourcePolicy`의 `Resource: *`(WAF 로그 전송에 필요).
 - **알아 둘 것:** 콘솔 JSON 대조는 보람이 AI로 비교한 결과라고 PR에 적었다. 사람이 `diff`한 것은 아니므로 현황판에는 "보람 보고"로 적었다. 실제 허용·거부·연결 동작 시험은 담당자 결과를 기다린다.
 - **남은 일(순서대로)**
-  1. `ManageReferencedManagedRuleSets`가 왜 필요했는지, 리소스의 계정 자리(`ACCOUNT_ID_MASKED`)가 AWS 관리형 규칙 세트에 맞는지 확인한다. 혁민은 이미 Web ACL을 만들었다고 보고했다(#80).
+  1. `ManageReferencedManagedRuleSets`가 왜 필요했는지, 리소스의 계정 자리(`${ACCOUNT_ID}`)가 AWS 관리형 규칙 세트에 맞는지 확인한다. 혁민은 이미 Web ACL을 만들었다고 보고했다(#80).
   2. `wafv2:AssociateWebACL`·`GetWebACLForResource`의 리소스 대상을 확인한다. 민성의 ALB 연결 시험에서 거부되면 ALB ARN을 추가한다.
   3. `1~4회차/3회차.md` 72행 낡은 문장(#73 "재실행 대기" 조건부 리뷰 의견)을 정정한다. #73은 닫혔고 후속 #76이 병합됐으며 최종 판 web-1 재실행은 14:44에 끝났다.
   4. 미병합 커밋 5개(28~30번: Web EC2 역할 SES·SSM·CloudWatch 정책 기록)를 PR로 올린다. 조장은 AWS에서 이를 확인하지 않았다. 대조 방법과 "허용·거부 시험은 대기"를 적는다.

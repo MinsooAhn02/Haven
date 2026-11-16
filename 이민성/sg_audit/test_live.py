@@ -62,9 +62,12 @@ def ref(port, group_id):
     return {"IpProtocol": "tcp", "FromPort": port, "ToPort": port, "UserIdGroupPairs": [{"GroupId": group_id}]}
 
 
-def eni(eni_id, *groups, desc=""):
-    return {"NetworkInterfaceId": eni_id, "VpcId": VPC, "Description": desc,
-            "Groups": [{"GroupId": g} for g in groups]}
+def eni(eni_id, *groups, desc="", status="in-use"):
+    e = {"NetworkInterfaceId": eni_id, "VpcId": VPC, "Description": desc,
+         "Groups": [{"GroupId": g} for g in groups]}
+    if status is not None:
+        e["Status"] = status
+    return e
 
 
 def good_world():
@@ -433,6 +436,74 @@ class LiveTests(unittest.TestCase):
         code, saved, text = self.run_live(FakeEC2(world))
         self.assertEqual(code, 3, text)
         self.assertIn(("SG-06", "eni:eni-vpce"), self.checks(saved, "UNKNOWN"))
+
+    # L20-b NAT Gateway ENI(SG 없음, 11/16 실제 VPC에 있음) → 판정에 영향 없음(PASS 11 그대로)
+    def test_L20b_nat_gateway_eni_without_sg_is_ignored(self):
+        world = good_world()
+        world["enis"].append(eni("eni-nat", desc="Interface for NAT Gateway nat-fake"))
+        code, saved, text = self.run_live(FakeEC2(world))
+        self.assertEqual(code, 0, text)
+        self.assertEqual(saved["counts"]["PASS"], 11)
+
+    # L21 서버에 붙지 않은(분리된) ENI만 web SG를 가짐 → PASS 아님. web-1은 '분리된 ENI' 이유로 UNKNOWN (구민철 리뷰 질문 1)
+    def test_L21_detached_eni_is_not_a_server(self):
+        world = good_world()
+        world["enis"][2]["Status"] = "available"
+        code, saved, text = self.run_live(FakeEC2(world))
+        self.assertEqual(code, 3, text)
+        detached = [f for f in saved["findings"] if "분리된 ENI" in f["reason"]]
+        self.assertEqual(len(detached), 1)
+        self.assertEqual(detached[0]["asset_id"], "web-1")
+        self.assertIn("eni-web", detached[0]["evidence"])
+        self.assertFalse(any(f["asset_id"] == "web-1" and "수집 결과가 없어" in f["reason"] for f in saved["findings"]))
+        self.assertFalse(any(f["asset_id"] == "web-1" and f["verdict"] == "PASS" for f in saved["findings"]))
+        self.assertFalse(any(f["sg_id"] == WEB and "연결된 자산 없음" == f["actual"] for f in saved["findings"]))
+
+    # L21-b 연결된 web ENI + 분리된 web ENI → web-1 규칙은 그대로 판정, 분리된 것만 UNKNOWN
+    def test_L21b_detached_extra_eni_with_live_server(self):
+        world = good_world()
+        world["enis"].append(eni("eni-web-old", WEB, status="available"))
+        code, saved, text = self.run_live(FakeEC2(world))
+        self.assertEqual(code, 3, text)
+        self.assertEqual(saved["counts"]["PASS"], 11)
+        self.assertEqual([f["evidence"] for f in saved["findings"] if f["verdict"] == "UNKNOWN"], ["eni: eni-web-old"])
+
+    # L21-c ENI 상태 값이 없음 → 연결됐다고 가정하지 않음(UNKNOWN)
+    def test_L21c_missing_status_is_not_in_use(self):
+        world = good_world()
+        del world["enis"][3]["Status"]
+        code, saved, text = self.run_live(FakeEC2(world))
+        self.assertEqual(code, 3, text)
+        self.assertTrue(any("분리된 ENI(상태 없음)" in f["actual"] for f in saved["findings"]))
+
+    # L22 web 서버 2대 중 1대에만 22번 공개 SG → FAIL 근거에 그 ENI만 (구민철 리뷰 제안 2)
+    def test_L22_eni_id_in_evidence(self):
+        world = good_world()
+        world["security_groups"].append(sg("sg-extra01", "anything", [cidr(22)]))
+        world["enis"].append(eni("eni-web2", WEB, "sg-extra01"))
+        code, saved, text = self.run_live(FakeEC2(world))
+        self.assertEqual(code, 1, text)
+        fail = [f for f in saved["findings"] if f["verdict"] == "FAIL"]
+        self.assertEqual(len(fail), 1)
+        self.assertTrue(fail[0]["evidence"].endswith("| eni: eni-web2"), fail[0]["evidence"])
+        web_pass = [f for f in saved["findings"] if f["sg_id"] == WEB and f["verdict"] == "PASS"]
+        self.assertTrue(web_pass and all(f["evidence"].endswith("| eni: eni-web, eni-web2") for f in web_pass))
+        alb = [f for f in saved["findings"] if f["asset_id"] == "alb"]
+        self.assertTrue(all(f["evidence"].endswith("| eni: eni-alb-a, eni-alb-c") for f in alb))
+
+    # L11-c web의 유일한 ENI에 db SG도 붙음 → UNKNOWN 2건, 이유가 각각 맞음 (구민철 리뷰 제안 3)
+    def test_L11c_ambiguous_only_eni_reason(self):
+        world = good_world()
+        world["enis"][2]["Groups"].append({"GroupId": DB})
+        code, saved, text = self.run_live(FakeEC2(world))
+        self.assertEqual(code, 3, text)
+        unknown = [f for f in saved["findings"] if f["verdict"] == "UNKNOWN"]
+        self.assertEqual(len(unknown), 2, unknown)
+        self.assertTrue(any("역할 미확정" in f["reason"] for f in unknown))
+        web = [f for f in unknown if f["asset_id"] == "web-1"]
+        self.assertEqual(len(web), 1)
+        self.assertIn("매핑에서 제외", web[0]["reason"])
+        self.assertFalse(any("수집 결과가 없어" in f["reason"] for f in unknown))
 
     # 예상 못 한 응답 모양 → Traceback 없이 ERROR
     def test_unexpected_response_shape_is_error(self):

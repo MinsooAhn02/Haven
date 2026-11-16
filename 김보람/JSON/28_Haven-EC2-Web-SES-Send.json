@@ -7,7 +7,7 @@
       "Action": "ses:SendEmail",
       "Resource": [
         "arn:aws:ses:ap-northeast-2:${ACCOUNT_ID}:identity/orchestration-haven.cloud",
-        "arn:aws:ses:ap-northeast-2:${ACCOUNT_ID}:identity/redacted@example.invalid"
+        "arn:aws:ses:ap-northeast-2:${ACCOUNT_ID}:identity/${SES_VERIFIED_RECIPIENT_EMAIL}"
       ],
       "Condition": {
         "StringEquals": {

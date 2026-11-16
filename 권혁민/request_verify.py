@@ -26,6 +26,8 @@ import os
 import warnings
 import requests
 import subprocess
+from contextvars import ContextVar
+from functools import wraps
 
 ROLES = {"anonymous", "member_a", "member_b", "member_c", "operator"}
 METHODS = {"GET", "POST"}
@@ -720,8 +722,14 @@ class ShareHtmlParser(HTMLParser):
         self.rows = []
         self.open_rows = []
         self.has_share_list = False
+        self.nav_depth = 0
 
     def handle_starttag(self, tag, attrs):
+        if tag == "nav":
+            self.nav_depth += 1
+            return
+        if self.nav_depth:
+            return
         attributes = dict(attrs)
         if ((tag == "h2" and attributes.get("id") == "share-list-heading")
                 or (tag == "section" and attributes.get("aria-labelledby") == "share-list-heading")):
@@ -742,6 +750,12 @@ class ShareHtmlParser(HTMLParser):
             self.open_rows[-1]["title"].append(data)
 
     def handle_endtag(self, tag):
+        if tag == "nav":
+            if self.nav_depth:
+                self.nav_depth -= 1
+            return
+        if self.nav_depth:
+            return
         if not self.open_rows:
             return
         row = self.open_rows[-1]
@@ -1470,6 +1484,49 @@ def get_csrf_token(s: requests.Session) -> str | None:
     return s.cookies.get("csrftoken")
 
 
+_MEMBER_PASSWORDS = ContextVar("haven_member_passwords", default=None)
+
+
+def member_password_scope(func):
+    """실행마다 별도의 비밀번호 보관 영역을 만들고 종료 시 비운다."""
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        cache = {}
+        token = _MEMBER_PASSWORDS.set(cache)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            cache.clear()
+            _MEMBER_PASSWORDS.reset(token)
+
+    return wrapped
+
+
+def aws_member_password():
+    """AWS 테스트 회원 세 계정의 공통 비밀번호를 한 번 입력받는다."""
+    cache = _MEMBER_PASSWORDS.get()
+
+    if cache is not None and "password" in cache:
+        return cache["password"]
+
+    try:
+        password = getpass.getpass(
+            "AWS member_a/member_b/member_c 공통 비밀번호: "
+        )
+    except EOFError as exc:
+        raise ExecutionError(
+            "공통 비밀번호 입력을 받을 수 없습니다"
+        ) from exc
+
+    if not password:
+        raise ExecutionError("공통 비밀번호가 비어 있습니다")
+
+    if cache is not None:
+        cache["password"] = password
+
+    return password
+
+
 def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: str,
                run_id: str, prep_events: list, max_response_bytes: int) -> None:
     """역할별 시험 계정으로 로그인한다. 비밀번호는 대화형 입력하고 기록 금지."""
@@ -1484,7 +1541,14 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
         if local_test_account else None
     )
 
-    if seed_password:
+    if (
+        target == canonical_origin("https://orchestration-haven.cloud")
+        and role in {"member_a", "member_b", "member_c"}
+    ):
+        username = role
+        password = aws_member_password()
+        print(f"[인증 준비] {role}: 고정 시험 계정 로그인")
+    elif seed_password:
         username = role
         password = seed_password
         print(f"[인증 준비] {role}: 로컬 시험 계정 자동 로그인")
@@ -2319,6 +2383,7 @@ def print_run_summary(state: dict) -> None:
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
+@member_password_scope
 def run(args) -> int:
     """승인한 대상의 고정 케이스를 순차 실행한다. HTTP 결과만으로 보안 PASS 금지."""
     # 1) 실행 전 검증: 대상이 allowlist와 정확히 일치해야 전송 가능.
@@ -2401,6 +2466,7 @@ def run(args) -> int:
         return _execute_run(args, target, root, suite, total_cases, selected_cases)
 
 
+@member_password_scope
 def recover(args) -> int:
     """중단된 AWS 시험의 복구 계획 확인 또는 실제 재복구."""
     if args.dry_run == args.apply:

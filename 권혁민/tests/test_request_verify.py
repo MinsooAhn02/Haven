@@ -5008,9 +5008,12 @@ def test_dynamic_post_reads_use_actual_created_id(
 def test_login_remembers_username_only_after_success(
     monkeypatch, login_ok
 ):
+    def unexpected_username_prompt(prompt):
+        pytest.fail("AWS 시험 회원은 사용자 이름을 입력받으면 안 됩니다")
+
     monkeypatch.setattr(
         "builtins.input",
-        lambda prompt: "aws_test_b",
+        unexpected_username_prompt,
     )
     monkeypatch.setattr(
         cli.getpass,
@@ -5028,7 +5031,7 @@ def test_login_remembers_username_only_after_success(
             )
             return phase2_detail(200), None
 
-        assert kwargs["fields"]["username"] == "aws_test_b"
+        assert kwargs["fields"]["username"] == "member_b"
         assert kwargs["fields"]["password"] == "synthetic-password"
 
         if login_ok:
@@ -5062,7 +5065,7 @@ def test_login_remembers_username_only_after_success(
 
         if login_ok:
             login()
-            assert session._haven_username == "aws_test_b"
+            assert session._haven_username == "member_b"
         else:
             with pytest.raises(
                 cli.ExecutionError,

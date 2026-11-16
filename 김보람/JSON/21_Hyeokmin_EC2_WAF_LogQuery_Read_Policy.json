@@ -49,6 +49,20 @@
       "Effect": "Allow",
       "Action": "wafv2:GetWebACL",
       "Resource": "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/webacl/*/*"
+    },
+    {
+      "Sid": "ReadALBTargetHealth",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:DescribeTargetHealth"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2"
+        }
+      }
     }
   ]
 }

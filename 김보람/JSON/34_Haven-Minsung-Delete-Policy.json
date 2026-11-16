@@ -5,7 +5,7 @@
       "Sid": "TerminateHavenEC2",
       "Effect": "Allow",
       "Action": "ec2:TerminateInstances",
-      "Resource": "arn:aws:ec2:ap-northeast-2:ACCOUNT_ID_MASKED:instance/*",
+      "Resource": "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:instance/*",
       "Condition": {
         "StringEquals": {
           "aws:ResourceTag/Project": "Haven",
@@ -20,7 +20,7 @@
       "Sid": "DeleteHavenSG",
       "Effect": "Allow",
       "Action": "ec2:DeleteSecurityGroup",
-      "Resource": "arn:aws:ec2:ap-northeast-2:ACCOUNT_ID_MASKED:security-group/*",
+      "Resource": "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:security-group/*",
       "Condition": {
         "StringEquals": {
           "aws:ResourceTag/Project": "Haven",

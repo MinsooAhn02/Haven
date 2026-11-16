@@ -13,7 +13,7 @@
         {
             "Effect": "Allow",
             "Action": "ses:GetEmailIdentity",
-            "Resource": "arn:aws:ses:ap-northeast-2:ACCOUNT_ID_MASKED:identity/*"
+            "Resource": "arn:aws:ses:ap-northeast-2:${ACCOUNT_ID}:identity/*"
         }
     ]
 }

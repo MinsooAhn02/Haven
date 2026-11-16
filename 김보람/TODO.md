@@ -78,7 +78,7 @@
 - [x] [09_IAM_Self_MFA_Password_Policy.json](JSON/09_IAM_Self_MFA_Password_Policy.json) 본인 MFA/비밀번호 정책 초안 작성 및 [10_Minsoo_CloudShell_권한안내.md](JSON/10_Minsoo_CloudShell_권한안내.md) 추가
 - [x] AWS `minsoo` 사용자에 `Haven-IAM-Self-MFA-Password-Policy`, `AWSCloudShellFullAccess`, `Haven-Minsoo-SSM-Policy`, `IAMUserChangePassword` 총 4개 정책 연결 확인 (11/09 사용자 제공 IAM 화면)
 - [ ] 민수님 본인 MFA 등록·비밀번호 변경·CloudShell 서울 리전 생성 및 SSM 허용/거부 시험
-- [x] [06_DB_S3_Backup_Policy.json](JSON/06_DB_S3_Backup_Policy.json)에 `s3:PutObject`·`s3:GetObject` 초안 반영, 확정 버킷 이름 규칙 `haven-backup-${AWS_ACCOUNT_ID}` 반영
+- [x] [06_DB_S3_Backup_Policy.json](JSON/06_DB_S3_Backup_Policy.json)에 `s3:PutObject`·`s3:GetObject` 초안 반영, 확정 버킷 이름 규칙 `haven-backup-${ACCOUNT_ID}` 반영
 - [x] AWS 공통 EC2 Role에 `Haven-EC2-S3-Backup-Restore` 인라인 정책 연결(권한 정책 생성·연결 화면 확인)
 - [ ] 실제 S3 버킷 생성 여부, 백업·복원 동작 및 Web/DB 공통 Role의 접근 범위 검증
 - [x] AWS에 적용한 EC2 SSM 읽기 인라인 정책을 [07_EC2_SSM_Parameter_Read_Policy.json](JSON/07_EC2_SSM_Parameter_Read_Policy.json) 템플릿으로 기록해 PR #29 반영 (계정 ID 변수는 실제 적용 전 치환)
@@ -192,7 +192,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] `ec2:DescribeInstances` 서울 허용/타 리전 거부 **시뮬레이터** 시험
 - [x] `iam:PassRole` 지정 EC2 Role 전달 허용/Lambda 전달 거부 **시뮬레이터** 시험
 - [x] `minsoo` Session Manager 인라인 정책 생성·연결, GitHub 정책 기록
-- [x] `haven-backup-777171525040` S3 버킷 생성 (서울·퍼블릭 차단·SSE-S3)
+- [x] `haven-backup-${ACCOUNT_ID}` S3 버킷 생성 (서울·퍼블릭 차단·SSE-S3)
 - [x] EC2 공통 Role S3 `db-backups/*`, SSM 파라미터 및 minsoo 파라미터 계정 범위 확인
 
 ### 담당자 실제 시험·인계 대기(보람이 대신 실행하지 않음)
@@ -353,7 +353,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - **병합됨:** #77 (IAM 정책 기록). 혁민 24·25·20·21번, 민성 26번, 구민철 27번, 16·17·18번 정정과 파일명 정리. 조장 승인: 혁민 `wafv2:DeleteWebACL`(범위 `haven-*`), `logs:PutResourcePolicy`의 `Resource: *`(WAF 로그 전송에 필요).
 - **알아 둘 것:** 콘솔 JSON 대조는 보람이 AI로 비교한 결과라고 PR에 적었다. 사람이 `diff`한 것은 아니므로 현황판에는 "보람 보고"로 적었다. 실제 허용·거부·연결 동작 시험은 담당자 결과를 기다린다.
 - **남은 일(순서대로)**
-  1. `ManageReferencedManagedRuleSets`가 왜 필요했는지, 리소스의 계정 자리(`777171525040`)가 AWS 관리형 규칙 세트에 맞는지 확인한다. 혁민은 이미 Web ACL을 만들었다고 보고했다(#80).
+  1. `ManageReferencedManagedRuleSets`가 왜 필요했는지, 리소스의 계정 자리(`${ACCOUNT_ID}`)가 AWS 관리형 규칙 세트에 맞는지 확인한다. 혁민은 이미 Web ACL을 만들었다고 보고했다(#80).
   2. `wafv2:AssociateWebACL`·`GetWebACLForResource`의 리소스 대상을 확인한다. 민성의 ALB 연결 시험에서 거부되면 ALB ARN을 추가한다.
   3. `1~4회차/3회차.md` 72행 낡은 문장(#73 "재실행 대기" 조건부 리뷰 의견)을 정정한다. #73은 닫혔고 후속 #76이 병합됐으며 최종 판 web-1 재실행은 14:44에 끝났다.
   4. 미병합 커밋 5개(28~30번: Web EC2 역할 SES·SSM·CloudWatch 정책 기록)를 PR로 올린다. 조장은 AWS에서 이를 확인하지 않았다. 대조 방법과 "허용·거부 시험은 대기"를 적는다.

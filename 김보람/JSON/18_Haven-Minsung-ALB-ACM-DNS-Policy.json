@@ -19,7 +19,7 @@
       "Sid": "ReadACMCertificate",
       "Effect": "Allow",
       "Action": "acm:DescribeCertificate",
-      "Resource": "arn:aws:acm:ap-northeast-2:ACCOUNT_ID_MASKED:certificate/*"
+      "Resource": "arn:aws:acm:ap-northeast-2:${ACCOUNT_ID}:certificate/*"
     },
     {
       "Sid": "RequestACMCertificate",
@@ -38,7 +38,7 @@
       "Sid": "TagACMCertificate",
       "Effect": "Allow",
       "Action": "acm:AddTagsToCertificate",
-      "Resource": "arn:aws:acm:ap-northeast-2:ACCOUNT_ID_MASKED:certificate/*",
+      "Resource": "arn:aws:acm:ap-northeast-2:${ACCOUNT_ID}:certificate/*",
       "Condition": {
         "StringEquals": {
           "aws:RequestTag/Project": "Haven",
@@ -54,8 +54,8 @@
         "elasticloadbalancing:CreateTargetGroup"
       ],
       "Resource": [
-        "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:loadbalancer/app/haven-*/*",
-        "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:targetgroup/haven-*/*"
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:loadbalancer/app/haven-*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:targetgroup/haven-*/*"
       ],
       "Condition": {
         "StringEquals": {
@@ -67,7 +67,7 @@
       "Sid": "CreateListenerOnHavenALB",
       "Effect": "Allow",
       "Action": "elasticloadbalancing:CreateListener",
-      "Resource": "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:loadbalancer/app/haven-*/*",
+      "Resource": "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:loadbalancer/app/haven-*/*",
       "Condition": {
         "StringEquals": {
           "aws:ResourceTag/Project": "Haven"
@@ -79,10 +79,10 @@
       "Effect": "Allow",
       "Action": "elasticloadbalancing:AddTags",
       "Resource": [
-        "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:loadbalancer/app/haven-*/*",
-        "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:targetgroup/haven-*/*",
-        "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:listener/app/haven-*/*/*",
-        "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:listener-rule/app/haven-*/*/*/*"
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:loadbalancer/app/haven-*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:targetgroup/haven-*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:listener/app/haven-*/*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:listener-rule/app/haven-*/*/*/*"
       ],
       "Condition": {
         "StringEquals": {
@@ -109,10 +109,10 @@
         "elasticloadbalancing:DeleteLoadBalancer"
       ],
       "Resource": [
-        "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:loadbalancer/app/haven-*/*",
-        "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:targetgroup/haven-*/*",
-        "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:listener/app/haven-*/*/*",
-        "arn:aws:elasticloadbalancing:ap-northeast-2:ACCOUNT_ID_MASKED:listener-rule/app/haven-*/*/*/*"
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:loadbalancer/app/haven-*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:targetgroup/haven-*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:listener/app/haven-*/*/*",
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:listener-rule/app/haven-*/*/*/*"
       ],
       "Condition": {
         "StringEquals": {
@@ -139,7 +139,7 @@
       "Sid": "CreateELBServiceRole",
       "Effect": "Allow",
       "Action": "iam:CreateServiceLinkedRole",
-      "Resource": "arn:aws:iam::ACCOUNT_ID_MASKED:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing",
+      "Resource": "arn:aws:iam::${ACCOUNT_ID}:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing",
       "Condition": {
         "StringEquals": {
           "iam:AWSServiceName": "elasticloadbalancing.amazonaws.com"

@@ -8,7 +8,7 @@
         "ssm:PutParameter",
         "ssm:GetParameter"
       ],
-      "Resource": "arn:aws:ssm:ap-northeast-2:ACCOUNT_ID_MASKED:parameter/haven/*"
+      "Resource": "arn:aws:ssm:ap-northeast-2:${ACCOUNT_ID}:parameter/haven/*"
     }
   ]
 }

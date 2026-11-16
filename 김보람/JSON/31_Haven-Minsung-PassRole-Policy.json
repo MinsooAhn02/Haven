@@ -6,8 +6,8 @@
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
-        "arn:aws:iam::ACCOUNT_ID_MASKED:role/haven-ec2-ssm-role",
-        "arn:aws:iam::ACCOUNT_ID_MASKED:role/haven-ec2-web-role"
+        "arn:aws:iam::${ACCOUNT_ID}:role/haven-ec2-ssm-role",
+        "arn:aws:iam::${ACCOUNT_ID}:role/haven-ec2-web-role"
       ],
       "Condition": {
         "StringEquals": {

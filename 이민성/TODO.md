@@ -66,7 +66,7 @@
 | ~백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번)~ | ✅ 11/13 10:03 백업 `20261113T010301Z` → 격리 복원 DB 줄 수 일치·업로드 7개 sha256 일치 (아래 11/13 코멘트) |
 | ~15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부)~ | ✅ 11/13 11:38~11:42 허용 1·거부 4 (아래 11/13 코멘트). 보람 기록 반영은 보람에게 전달 |
 | ALB·WAF 밤 처리 결정 → destroy.sh 정리 순서 | #57 약 $4.55/주 |
-| WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤. 연결 상태 조회 권한(`GetWebACLForResource`) 범위 조정은 보람에게 요청 |
+| WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤. 연결 상태 조회 권한(`GetWebACLForResource`)은 ✅ 11/16 12:15 확인: `get-web-acl-for-resource` → `haven-web-acl`(ALB에 연결 유지) |
 | 가상 운영 관리자 계정 생성(make_operator.py) | 4회차 APP-07·09 시험 직전에만, 끝나면 바로 비활성화 |
 | ~로그인 실패 제한 수치 결정~ | ✅ 11/12 결정: 15분·계정 5번·IP 30번(#75). 구현은 요찬(4회차) → 혁민 점검 → 배포. 실제 IP는 X-Forwarded-For 뒤에서 두 번째(nginx가 ALB IP를 붙임) |
 | ~OUT-10 db-1 PostgreSQL 로그 수집~ | ✅ 11/16 11:04 db-1 실행(`cw-agent-setup-db.sh`), 11:08 `/haven/db` 도착, 11:13 앱 접속 기록(IP·TLS) 확인, 12:04 1시간 로그 양 +176줄 / 약 28KB. PR #116 병합(main `f60e1c6`). 남은 것: 병합 뒤 짝 리뷰(보람: 권한·보존·비용, 혁민: 기록 범위·조회) |
@@ -444,6 +444,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 | 11:33~11:44 | 로그인 실패 제한 시험(#114, 구민철) 4번: 실제 IP로 세는지 | ✅ 아래 표 |
 | 11:46 | 구민철 #116 짝 리뷰 | ✅ 리뷰 4건 의도대로 반영, 명령 옵션 0.3.0과 같음, 구민철 PC main `f60e1c6` 60개 OK. 추가 수정 없음 |
 | 12:04 | db-1 PostgreSQL 로그 양(설정 변경 뒤 약 1시간) | 197줄 / 30,670 B → **373줄 / 59,101 B (+176줄, 약 28KB)**, 접속 기록 39건. 로그인 시험·확인 명령 포함이라 평소보다 많음. 넉넉히 잡아 하루 12시간 가동 약 0.3MB/일 → 30일 약 10MB. PR #116 댓글로 보람·혁민에게 전달 |
+| 12:15 | WAF 연결 조회(민성 PC, 읽기 전용): `aws wafv2 get-web-acl-for-resource` | ✅ `haven-web-acl` → 조회 권한 생김(11/13엔 없었음), 11/13 연결이 그대로 유지됨 |
 
 되돌리기(재시작 없음): `ALTER SYSTEM RESET log_connections / log_disconnections / log_line_prefix` + `select pg_reload_conf()`
 

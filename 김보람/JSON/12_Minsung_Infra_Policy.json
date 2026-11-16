@@ -205,7 +205,7 @@
       "Sid": "AllowDefaultSGIngressCleanup",
       "Effect": "Allow",
       "Action": "ec2:RevokeSecurityGroupIngress",
-      "Resource": "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:security-group/sg-DEFAULT-MASKED"
+      "Resource": "arn:aws:ec2:ap-northeast-2:${ACCOUNT_ID}:security-group/<default SG ID>"
     }
   ]
 }

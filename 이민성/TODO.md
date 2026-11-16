@@ -470,3 +470,23 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 | #116 병합 뒤 짝 리뷰: 보람(권한·보존·비용)·혁민(기록 범위·`/haven/db` 조회) | 고칠 점 나오면 새 PR |
 | 11/17 로그인 실패 제한 운영 시험 2차(요찬 안내) | 민성 3장: 6번 직후 db-1에서 IP 키 조회(account 1줄 n=5, ip 3줄 n=2·2·1) |
 | 구민철 3회차(11/23) | 0.3.1로 실행 |
+
+## 민성's comment · 2026-11-16 오후 · 운영 경고 점검(DEP-05, `check --deploy`)
+
+결과서 작성 중 DEP-05(구현명세 181줄: 배포 전 `check --deploy` 경고를 조치하거나 근거·만료가 있는 예외로 기록) 실행 기록이 없음을 확인했다. `deploy.sh`는 migrate와 앱 계정 읽기만 확인하고 `check --deploy`는 돌리지 않는다.
+
+| 시각 | 한 일 | 결과 |
+|---|---|---|
+| 15:08 | web-1 SSM 세션(root)에서 `manage.py check --deploy` (운영 `370b22e`, `/etc/haven/haven.env` 읽기, 설정 변경 없음) | 경고 2건(`2 issues, 0 silenced`). DEBUG·SECRET_KEY·쿠키 Secure·ALLOWED_HOSTS 등 나머지는 경고 없음 |
+
+| 경고 | 처리 |
+|---|---|
+| security.W008 `SECURE_SSL_REDIRECT` 미설정 | **예외**: ALB 80 리스너가 HTTP를 443으로 301 전환(연결확인표 NET-01-b). ALB → web-1은 설계상 HTTP라 Django에서 켜면 상태 검사·내부 요청까지 전환된다. 재검토: ALB 80 전환이 없어지거나 구조가 바뀔 때 |
+| security.W004 `SECURE_HSTS_SECONDS` 미설정 | **미조치**: 잘못 켜면 브라우저가 기억해 되돌리기 어렵다. 짧은 기간(예: 1시간)부터 켜고 확인한 뒤 늘린다. 하위 도메인 포함·preload는 쓰지 않는다 |
+
+**다음**
+
+| 할 일 | 메모 |
+|---|---|
+| HSTS(W004) 설정 위치·담당 정하기 | Django 설정(요찬) 또는 Nginx 헤더(서버). 요찬과 상의 → 4회차 적용, 적용 뒤 응답 헤더와 `check --deploy` 재실행 |
+| W008 예외를 앱 쪽 기록에도 남길지 | 요찬 앱계약·설정 문서와 맞추기 |

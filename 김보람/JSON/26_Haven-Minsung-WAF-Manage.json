@@ -10,7 +10,7 @@
         "wafv2:UpdateWebACL",
         "wafv2:AssociateWebACL"
       ],
-      "Resource": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/webacl/haven-*/*"
+      "Resource": "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/webacl/haven-*/*"
     },
     {
       "Sid": "ListWAFInSeoul",
@@ -32,13 +32,22 @@
         "elasticloadbalancing:DeleteWebACLAssociation",
         "elasticloadbalancing:GetLoadBalancerWebACL"
       ],
-      "Resource": "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:loadbalancer/app/haven-alb/*"
+      "Resource": "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:loadbalancer/app/haven-alb/*"
     },
     {
       "Sid": "DisassociateHavenALBWebACL",
       "Effect": "Allow",
       "Action": "wafv2:DisassociateWebACL",
-      "Resource": "arn:aws:elasticloadbalancing:ap-northeast-2:777171525040:loadbalancer/app/haven-alb/*"
+      "Resource": "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:loadbalancer/app/haven-alb/*"
+    },
+    {
+      "Sid": "ReadHavenALBWAFConnection",
+      "Effect": "Allow",
+      "Action": "wafv2:GetWebACLForResource",
+      "Resource": [
+        "arn:aws:elasticloadbalancing:ap-northeast-2:${ACCOUNT_ID}:loadbalancer/app/haven-alb/*",
+        "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/webacl/*/*"
+      ]
     }
   ]
 }

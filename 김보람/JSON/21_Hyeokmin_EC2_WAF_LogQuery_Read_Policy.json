@@ -17,9 +17,9 @@
       "Effect": "Allow",
       "Action": "logs:StartQuery",
       "Resource": [
-        "arn:aws:logs:ap-northeast-2:777171525040:log-group:/haven/web",
-        "arn:aws:logs:ap-northeast-2:777171525040:log-group:/haven/web:*",
-        "arn:aws:logs:ap-northeast-2:777171525040:log-group:aws-waf-logs-haven*"
+        "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:/haven/web",
+        "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:/haven/web:*",
+        "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:aws-waf-logs-haven*"
       ]
     },
     {
@@ -48,7 +48,21 @@
       "Sid": "ReadWAFInSeoul",
       "Effect": "Allow",
       "Action": "wafv2:GetWebACL",
-      "Resource": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/webacl/*/*"
+      "Resource": "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/webacl/*/*"
+    },
+    {
+      "Sid": "ReadALBTargetHealth",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:DescribeTargetHealth"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-northeast-2"
+        }
+      }
     }
   ]
 }

@@ -48,9 +48,10 @@
 | 회차 | 상태 | 실제 진행·검증 결과 | 관련 문서·PR | 다음 작업·인계 |
 |---|---|---|---|---|
 | 1 | 부분 완료 | **11/06:** 시험용 IAM 사용자 MFA·재로그인, 비용 조회 허용/정보 조회 거부 시험, 서울 리전 자원·크레딧 확인.<br>**11/08:** 루트 MFA·복구 연락처 확인. | [1회차](1~4회차/1회차.md), [결정 현황](민수_인계_결정현황.md), [PR #8](https://github.com/MinsooAhn02/Haven/pull/8) | 예비 MFA·복구 시험, 타 리전 자원 확인 |
-| 2 | IAM·S3 구성 완료 / 실환경 시험 대기 | **11/09:** 민수·민성 IAM 계정, 역할·SSM·PassRole 권한 및 AWS 예산·알림 설정.<br>**11/10:** EC2·VPC 권한 보완, IAM 시뮬레이터 허용/거부 4건 확인, 민수 Session Manager 정책 연결, S3 백업 버킷 생성, 시험용 EC2 삭제 권한 범위 제한. | [2회차](1~4회차/2회차.md), [JSON 정책](JSON/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29) | 민성: EC2·SSM 실환경 시험 / 민수: 접속·백업 복원 시험 / 보람: 결과에 따른 IAM 보완 |
-| 3 | 진행 중 / 일부 시험 대기 | **11/11:** SG 삭제 권한 제한, 민성 Route 53·ALB·ACM·SES 조회 권한 보완, SES 테스트 메일 확인, 도메인 DKIM 인증 결과 인계, AWS 자원·종료 확인 목록 및 비용 기록.<br>**11/12:** AWS 누적 사용 요금 $2.72 확인(크레딧 등 차감 후 청구 화면 $0.00).<br>**20~23번 정책 시험 결과:** 22번 EC2 로그 쓰기 — 민성님 PR #76에서 web-1 nginx-access·앱 로그 CloudWatch 도착 성공(14:44 최종 재시험). 20·21번 혁민님 로그 조회·검색/EC2·WAF 조회 및 SSM 거부 — 개별 명령·결과 증빙 대기. 23번 민성님 로그 관리 — 실제 로그 그룹 설정 사례는 있으나 이 정책으로 수행했는지는 미확인. | [3회차 상세 기록](1~4회차/3회차.md), [SES 인증](SES_도메인_DKIM_인증_2026-11-11.md), [자원 현황](AWS_자원현황_종료확인목록_2026-11-11.md), [비용 기록](비용/AWS_비용실적_2026-11-12.md) | Django 메일 연동 시험, 20·21번 혁민님 명령·결과 및 23번 민성님 권한 시험 결과 확인 |
-| 4 | 미착수 | 완료된 작업 기록 없음 | — | 권한·비용 최종 확인 및 자원 보존·종료 인계 |
+| 2 | IAM·S3 구성 완료 / 후속 실환경 시험 일부 완료 | **11/09~10:** 민수·민성 IAM 계정, SSM·PassRole·EC2/VPC 권한, 예산·알림, S3 백업 버킷과 정책 구성. IAM 시뮬레이터 허용·거부 4건 확인.<br>**11/13 민성님 보고:** S3 백업 및 격리 복원 성공(DB 13개 테이블 행 수 일치, 업로드 7개 SHA-256 일치). web-1 전용 IAM Role 전환 후 SSM Online 및 S3·CloudWatch·배포 동작 확인. 기존 공통 Role과 새 Web Role의 권한 범위는 구분해야 함. | [2회차](1~4회차/2회차.md), [JSON 정책](JSON/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29), [PR #91](https://github.com/MinsooAhn02/Haven/pull/91), [PR #98](https://github.com/MinsooAhn02/Haven/pull/98) | 민수님 개인 SSM 허용·거부 및 MFA 시험 증빙, 민성님 EC2 삭제 DryRun·타 대상 거부 시험 확인 |
+| 3 | 주요 실환경 검증 완료 / 일부 권한 시험 잔여 | **11/11~12:** SG 삭제 정책 범위 축소, Route 53·ALB·ACM·SES·WAF·CloudWatch IAM 보완, SES 도메인 DKIM 인증, 자원·종료 목록 및 누적 사용 요금 $2.72(11/12 조회) 기록. web-1 nginx·앱 로그의 CloudWatch 도착 확인(PR #76).<br>**11/13 민성님 시험:** 시험용 `haven-sg-test` 삭제 허용 1건, 운영용 SG 3개와 default SG 삭제 거부 4건(PR #98). web-1 전용 Role 교체·SSM Online 확인, WAF–ALB 연결 성공(단 `GetWebACLForResource` 거부 오류 잔여).<br>**11/13 메일 시험:** `noreply@orchestration-haven.cloud` 발신 정책 적용, Django 메일 수신 성공(EXT-03) 및 권한 거부 시 실패 표시 확인(EXT-04). SES 자체 `MessageRejected` 경로는 미시험. 혁민님 로그 조회·EC2/WAF 조회 허용 및 SSM 시작 거부 시험 기록 있음(PR #97). | [3회차 상세 기록](1~4회차/3회차.md), [SES 인증](SES_도메인_DKIM_인증_2026-11-11.md), [PR #76](https://github.com/MinsooAhn02/Haven/pull/76), [PR #97](https://github.com/MinsooAhn02/Haven/pull/97), [PR #98](https://github.com/MinsooAhn02/Haven/pull/98) | WAF `GetWebACLForResource` 거부 원인 보완·재시험, SES 자체 거부 경로 및 미확인 IAM 시험, 최신 비용 확인 |
+| 4 | 후속 검증 진행 / 최종 정리 대기 | **11/13 기준 팀 실행 결과:** SG 삭제 허용·거부, S3 격리 복원, web-1 역할 전환·SSM/로그/배포, Django 메일 수신·실패 표시, WAF–ALB 연결 등 확인된 결과를 인계 대상으로 정리. 이는 팀원 실행·보고 결과이며 보람이 각 AWS API를 직접 재시험했다는 뜻은 아님.<br>**미완료:** 종료 시점 자원별 보존·삭제 승인, 타 리전 자원·잔여 과금 및 최종 실사용액 확인, 일부 IAM 거부·오류 재시험. | [3회차 상세 기록](1~4회차/3회차.md), [자원·종료 목록](AWS_자원현황_종료확인목록_2026-11-11.md), [PR #91](https://github.com/MinsooAhn02/Haven/pull/91), [PR #98](https://github.com/MinsooAhn02/Haven/pull/98) | 자원 보존·종료 승인 및 담당자 인계, 실제 사용액·미해결 권한 시험 최종 확인 |
+
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
 
@@ -237,7 +238,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] EC2 시험용 서버 영구 삭제 조건(`Project=Haven`, `Owner=minsung`, `Name=haven-test*`)은 유지.
 - [x] SG 삭제 허용(`ec2:DeleteSecurityGroup`)은 `Project=Haven` **및** `Name=haven-sg-test` **리소스 태그 둘 다 있는 대상**으로 좁힘. 기존 운영용 `haven-sg-web`, `haven-sg-db`, `haven-sg-alb` 이름만으로 허용하지 않음.
 - [x] GitHub [15번 SG 삭제 정책](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)에 새로운 태그 조건 반영. 이 파일은 15번 부분의 기록이며, 실제 AWS 고객 관리형 정책에는 EC2 종료 권한과 SG 삭제 권한이 **함께** 있음.
-- [ ] **실행 시험 대기:** 민성님이 새 정책으로 시험용 SG 삭제 허용·운영용 SG 삭제 거부 결과 확인. 시험용 `haven-sg-test`는 11/11 서울 리전 목록에 없었으며, 재생성은 확인되지 않음.
+- [x] **실행 시험 완료(11/13, 민성님 CLI 보고):** 시험용 `haven-sg-test` 삭제 허용 1건·운영 SG 및 default SG 삭제 거부 4건 확인. 시험용 `haven-sg-test`는 11/11 서울 리전 목록에 없었으며, 재생성은 확인되지 않음.
 - [ ] **추가 안전 확인:** 다른 IAM 정책의 삭제 허용 및 SG 태그 수정 가능 범위를 점검해야 운영용 SG 삭제가 완전히 불가능하다고 결론 내릴 수 있음.
 - **주의:** 이 기록은 IAM **설정 저장 성공** 확인이며 실제 삭제 허용/거부 시험 완료로 간주하지 않음. 이미 삭제된 SG나 실제 AWS SG 자체는 수정하지 않음.
 
@@ -253,12 +254,12 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 ### SES 발신 주소 확인 및 메일 시험
 - [x] 서울 리전 SES에서 테스트용 발신 이메일 자격 증명 **확인됨(Verified)** 상태 확인.
 - [x] **SES 테스트 메일 발송·수신 확인**(단독 시험). 서비스 앱 연동 시험은 별도 진행 예정.
-- [ ] Haven 정식 발신 주소(프로젝트 도메인 사용 여부)·발송 방식의 앱 적용 입력을 요찬님과 확정하고, 그 주소에 맞춘 EC2 Role의 `ses:SendEmail` 최소 권한 설정. **정식 서비스 발신 주소는 미확정**.
+- [x] Haven 정식 발신 주소(프로젝트 도메인 사용 여부)·발송 방식의 앱 적용 입력을 요찬님과 확정하고, 그 주소에 맞춘 EC2 Role의 `ses:SendEmail` 최소 권한 설정. **정식 서비스 발신 주소는 미확정**.
 - [ ] 11/12(목) 요찬님과 실제 Django 이메일 발송·수신/실패 동작 검증 (SES 샌드박스 제한 여부 확인 포함).
 
 ### 다음 점검
 - [ ] 민성님 SSM Session Manager 실제 접속 및 권한 거부 시험 결과 수신.
-- [ ] WAF·CloudWatch Logs 권한은 담당자 요청 시 확인·최소 범위 보완.
+- [x] WAF·CloudWatch Logs 권한은 담당자 요청 시 확인·최소 범위 보완.
 - [ ] 11/13 종료 시 지울 자원 목록 및 실사용액 재확인.
 
 ## 2026-11-11 Route 53 호스팅 영역 조회 권한 — AWS 적용 및 민성 인계

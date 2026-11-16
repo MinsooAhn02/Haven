@@ -54,7 +54,7 @@
 | 3 | 진행 중 (ALB·HTTPS 완료. SG 실제 수집은 11/12 결정으로 live 모드 구현=민성, 실행·대조=구민철) | 도메인 `orchestration-haven.cloud` 확정(11/11). Route 53 공개 호스팅 영역 1개, 네임서버 4개가 구글 DNS(8.8.8.8) 응답과 일치 확인. `infra/build-alb.sh` 작성(ACM DNS 검증 → 대상 그룹 /healthz → ALB → 443 TLS1.2+·80→301 → apex Alias → healthy·NET-01·01-b 확인). 가짜 시험 `test/alb-fake-test.sh` 39개(일부러 실패: ALB 중복·web-1 꺼짐·호스팅 영역 0/2개·기존 A 레코드·권한 없음·인증서 시간 초과/FAILED·unhealthy·302·가짜 도메인 리다이렉트). 시험이 실제로 버그를 잡는지 스크립트를 일부러 망가뜨려 확인(가드 3곳 제거 → 해당 시험 FAIL). 민성 Windows Git Bash 11:32: 가짜 시험 PASS 39 / FAIL 0, `DRY_RUN=1 bash build-alb.sh` 1/5~5/5 종료 0(실제 state ID로 명령만 출력). 권한: ELB·ACM 읽기부터 AccessDenied(11:1x) → 보람님 추가 → 11:36 1차 실행: 인증서 2초 만에 발급, 대상 그룹까지 만들고 ALB에서 `ec2:GetSecurityGroupsForVpc` 없음으로 멈춤 → 스크립트에 "이 스크립트가 만든 것(state 기록과 같은 ID)만 이어서 쓰기" 추가(가짜 시험 F1~F13) → 보람님 권한 추가 → 11:47 2차: 대상 그룹·인증서 재사용, ALB·리스너·도메인 연결, healthy, NET-01 OK, NET-01-b는 **Windows curl이 `/dev/null`을 몰라서** 확인 단계만 실패 → 고침(가짜 curl도 Windows처럼 바꿔 W1 시험 추가, 옛 코드로 되돌리면 13개 FAIL 확인) → 11:58 3차: 전부 재사용(새로 만든 것 없음), **NET-01 200 ok·인증서 OK, NET-01-b 301 → https, 실제 DNS 접속 OK**. 가짜 시험 최종 PASS 59 / FAIL 0(민성 Git Bash). 남은 것: live SG 읽기 수집·AUD 대조, WAF·ALB 접근 로그(설계 7절) | 증거: 연결확인표 NET-01·01-b, `~/alb-1111.log`(계정 번호·ARN 가려서 첨부). PR 작성 예정 | 노푸른: `https://orchestration-haven.cloud` 접속 가능(11/11 11:59~, 평일 09~21시, 밤에는 EC2가 꺼져 502/503). 안민수: ALB 켜 둠(11/11 결정), CSRF_TRUSTED_ORIGINS가 이 도메인인지 실제 로그인으로 확인 요청. 김보람: ALB 요금 시작(11:47~) 비용 확인 |
 | 4 | 미착수 | 미확인 | — | — |
 
-## 지금 할 일 (11/16 09:10 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
+## 지금 할 일 (11/16 11:15 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
 
 | 할 일 | 상태·선행 |
 |---|---|
@@ -69,7 +69,7 @@
 | WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤. 연결 상태 조회 권한(`GetWebACLForResource`) 범위 조정은 보람에게 요청 |
 | 가상 운영 관리자 계정 생성(make_operator.py) | 4회차 APP-07·09 시험 직전에만, 끝나면 바로 비활성화 |
 | ~로그인 실패 제한 수치 결정~ | ✅ 11/12 결정: 15분·계정 5번·IP 30번(#75). 구현은 요찬(4회차) → 혁민 점검 → 배포. 실제 IP는 X-Forwarded-For 뒤에서 두 번째(nginx가 ALB IP를 붙임) |
-| OUT-10 db-1 PostgreSQL 로그 수집 | **결정: 모은다(조장, 11/13).** 보람에게 05번 권한(`logs:DescribeLogStreams` 추가, `haven-ec2-ssm-role` 연결) 요청함 → 대기. 그다음 `/haven/db` 로그 그룹(보존 30일)·`cw-agent-setup.sh` 확장·`log_connections` 확인 |
+| ~OUT-10 db-1 PostgreSQL 로그 수집~ | ✅ 11/16 11:04 db-1 실행(`cw-agent-setup-db.sh`), 11:08 `/haven/db` 도착, 11:13 앱 접속 기록(IP·TLS) 확인. 남은 것: 1시간 로그 양(12시 이후) → PR 댓글 → 리뷰·병합 (아래 11/16 오전 코멘트) |
 | Nginx 요청 ID 로그(`log_format`) | **구현 민성 · 재검증 혁민 · 기한 11/27** (11/13 16:46 조장 확정) |
 | 조장 일: PR 확인·병합 → 7개 브랜치 동기화 → 현황판·운영기록 → 공지 | 매일 |
 | 21시 `night.sh` · 09시 `morning.sh` | 매일 (밤 작업 전 AWS 로그인 새로) |
@@ -417,3 +417,34 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 | 09:09~09:10 | 배포 `370b22ea8dba323cbb63ff0990477f7be34041d9` **2회** | ✅ 2회 모두 `No migrations to apply.`·`OK deployed`, `current` → `releases/370b22e…`, healthz 200 |
 
 **다음:** 로그인 실패 제한 실제 AWS 시험(#88, 계정 5번·15분 / IP 30번 / 실제 IP 기록) · 구민철 SG 실행 방법 전달 · 21시 `night.sh`
+
+## 민성's comment · 2026-11-16 오전 · SG 점검 0.3.1(구민철 리뷰)과 db-1 로그 수집(OUT-10)
+
+| 시각 | 한 일 | 결과·근거 |
+|---|---|---|
+| 09:2x | 로그인 실패 제한 실제 시험 담당 결정 | 구민철 수행(1~3번: 5번 실패 잠김·잠긴 동안 막힘·15분 뒤 풀림), 4번(web-1 로그에 실제 IP)은 구민철 1~3번 끝난 뒤 민성 확인. 잠겨도 되는 시험용 계정을 쓰도록 안내 |
+| 09:2x | 구민철에게 SG 점검 0.3.0 실행 방법 전달 | `--profile`·VPC ID·`baseline.live.json`, 증거는 `구민철/sg_evidence`(`--evidence-root`) |
+| 09:36 | db-1 05번 권한 확인: `describe-log-streams /haven/db` | ✅ `ResourceNotFoundException`(권한 있음, 그룹만 없음) |
+| 09:37 | db-1 상태 조사(읽기 전용) | PostgreSQL 16.15, 로그 `/var/log/postgresql/postgresql-16-main.log`(stderr), `log_connections`·`log_disconnections` off, prefix에 접속 IP 없음, Agent 없음, 디스크 16G 여유 |
+| 09:43 | `/haven/db` 로그 그룹 생성(민성 PC) | ✅ 보존 30일 (`/haven/web`도 30일). 태그 조회는 권한 없음 |
+| 09:55 | 구민철 #109 짝 리뷰: 질문 1(분리 ENI도 서버로 봄)·제안 3건 | 4건 모두 타당 → 0.3.1로 반영하기로 함 |
+| 10:06 | VPC ENI 상태 확인(읽기 전용) | ENI 5개(ALB 2·EC2 2·NAT Gateway 1(SG 없음)) 모두 `in-use` → 11/13 PASS 11은 0.3.1 기준으로도 유효 |
+| 10:13 | 0.3.1 + db-1 스크립트 PC에 넣고 시험 | ✅ SG 60개 OK, db-1 가짜 시험 29개, web-1 가짜 시험 23개 |
+| 10:28 | SG 점검 0.3.1 실제 AWS(`--vpc-id`) | ✅ **COMPLETE, PASS 11, 종료 코드 0**, 판정 근거 10줄에 ENI ID |
+| 10:29~10:38 | 코드 커밋 `9eaf0ea`(10:29)·푸시 → 증거 묶음 `evidence/547ab001-…`(10:31) → 증거 커밋 | ✅ `tool_version` 0.3.1, `commit_dirty: false`, 11/13과 전후 비교(판정 변화 없음), sg·vpc·eni ID·계정 0개 |
+| 10:49~11:02 | db-1에 스크립트 옮김(base64 한 줄) | ✅ 10280바이트, sha256 `a5bdbf8f…e49b` OK (첫 시도는 붙여넣기 빠져 해시 FAILED → 아무것도 안 바뀜) |
+| 11:03 | 바꾸기 전 상태 | `postgresql.auto.conf` 백업(`/root/setup/postgresql.auto.conf.bak-…`), 로그 197줄 / 30,670바이트 |
+| 11:04 | **`cw-agent-setup-db.sh` 실행** | ✅ `OK` 한 번에 통과. Agent 1.300074 설치, 설정 3개 off→on / off→on / prefix `%m [%p] %q%u@%d from %h `(reload, 재시작 없음), 표시 접속 `cws-1794794667` 기록 |
+| 11:08 | 민성 PC `filter-log-events /haven/db` | ✅ `i-…/postgresql` → **OUT-10 db-1 통과** |
+| 11:10 | 설정 값 확인·사이트 | ✅ `on`·`on`·prefix 일치, healthz 200 |
+| 11:13 | 사이트에서 일부러 로그인 실패 1회 → db-1 로그 | ✅ `haven_app@haven from 10.x.x.x … connection authorized … SSL enabled (TLSv1.3)`. healthz·첫 화면(302)·로그인 화면(200)은 DB를 쓰지 않음 → ALB 상태 확인은 DB 로그를 늘리지 않음 |
+
+되돌리기(재시작 없음): `ALTER SYSTEM RESET log_connections / log_disconnections / log_line_prefix` + `select pg_reload_conf()`
+
+**다음**
+
+| 할 일 | 메모 |
+|---|---|
+| 1시간 로그 양 (12:04 이후) | db-1 `wc -lc` → 11:03 값(197줄 / 30,670바이트)과 비교 → PR 댓글·보람 |
+| PR(0.3.1 + db-1 스크립트) 댓글 → 리뷰(구민철·보람) → 병합 | 실제 실행 결과 덧붙인 뒤 병합 |
+| 구민철 3회차(11/23) | 0.3.1로 실행 |

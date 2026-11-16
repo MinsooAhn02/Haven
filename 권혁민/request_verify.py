@@ -2688,9 +2688,10 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
     
     cleanup_done = False
     cleanup_http_requests = 0
+    cleanup_http_responses = 0
 
     def perform_cleanup_once():
-        nonlocal cleanup_done, cleanup_http_requests
+        nonlocal cleanup_done, cleanup_http_requests, cleanup_http_responses
 
         if cleanup_done:
             return
@@ -2709,6 +2710,7 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
             active_budget = RequestBudget(cleanup_args)
 
         started = active_budget.count
+        responses_started = active_budget.responses_received
 
         try:
             state["cleanup_complete"] = execute_cleanup(
@@ -2727,6 +2729,9 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
             )
         finally:
             cleanup_http_requests += active_budget.count - started
+            cleanup_http_responses += (
+                active_budget.responses_received - responses_started
+            )
             state["cleanup_http_requests"] = cleanup_http_requests
             cleanup_done = True
 
@@ -2951,7 +2956,10 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                 - state["test_http_requests"]
                 - (0 if aws_mode else cleanup_http_requests)
             )
-            state["http_responses_received"] = budget.responses_received
+            state["http_responses_received"] = (
+                budget.responses_received
+                + (cleanup_http_responses if aws_mode else 0)
+            )
             state["unexecuted_cases"] = len(suite["cases"]) - len(records)
             state["total_http_requests_including_preparation"] = (
                 budget.count
@@ -2981,7 +2989,10 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                 - state["test_http_requests"]
                 - (0 if aws_mode else cleanup_http_requests)
             )
-            state["http_responses_received"] = budget.responses_received
+            state["http_responses_received"] = (
+                budget.responses_received
+                + (cleanup_http_responses if aws_mode else 0)
+            )
             state["total_http_requests_including_preparation"] = (
                 budget.count
                 + (cleanup_http_requests if aws_mode else 0)
@@ -3191,6 +3202,18 @@ def plausible_event(event: dict, row: dict, origin: str) -> bool:
     )
 
 
+def correlation_cleanup_records(state):
+    """정리 기록을 검증하고 원래 순서를 유지한다."""
+    rows = state.get("cleanup_results", [])
+
+    if not isinstance(rows, list) or any(
+        not isinstance(row, dict) for row in rows
+    ):
+        raise ConfigError("정리 결과 목록 형식 오류")
+
+    return rows
+
+
 def correlate(args) -> int:
     """실행 결과와 WAF·앱 로그를 Trace Root 기준으로 연결하고 검증한다."""
     state = load_json(args.run_json)
@@ -3198,6 +3221,8 @@ def correlate(args) -> int:
         raise ConfigError("올바른 run results JSON이 아닙니다")
     if not state["results"]:
         raise ConfigError("대조할 run 결과가 비어 있습니다")
+    cleanup_sources = correlation_cleanup_records(state)
+    test_count = len(state["results"])
     # 로그는 별도 로컬 파일을 읽으며 인터넷에서 직접 수집하지 않는다.
     waf = log_lines(args.waf_log)
     app = log_lines(args.app_log)
@@ -3206,7 +3231,7 @@ def correlate(args) -> int:
     args.output_dir.mkdir(parents=True, exist_ok=False)
     records = []
     origin = state.get("target_origin", "")
-    for src in state["results"]:
+    for src in state["results"] + cleanup_sources:
         row = dict(src)
         if row.get("transport_status") != "OK":
             records.append(row)
@@ -3340,13 +3365,49 @@ def correlate(args) -> int:
                 row["verdict"] = "UNKNOWN"
 
         records.append(row)
-    out = {k: v for k, v in state.items() if k not in {"results", "preparation_events"}}
+    test_records = records[:test_count]
+    cleanup_records = records[test_count:]
+
+    out = {
+        k: v
+        for k, v in state.items()
+        if k not in {
+            "results", "preparation_events", "cleanup_results"
+        }
+    }
+    out["cleanup_results"] = cleanup_records
     out["source"] = "correlated_from_local_logs"
     out["correlated_utc"] = utc_now()
     out["source_run_json"] = args.run_json.name
-    save_results(args.output_dir, out, records, correlation=True)
-    code = get_exit_code(records, incomplete=bool(state.get("stopped_reason")) or bool(state.get("unexecuted_cases")) or state.get("cleanup_complete") is False)
-    print(f"correlate 결과: {args.output_dir / 'correlated_results.json'} (종료 코드 {code})", file=sys.stderr)
+
+    save_results(
+        args.output_dir,
+        out,
+        test_records,
+        correlation=True,
+    )
+
+    # 실행되지 않은 정리는 판정 대상에서 제외한다.
+    # 실제 정리 오류·로그 부족·불일치는 종료 코드에 반영한다.
+    verdict_records = test_records + [
+        row for row in cleanup_records
+        if row.get("transport_status") != "SKIPPED"
+    ]
+    code = get_exit_code(
+        verdict_records,
+        incomplete=(
+            bool(state.get("stopped_reason"))
+            or bool(state.get("unexecuted_cases"))
+            or state.get("cleanup_complete") is False
+        ),
+    )
+
+    print(
+        f"correlate 결과: "
+        f"{args.output_dir / 'correlated_results.json'} "
+        f"(종료 코드 {code})",
+        file=sys.stderr,
+    )
     return code
 
 
@@ -3945,8 +4006,9 @@ def select_cloudwatch_run_logs(raw_events, state, *, allow_app_prefix=False):
         raise ConfigError("로그 선별 입력 형식 오류")
 
     expected_roots = set()
+    cleanup_rows = correlation_cleanup_records(state)
 
-    for row in state["results"]:
+    for row in state["results"] + cleanup_rows:
         if not isinstance(row, dict):
             raise ConfigError("실행 결과의 요청 기록 형식 오류")
 

@@ -5705,6 +5705,7 @@ def test_aws_interrupted_share_runs_cleanup(
             run_id, "AWS-SETUP-A-POST"
         )
         budget.begin()
+        budget.responses_received += 1
         return post_id
 
     def fake_send(
@@ -5721,6 +5722,14 @@ def test_aws_interrupted_share_runs_cleanup(
         on_send = kwargs.get("on_send")
         if on_send:
             on_send(cli.utc_now())
+
+        # 공유 생성 요청은 응답을 받기 전에 중단되는 상황이다.
+        interrupted_request = (
+            method == "POST"
+            and path == f"/posts/{post_id}/shares/"
+        )
+        if not interrupted_request:
+            budget.responses_received += 1
 
         if method == "POST" and path == "/posts/new/":
             assert role == "member_a"
@@ -5843,6 +5852,12 @@ def test_aws_interrupted_share_runs_cleanup(
         ("member_a", "POST", f"/posts/{post_id}/delete/"),
         ("member_a", "GET", f"/posts/{post_id}/"),
     ]
+
+    # 응답 없이 중단된 공유 생성 요청 1건만 제외한다.
+    # 정리용 별도 예산에서 받은 응답도 전체 집계에 포함되어야 한다.
+    assert result["http_responses_received"] == (
+        result["total_http_requests_including_preparation"] - 1
+    )
 
 
 def admin_account_page_html(

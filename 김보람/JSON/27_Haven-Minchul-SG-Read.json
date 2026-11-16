@@ -9,8 +9,7 @@
         "ec2:DescribeSecurityGroupRules",
         "ec2:DescribeVpcs",
         "ec2:DescribeSubnets",
-        "ec2:DescribeNetworkInterfaces",
-        "ec2:DescribeInstances"
+        "ec2:DescribeNetworkInterfaces"
       ],
       "Resource": "*",
       "Condition": {

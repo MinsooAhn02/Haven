@@ -8,7 +8,7 @@
         "s3:PutObject",
         "s3:GetObject"
       ],
-      "Resource": "arn:aws:s3:::haven-backup-ACCOUNT_ID_MASKED/db-backups/*"
+      "Resource": "arn:aws:s3:::haven-backup-${ACCOUNT_ID}/db-backups/*"
     }
   ]
 }

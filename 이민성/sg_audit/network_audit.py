@@ -22,7 +22,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-TOOL_VERSION = "0.3.0"
+TOOL_VERSION = "0.3.1"
 
 # 인터넷 전체를 뜻하는 주소
 PUBLIC_CIDRS = {"0.0.0.0/0", "::/0"}
@@ -155,10 +155,11 @@ def make_finding(ctx, **kw):
     return finding
 
 
-def audit(baseline, fixture, ignore_unattached=(), scope_assets=None):
+def audit(baseline, fixture, ignore_unattached=(), scope_assets=None, skip_missing=()):
     """baseline과 fixture를 비교해 findings 목록을 만든다.
     ignore_unattached: '연결 안 된 SG(SG-06)' 판정에서 뺄 SG ID(live의 default SG, SG-07에서 따로 판정).
-    scope_assets: 점검 범위에 든 자산 ID(live --sg-id). None이면 baseline 자산 전부가 범위다."""
+    scope_assets: 점검 범위에 든 자산 ID(live --sg-id). None이면 baseline 자산 전부가 범위다.
+    skip_missing: 'attachment 결과 없음' 판정에서 뺄 자산(live가 이미 맞는 이유로 UNKNOWN을 남긴 자산)."""
     ctx = {"region": fixture.get("region", ""), "vpc_id": fixture.get("vpc_id", "")}
     findings = []
 
@@ -266,7 +267,7 @@ def audit(baseline, fixture, ignore_unattached=(), scope_assets=None):
     for asset_id, role in asset_role.items():
         if scope_assets is not None and asset_id not in scope_assets:
             continue
-        if asset_id not in attached_assets:
+        if asset_id not in attached_assets and asset_id not in skip_missing:
             findings.append(make_finding(
                 ctx, check_id="SG-06", asset_id=asset_id, asset_role=role,
                 expected="자산 attachment 수집", actual="attachment 결과 없음",
@@ -384,12 +385,17 @@ def collect_live(ec2, baseline, account_id, vpc_id=None, sg_ids=None, sleep=time
     """실제 AWS를 읽어 fixture와 같은 모양(dict)으로 돌려준다(명세 5.1).
     - 범위: --vpc-id(그 VPC의 SG·ENI 전부) 또는 --sg-id(그 SG들과, 같은 ENI에 붙은 추가 SG).
     - 자산 매핑: baseline의 expected_sg_ids가 붙은 ENI를 그 자산의 연결로 본다. 이름·태그로 추정하지 않는다.
-    돌려주는 값: (data, default_sg_ids, scope_assets, extra_findings, skip_unattached).
-    skip_unattached는 extra_findings에서 이미 UNKNOWN으로 남긴 SG(중복 판정 방지). 실패한 단계는 data["errors"]에 남긴다."""
+    - 연결된(Status=in-use) ENI만 자산의 연결로 본다. 기대 SG가 붙은 분리 ENI는 UNKNOWN(SG-06).
+    돌려주는 값: (data, default_sg_ids, scope_assets, extra_findings, info).
+    info: skip_unattached(이미 UNKNOWN으로 남긴 SG), skip_missing(이미 이유를 남긴 자산),
+          eni_map((자산, SG) → 그 SG가 붙은 ENI ID 목록, 판정 근거에 덧붙임). 실패한 단계는 data["errors"]에 남긴다."""
     data = {"account_id": account_id, "region": "", "vpc_id": vpc_id or "", "fixture_id": "live",
             "security_groups": [], "attachments": [], "errors": []}
     extra = []
     skip_unattached = set()
+    skip_missing = set()
+    eni_map = {}
+    info = {"skip_unattached": skip_unattached, "skip_missing": skip_missing, "eni_map": eni_map}
     assets = baseline.get("assets", [])
     sg_owner = {}                      # 기대 SG ID → 자산 ID
     for a in assets:
@@ -405,13 +411,13 @@ def collect_live(ec2, baseline, account_id, vpc_id=None, sg_ids=None, sleep=time
             vpcs = call_paged(ec2, "DescribeVpcs", "describe_vpcs", "Vpcs", sleep=sleep, VpcIds=[vpc_id])
         except CollectError as e:
             fail(e)
-            return data, [], None, extra, skip_unattached
+            return data, [], None, extra, info
         if len(vpcs) != 1:
             fail(CollectError("DescribeVpcs", "VpcNotFound", "지정한 VPC를 찾지 못함"))
-            return data, [], None, extra, skip_unattached
+            return data, [], None, extra, info
         if account_id and vpcs[0].get("OwnerId") not in (None, account_id):
             fail(CollectError("DescribeVpcs", "VpcOwnerMismatch", "지정한 VPC가 로그인한 계정의 것이 아님"))
-            return data, [], None, extra, skip_unattached
+            return data, [], None, extra, info
         scope_filter = [{"Name": "vpc-id", "Values": [vpc_id]}]
     else:
         scope_filter = None
@@ -458,26 +464,62 @@ def collect_live(ec2, baseline, account_id, vpc_id=None, sg_ids=None, sleep=time
     # 4) 자산 ↔ ENI: 기대 SG가 붙은 ENI의 SG를 모두 합쳐 그 자산의 연결로 본다(합집합 검사)
     attached = {}
     unmapped = []
+    ambiguous = set()      # 역할 미확정 ENI 때문에 매핑에서 빠진 자산
+    detached = {}          # 분리된 ENI만 있는 자산 → ENI 상태
     for eni in enis:
+        eni_id = eni.get("NetworkInterfaceId", "")
         eni_sgs = [g["GroupId"] for g in eni.get("Groups", [])]
         owners = set().union(*[sg_owner.get(s, set()) for s in eni_sgs]) if eni_sgs else set()
+        status = eni.get("Status", "")
+        if owners and status != "in-use":
+            # 서버에 붙지 않은 ENI(종료·분리 뒤 남은 것): 서버로 보지 않는다(구민철 리뷰 11/16)
+            for owner in sorted(owners):
+                detached.setdefault(owner, []).append(status or "상태 없음")
+            extra.append(make_finding(
+                {"region": "", "vpc_id": data["vpc_id"]}, check_id="SG-06", sg_id=";".join(eni_sgs),
+                asset_id=";".join(sorted(owners)), expected="서버에 연결된(in-use) ENI",
+                actual=f"분리된 ENI(상태 {status or '없음'})", verdict="UNKNOWN",
+                reason="분리된 ENI에 기대 SG가 붙어 있음(서버로 보지 않음)",
+                evidence=f"eni: {eni_id}"))
+            skip_unattached.update(eni_sgs)
+            continue
         if len(owners) > 1:
             extra.append(make_finding(
                 {"region": "", "vpc_id": data["vpc_id"]}, check_id="SG-06", sg_id=";".join(eni_sgs),
                 asset_id=";".join(sorted(owners)), expected="자산 하나의 기대 SG만 붙은 ENI",
                 actual="서로 다른 자산의 기대 SG가 한 ENI에 붙음", verdict="UNKNOWN",
                 reason="역할 미확정: 한 ENI가 여러 자산의 SG를 가짐",
-                evidence=f"eni: {eni.get('NetworkInterfaceId', '')}"))
+                evidence=f"eni: {eni_id}"))
             skip_unattached.update(eni_sgs)
+            ambiguous.update(owners)
             continue
         if not owners:
             # baseline 어느 자산의 기대 SG도 없는 ENI(VPC 엔드포인트 등): 역할을 추정하지 않고 UNKNOWN
             if eni_sgs and (vpc_id or set(eni_sgs) & set(sg_ids or [])):
-                unmapped.append({"asset_id": f"eni:{eni.get('NetworkInterfaceId', '')}",
+                unmapped.append({"asset_id": f"eni:{eni_id}",
                                  "sg_ids": sorted(eni_sgs)})
             continue
         for owner in owners:
             attached.setdefault(owner, set()).update(eni_sgs)
+            for sg in eni_sgs:
+                eni_map.setdefault((owner, sg), []).append(eni_id)
+
+    # 매핑에서 빠진 자산에 맞는 이유를 남긴다('수집 결과 없음'이 아님, 구민철 리뷰 11/16)
+    if eni_ok:
+        for owner in sorted(ambiguous - set(attached)):
+            if scope_assets is not None and owner not in scope_assets:
+                continue
+            extra.append(make_finding(
+                {"region": "", "vpc_id": data["vpc_id"]}, check_id="SG-06", asset_id=owner,
+                asset_role=asset_role_of(assets, owner), expected="자산에 연결된 ENI",
+                actual="역할 미확정 ENI만 있음", verdict="UNKNOWN",
+                reason="ENI는 수집됐지만 여러 자산의 SG가 같이 붙어 매핑에서 제외됨",
+                evidence=f"baseline asset: {owner}"))
+            skip_missing.add(owner)
+        for owner in sorted(set(detached) - set(attached) - ambiguous):
+            if scope_assets is not None and owner not in scope_assets:
+                continue
+            skip_missing.add(owner)   # 분리 ENI 판정(위)이 이유를 이미 남김
 
     if eni_ok:
         for asset_id, sgs in sorted(attached.items()):
@@ -497,7 +539,28 @@ def collect_live(ec2, baseline, account_id, vpc_id=None, sg_ids=None, sleep=time
                 verdict="UNKNOWN", reason="연결 정보가 없어 SG 규칙만 판정함(자산 접근 결과는 알 수 없음)",
                 evidence=f"baseline asset: {a['asset_id']}"))
 
-    return data, default_sg_ids, scope_assets, extra, skip_unattached
+    return data, default_sg_ids, scope_assets, extra, info
+
+
+def asset_role_of(assets, asset_id):
+    return next((a["asset_role"] for a in assets if a["asset_id"] == asset_id), "")
+
+
+def add_eni_evidence(findings, eni_map):
+    """판정 근거에 그 SG가 붙은 ENI ID를 덧붙인다(같은 역할 서버가 여러 대일 때 대조용, 구민철 리뷰 11/16).
+    SG가 없는 자산 단위 판정(규칙 없음 등)은 그 자산의 ENI 전부."""
+    by_asset = {}
+    for (asset, _), ids in eni_map.items():
+        by_asset.setdefault(asset, set()).update(ids)
+    for f in findings:
+        if f.get("evidence", "").startswith("eni: "):
+            continue   # ENI 단위 판정(분리 ENI·역할 미확정)은 이미 그 ENI를 적음
+        ids = eni_map.get((f.get("asset_id"), f.get("sg_id"))) if f.get("sg_id") else None
+        if ids is None and not f.get("sg_id"):
+            ids = by_asset.get(f.get("asset_id"))
+        if ids:
+            f["evidence"] = f"{f['evidence']} | eni: {', '.join(sorted(set(ids)))}"
+    return findings
 
 
 def check_default_sg(data, default_sg_ids):
@@ -615,7 +678,8 @@ def run_live(args, client_factory=make_clients, sleep=time.sleep):
 
     scope = {"vpc_id": args.vpc_id or "", "sg_ids": list(args.sg_id or []), "profile": args.profile}
     data = {"errors": []}
-    default_sg_ids, scope_assets, extra, skip = [], None, [], set()
+    default_sg_ids, scope_assets, extra = [], None, []
+    info = {"skip_unattached": set(), "skip_missing": set(), "eni_map": {}}
     try:
         ec2, sts = client_factory(args.profile, args.region)
     except ImportError:
@@ -637,7 +701,7 @@ def run_live(args, client_factory=make_clients, sleep=time.sleep):
             target = f"VPC {args.vpc_id}" if args.vpc_id else f"SG {', '.join(args.sg_id)}"
             print(f"대상 계정: {mask_account(account_id)}  리전: {args.region}  범위: {target}")
             try:
-                data, default_sg_ids, scope_assets, extra, skip = collect_live(
+                data, default_sg_ids, scope_assets, extra, info = collect_live(
                     ec2, baseline, account_id, vpc_id=args.vpc_id, sg_ids=args.sg_id, sleep=sleep)
             except Exception as e:  # 예상 못 한 응답 모양도 Traceback 대신 ERROR로
                 data = {"errors": [{"stage": "collect", "code": error_code(e),
@@ -650,7 +714,9 @@ def run_live(args, client_factory=make_clients, sleep=time.sleep):
     for f in extra:
         f["region"] = args.region
 
-    findings = extra + audit(baseline, data, ignore_unattached=set(default_sg_ids) | skip, scope_assets=scope_assets)
+    findings = extra + audit(baseline, data, ignore_unattached=set(default_sg_ids) | info["skip_unattached"],
+                             scope_assets=scope_assets, skip_missing=info["skip_missing"])
+    add_eni_evidence(findings, info["eni_map"])
     findings += check_default_sg(data, default_sg_ids)
     return finish("live", data, findings, out, started, scope)
 

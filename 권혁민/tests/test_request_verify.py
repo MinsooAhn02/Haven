@@ -4310,6 +4310,13 @@ def test_aws_cleanup_verifies_post_inaccessible(
     ):
         budget.begin()
         sent.append((method, path))
+        on_send = kwargs.get("on_send")
+        if on_send:
+            on_send(
+                "2026-11-16T01:49:44.000+00:00"
+                if method == "POST"
+                else "2026-11-16T01:49:46.000+00:00"
+            )
 
         status = 302 if method == "POST" else get_status
 
@@ -4361,6 +4368,13 @@ def test_aws_cleanup_verifies_post_inaccessible(
 
     assert verification["http_status"] == get_status
     assert verification["post_inaccessible"] is expected_complete
+    assert verification["method"] == "GET"
+    assert verification["timestamp_utc"] == (
+        "2026-11-16T01:49:46.000+00:00"
+    )
+    assert verification["timestamp_utc"] != results[0]["timestamp_utc"]
+    assert verification["request_id"] != results[0]["request_id"]
+    assert verification["trace_id"] != results[0]["trace_id"]
 
     session.close()
 

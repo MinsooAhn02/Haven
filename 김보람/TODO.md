@@ -211,7 +211,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 추가 요청 정책 2개를 개인 브랜치에 문서화하고 [PR #42](https://github.com/MinsooAhn02/Haven/pull/42)에 함께 제출: [13번 EC2 종료(삭제) 권한](JSON/13_Minsung_TerminateInstances_Policy.json), [14번 민성 SSM 세션 접속 권한](JSON/14_Minsung_SessionManager_Policy.json).
 - [ ] **AWS 실적용 확인:** 위 13·14번 정책이 `minsung`에게 실제 연결·저장됐는지 확인. GitHub PR만으로 AWS 정책은 바뀌지 않음.
 - [ ] **담당자 검증 대기:** 민성님의 Haven 서버 SSM 접속·비대상 접근 거부 시험, EC2 종료 권한 시험(실제 영구 삭제 전 민수님 승인), 21시 NAT/EIP 정리 결과 및 비용 확인.
-- **권한 범위 주의:** `TerminateInstances` 정책은 서울 리전 `Project=Haven`, `Owner=minsung` 태그가 모두 붙은 서버에만 허용하지만, 시험 서버뿐 아니라 실제 Haven 서버도 삭제할 수 있음.
+- **권한 범위 최신 확인:** 초기에는 `Project=Haven`, `Owner=minsung` 태그 조건만으로 운영 서버도 삭제 대상이 될 수 있었으나, **11/10 이후 AWS 실제 `Haven-Minsung-Delete-Policy`에는 `Name=haven-test*` 조건도 추가**되어 시험용 EC2로 제한됨. [13번 정책](JSON/13_Minsung_TerminateInstances_Policy.json)·[34번 통합 정책](JSON/34_Haven-Minsung-Delete-Policy.json) 참조. 단, 시험용 EC2 삭제 허용·운영 EC2 삭제 거부 실환경 시험은 미확인.
 
 ## 2026-11-10 민성 추가 권한 오류 및 SG 삭제 요청
 

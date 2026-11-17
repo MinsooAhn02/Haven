@@ -2,7 +2,7 @@
     "WebACL": {
         "Name": "haven-web-acl",
         "Id": "WEB_ACL_ID_MASKED",
-        "ARN": "arn:aws:wafv2:ap-northeast-2:ACCOUNT_ID_MASKED:regional/webacl/haven-web-acl/WEB_ACL_ID_MASKED",
+        "ARN": "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/webacl/haven-web-acl/WEB_ACL_ID_MASKED",
         "DefaultAction": {
             "Allow": {}
         },
@@ -331,7 +331,7 @@
         },
         "Capacity": 1100,
         "ManagedByFirewallManager": false,
-        "LabelNamespace": "awswaf:ACCOUNT_ID_MASKED:webacl:haven-web-acl:",
+        "LabelNamespace": "awswaf:${ACCOUNT_ID}:webacl:haven-web-acl:",
         "RetrofittedByFirewallManager": false,
         "OnSourceDDoSProtectionConfig": {
             "ALBLowReputationMode": "ACTIVE_UNDER_DDOS"

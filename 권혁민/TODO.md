@@ -25,7 +25,7 @@
 ### 3회차 · 5~6일차
 
 - [x] 업로드 보안·용량·PDF 시험을 통합하고 로컬 Django에서 검증한다.
-- [ ] AWS WAF Count 시험 및 앱/WAF 로그 상관분석을 수행한다.
+- [x] AWS WAF Count 시험 및 앱/WAF 로그 상관분석을 수행한다. (11/13 Count 탐지: `시험결과/2026-11-13_AWS_01.md`, 11/16 요청별 WAF↔Django 자동 상관분석: 아래 "AWS 정리·로그 상관분석 검증")
 - [ ] 시험 결과 보고서 작성 및 PR 제출
 
 ### 4회차 · 7~8일차
@@ -34,9 +34,9 @@
 - [x] WAF 전용 CloudWatch 로그 그룹 생성 및 30일 보존 설정
 - [x] WAF 로깅 연동 및 민감 헤더 마스킹 설정
 - [x] IAM 권한 검증 (CloudWatch·EC2·WAF 조회, SSM 접속 거부)
-- [ ] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석
-- [ ] WAF·Nginx·Django 로그 상관분석
-- [ ] AWS 환경에서 보안 fixture 재실행
+- [ ] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석 — 부분 완료: 로그 수집과 시험 요청(SQLi·XSS·PROPFIND·정상 2건)의 Count 동작 확인(11/13 수동), 요청 CLI로 Count 재시험·로그 자동 대조 4건 PASS(11/17, 아래 "WAF Count 재시험"). 누적 Count 로그의 오탐 분석은 Block 대상 선정 때 수행
+- [ ] WAF·Nginx·Django 로그 상관분석 — 부분 완료: WAF↔Django는 WAF 로그의 X-Amzn-Trace-Id 헤더 Root 기준 자동 연결 완료(11/16, 11건 MATCHED). Nginx는 요청 식별자 기록(구현 민성) 후 재검증(기한 11/27)
+- [ ] AWS 환경에서 보안 fixture 재실행 — 부분 완료: 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, HTTP 9/9 일치, 자동 정리 완료). 1~3회차 전체 fixture는 미실행
 - [ ] Count 결과를 바탕으로 Block 전환 대상 선정
 - [ ] Block 적용 전후 정상 기능 및 차단 결과 비교
 - [ ] 발견 문제의 수정 후 재시험과 정상 회귀를 확인한다.
@@ -80,6 +80,61 @@ aws wafv2 get-web-acl --name haven-web-acl --scope REGIONAL --id WEB_ACL_ID_MASK
 
 ※ 2026-11-13 12:00경(KST) 조장이 ALB 연결 완료(#98). 이후 정상 요청 및 SQLi·XSS·PROPFIND의 실제 WAF Count 동작과 CloudWatch 로그 수집을 확인함. WAF–Nginx–Gunicorn 로그 상관분석은 요청 경로·시각 기준으로 완료했으며, Nginx·Gunicorn의 요청 ID 헤더 기록 개선은 별도 진행 예정.
 
+#### AWS 정리·로그 상관분석 검증 (2026-11-16)
+
+- 대상: `https://orchestration-haven.cloud`, suite `haven-aws-cleanup-smoke-001`, run_id `cb5c3f96-b6f3-4c4e-aa35-4c0da7d9446e`
+- 코드: Hyeokmin `084d3dd` (Windows CMD 로컬 `python -m pytest -q`: 398 passed, main 반영 `fb12e49` 후에도 398 passed)
+- 시험 계정: 고정 시험 계정 member_a/b/c 재사용, 운영 DB 초기화 없음, 이번 실행이 만든 게시글·공유만 정리
+
+실행 명령:
+
+```cmd
+python request_verify.py run --target https://orchestration-haven.cloud --allowlist fixtures/allowlist_aws.json --cases fixtures/cases_haven_aws.json --fixture-dir fixtures --output-dir output_aws_cleanup_03 --max-requests 100 --max-duration 300
+python request_verify.py collect-logs --run-json output_aws_cleanup_03/results.json --profile hyeokmin --region ap-northeast-2 --expected-account ${ACCOUNT_ID} --output-dir output_aws_cleanup_logs_03
+python request_verify.py correlate-cloudwatch --run-json output_aws_cleanup_03/results.json --logs-dir output_aws_cleanup_logs_03 --expected-account ${ACCOUNT_ID} --output-dir output_aws_cleanup_corr_03
+```
+
+| 항목 | 결과 |
+|---|---|
+| 본시험 HTTP 기대값 | 9/9 일치 |
+| 자동 정리 | `cleanup_complete: true`, 오류 0, 삭제 302 → 확인 GET 404 |
+| 요청·응답 집계 | 본시험 9 + 준비 7 + 정리 4 = 20, 응답 20 |
+| 로그 수집 | WAF 22건, 앱 119건, `collection_complete: true` |
+| 로그 선택 | WAF 11건, 앱 11건 (본시험 9 + 삭제 1 + 확인 GET 1) |
+| 상관분석 | 11건 모두 MATCHED, WAF ALLOW, 앱 MATCH |
+| 판정 | 확인 GET PASS(http_only), 나머지 10건 UNKNOWN(manual_required), 종료 코드 3 |
+
+같은 요청의 WAF·앱 로그 대조 (`AWS-A-POST-READ`, `GET /posts/13/`, 식별자는 앞부분만):
+
+| 위치 | 시각(UTC) | 결과 | 식별자 | CLI Root와 일치 |
+|---|---|---|---|---|
+| CLI 전송 | 03:31:34.931 | — | Root `1-6afa7916-fff0153e…` | 기준 |
+| WAF | 03:31:35.735 | ALLOW | 헤더 `X-Amzn-Trace-Id` Root | 일치 (로그 선택 기준) |
+| WAF | 03:31:35.735 | ALLOW | `requestId` `1-6afa7917-4ef22ca9…` | **불일치** |
+| 앱 (Django) | 03:31:35.768 | 200 | `trace_id` `1-6afa7916-fff0153e…` | 일치 |
+
+해석: CLI처럼 클라이언트가 `X-Amzn-Trace-Id`를 보내면 그 Root가 앱 `trace_id`까지 유지되지만, WAF `requestId`는 별도 값이다. 따라서 WAF↔Django 연결 키는 WAF 로그에 기록된 `X-Amzn-Trace-Id` 헤더 Root이며, "WAF `requestId` = 앱 `trace_id`"는 이 요청에서는 성립하지 않는다. 클라이언트가 Trace 헤더를 보내지 않은 요청의 경우는 이번에 확인하지 않았다.
+
+범위: HTTP 응답과 WAF·Django 로그 연결까지 확인. 정리 검증 수준은 `HTTP_ONLY`이며 DB 행·첨부 파일의 물리 삭제는 확인하지 않음. Nginx 로그는 요청 식별자 기록 전이라 대조하지 않음. 수집 시간 범위에는 다른 사용자의 로그가 포함될 수 있어 원본 로그는 커밋하지 않음.
+
+#### WAF Count 재시험 (2026-11-17)
+
+- 목적: 11/13 수동 Count 시험은 결과 파일이 남지 않아, 요청 CLI로 다시 실행하고 결과·로그·상관분석을 저장한다.
+- 대상: `https://orchestration-haven.cloud`, suite `haven-aws-waf-count-001`(`fixtures/cases_aws_waf_count.json`), run_id `2710825f-674a-4a9e-933f-cffbedf51c67`, 시작 2026-11-17 09:10 KST
+- 코드: Hyeokmin `3de308e` (로컬 `python -m pytest -q`: 400 passed). CSV에 `count_rule_ids` 열 추가
+- 요청: 비로그인 GET 4건(정상 2, SQLi 형태 1, XSS 형태 1). 시험 문자열은 무해한 형태이고 WAF는 Count 모드
+
+| 케이스 | HTTP | 상관 | WAF | Count 규칙 | 판정 |
+|---|---|---|---|---|---|
+| WAF-NORMAL-LOGIN-GET | 200 | MATCHED | ALLOW | 없음 | PASS |
+| WAF-NORMAL-QUERY-GET | 200 | MATCHED | ALLOW | 없음 | PASS |
+| WAF-SQLI-QUERY-COUNT | 200 | MATCHED | ALLOW | `AWSManagedRulesSQLiRuleSet#Version_2.5::SQLi_QUERYARGUMENTS` | PASS |
+| WAF-XSS-QUERY-COUNT | 200 | MATCHED | ALLOW | `AWSManagedRulesCommonRuleSet#Version_1.23::CrossSiteScripting_QUERYARGUMENTS` | PASS |
+
+- 요청 4 = 응답 4, 로그 수집 WAF 4건·앱 48건(`collection_complete: true`), 상관분석 종료 코드 0
+- 가림: 이번 시험과 11/16 시험의 WAF 로그에서 Cookie 헤더가 있는 요청 14건 모두 `REDACTED`. Authorization 헤더는 보낸 요청이 없어 실제 로그로는 미확인(설정은 확인)
+- 범위: 시험 요청 기준의 관찰이며 방어율이 아니다. 11/13과 달리 `SQLiExtendedPatterns_QUERYARGUMENTS`는 걸리지 않았다(시험 문자열 차이로 보임). PROPFIND는 요청 CLI가 GET·POST만 지원해 재시험하지 않았다. WAF 로그는 URI·쿼리 값을 가리지 않으므로 원본 로그는 커밋하지 않는다.
+
 ## 인계·완료 기준
 
 - 앱 문제=신요찬, 네트워크=이민성, IAM=김보람, 배포=안민수에게 재현 조건 인계
@@ -95,7 +150,7 @@ aws wafv2 get-web-acl --name haven-web-acl --scope REGIONAL --id WEB_ACL_ID_MASK
 | 1 | 로컬 검증 완료·PR 병합 완료 | Windows 11, Python 3.13.1 / `python -m pytest -q tests`: 45 passed in 14.74s / `python -m pytest -q tests -k probe`: 5 passed, 40 deselected in 6.57s / 실제 Django·AWS WAF 검증은 미실행 | 테스트 실행 출력 확인 | Django URL·폼·인증/CSRF·로그 계약 및 시험 데이터 초기화 방법 확인 후 앱 연동 시험 |
 | 2 | 로컬 Django HTTP 시험 완료·추가 검증 대기 | 2026-11-10 / Django + PostgreSQL (`haven_verify`) / `--phase 2`: 87개 논리 케이스, 109/109 HTTP 기대값 일치, 전체 137요청, 오류 0건, 복구 완료 | `시험결과/2026-11-10_로컬_02.md` 파일 확인. 세부내용은 로컬 `output_django_phase2_01/results.json`로 보관 | DB·브라우저 검증, 앱/WAF 로그 상관분석, AWS 환경 재시험 |
 | 3 | 로컬 Django HTTP 통합 완료·AWS 미검증 | 2026-11-11 / 로컬 통합 시험 당시 pytest 237 통과. 이후 PR #62 리뷰 반영 후 pytest 251 통과. 통합 HTTP 시험 기록은 153개 논리 케이스·197/197 일치. / 1~3회차 통합 153개 케이스, HTTP 197/197 일치, 전체 요청 231건, 복구 완료·오류 0건 | `output_django_phase3_full_02/results.json` 로컬 보관, 보고서 작성 예정 | WAF Count·로그 상관분석, 저장소 잔여 파일 확인, AWS 재시험 |
-| 4 | WAF 초기 구성 완료·ALB 연결 대기 | 미확인 | — | — |
+| 4 | WAF Count 구성·탐지 확인, AWS 정리·WAF↔Django 상관분석 검증 완료, Count 재시험 완료, Block 판단 대기 | 2026-11-16 / `https://orchestration-haven.cloud` / run_id `cb5c3f96` / `run` → `collect-logs` → `correlate-cloudwatch` / 본시험 HTTP 9/9 일치, 자동 정리 완료(오류 0), 요청 20 = 응답 20, 본시험 9·삭제 1·삭제 후 확인 GET 1 모두 MATCHED(WAF ALLOW·앱 MATCH), 확인 GET PASS, 종료 코드 3(manual_required 10건) / 2026-11-17 Count 재시험 run_id `2710825f`: 정상 2·SQLi 1·XSS 1 모두 MATCHED·PASS, 정상 요청 Count 0건, 종료 코드 0 / pytest 400 passed | 로컬 `output_aws_cleanup_03`·`_logs_03`·`_corr_03`, `output_aws_waf_count_01`·`_logs_01`·`_corr_01` 보관(원본 로그 미커밋). 정리 검증은 HTTP_ONLY, DB 행·첨부 파일 물리 삭제는 미검증 | 누적 Count 로그 오탐 분석 → Block 대상 선정 → 민성 적용, Nginx 식별자 재검증(11/27) |
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
 
@@ -251,9 +306,29 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 3. **Nginx 요청 식별자 기록(16:46 조장 확정):** 구현 민성 → 재검증 혁민, 기한 11/27. 기록할 식별자는 `X-Amzn-Trace-Id`·`X-Haven-Request-ID`·응답 `X-Request-ID`이고 클라이언트가 정하는 값은 길이·형식을 제한합니다. 재검증은 WAF → Nginx → 앱 로그가 같은 ID로 이어지는지 확인합니다.
 4. **기존 남은 일:** TODO 낡은 줄 정리, CLI CloudWatch 연동, Burp 수동 점검(자동 스캔·Intruder는 피함), WAF Block 판단(11/27), 로그인 제한 배포 뒤 분산 시험.
 
+## 혁민's reply · 2026-11-16
+
+조장 11/13 "미완료·부분 완료" 항목에 대한 답변입니다.
+
+1. **로그 조회 시험:** 조회·읽기·검색, EC2·WAF 조회, `ssm start-session` 거부는 위 "IAM 권한 검증 결과 (2026-11-13)"에 근거가 있습니다.
+   - MFA 등록: `aws iam list-mfa-devices --user-name hyeokmin --profile hyeokmin --query "MFADevices[].EnableDate" --output json --no-cli-pager` → `2026-11-12T06:51:24+00:00`(KST 15:51) 1건 확인(11/16 조회, ARN 미출력)
+   - 비밀번호 변경: 첫 콘솔 로그인 때 바로 변경. 정확한 시각은 기록하지 않았고, 계정 전체가 포함되는 자격 증명 보고서는 조회하지 않았습니다.
+2. **WAF ↔ 앱 식별자:** 위 "AWS 정리·로그 상관분석 검증 (2026-11-16)"에 같은 요청(`GET /posts/13/`)의 WAF·앱 로그 대조를 붙였습니다. 11/13 구두 보고("WAF `requestId` = 앱 `trace_id`")를 정정합니다. CLI처럼 클라이언트가 `X-Amzn-Trace-Id`를 보낸 요청에서는 WAF `requestId`가 다른 값이었고, 연결 키는 WAF 로그에 기록된 `X-Amzn-Trace-Id` 헤더의 Root입니다. 이 Root는 앱 `trace_id`와 일치했습니다.
+3. **Nginx 요청 식별자:** 민성님 구현 후 WAF → Nginx → 앱이 같은 ID로 이어지는지 재검증합니다(기한 11/27). `X-Amzn-Trace-Id`도 클라이언트가 정할 수 있는 값이므로 `X-Haven-Request-ID`와 함께 길이·형식 제한이 필요합니다.
+4. **요청 CLI의 CloudWatch 자동 수집·대조:** `collect-logs`·`correlate-cloudwatch`로 구현했고, 11/16 실제 AWS에서 11건 모두 MATCHED를 확인했습니다. 낡은 줄(결과 기록 4회차 행, 3·4회차 체크 항목)도 정리했습니다. 해당 코드는 PR 전입니다.
+
 ## 민성's comment · 2026-11-16 오후 · 병합 정리와 남은 일
 
 - **병합됨:** #119(20번 정책에 `/haven/db` 로그 읽기 `ReadHavenDBLogEvents` 추가, 보람이 `get-policy-version` v3와 main JSON이 같다고 확인).
 - **부탁:** `/haven/db` 로그 조회·필터가 실제로 되는지 확인해 결과를 남기고, #116 짝 리뷰(db-1 로그 기록 범위: 접속·종료 기록, 접속 IP 포함 여부)도 의견을 남긴다. 접속 IP는 `10.x.x.x`처럼 가려서 적는다.
 - **11/17:** 로그인 실패 제한 2차 시험(요찬 안내)에서 분산·IP 축 시험에 참여한다. 요청 CLI는 15분 간격으로 천천히 돌린다.
 - **참고:** `권혁민/waf/`의 원본 JSON 2개에 계정 번호 전체가 있다. 가릴지는 조장이 정해서 알린다. 기존 남은 일(MFA 근거, 낡은 줄 정리 등)은 11/13 코멘트 그대로다.
+
+## 혁민's reply · 2026-11-17
+
+1. **`/haven/db` 로그 조회·필터:** #119 반영 전에는 `/haven/db`의 FilterLogEvents가 거부됐고, 반영 후 `hyeokmin` 프로필로 조회·필터에 성공했습니다(11/16). 확인한 내용: 앱 서버(`10.x.x.x`)에서 DB 계정 `haven_app`·DB `haven`으로 접속, `scram-sha-256` 인증, 해당 연결의 TLSv1.3, 접속·인증·종료와 세션 시간 기록.
+   - 참고: 과거에 발생한 DB 로그가 최근 CloudWatch 이벤트 시각으로 들어온 예가 있었습니다. DB 로그를 요청별 상관분석에 넣게 되면 메시지 안의 PostgreSQL 발생 시각을 기준으로 삼아야 합니다. 현재 요청 CLI의 자동 수집 대상은 WAF와 `/haven/web`뿐입니다.
+2. **#116 짝 리뷰:** 11/16 12:12(KST) PR 댓글로 남겼습니다([#116 리뷰 댓글](https://github.com/MinsooAhn02/Haven/pull/116#issuecomment-6906232626)). 판단: 접속·종료·접속 IP 기록은 DB 접속 출처와 세션 상태 점검 목적에 적절하고, WAF·Django 로그와 함께 쓰는 현재 구성에서 전체 SQL 로깅은 필수가 아닙니다. SQL 실행 내용·데이터 변경 이력 감사까지는 지원하지 않습니다.
+3. **WAF Count 재시험:** 위 "WAF Count 재시험 (2026-11-17)"에 결과를 남겼습니다. 요청 CLI로 결과 파일·로그·상관분석을 저장했고 4건 모두 PASS입니다.
+4. **로그인 실패 제한 2차 시험:** 팀 공지에 따라 중간 발표 이후로 연기되어 아직 참여하지 않았습니다.
+5. **`권혁민/waf/` 원본 JSON의 계정 번호:** 조장 결정을 기다립니다. 가리기로 하면 반영하겠습니다.

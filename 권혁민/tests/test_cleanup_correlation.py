@@ -237,3 +237,36 @@ def test_verification_get_correlation(
     assert checked["verdict"] == expected_verdict
     assert checked["response_summary"]["file_cleanup_verified"] is False
     assert run_path.read_text(encoding="utf-8") == original
+
+
+def test_correlated_csv_includes_count_rule_ids(tmp_path):
+    import csv
+    import request_verify as rv
+
+    record = {
+        "case_id": "WAF-SQLI-QUERY-COUNT",
+        "expected_app": {"http_status": 200},
+        "response_summary": None,
+        "count_rule_ids": [
+            "AWS#AWSManagedRulesSQLiRuleSet::SQLi_QUERYARGUMENTS",
+            "AWS#AWSManagedRulesSQLiRuleSet::SQLiExtendedPatterns_QUERYARGUMENTS",
+        ],
+    }
+    normal = {
+        "case_id": "WAF-NORMAL-LOGIN-GET",
+        "expected_app": {"http_status": 200},
+        "response_summary": None,
+    }
+
+    rv.save_results(tmp_path, {}, [record, normal], correlation=True)
+
+    with (tmp_path / "correlated_summary.csv").open(encoding="utf-8-sig") as fh:
+        rows = list(csv.DictReader(fh))
+
+    assert rows[0]["count_rule_ids"] == (
+        "AWS#AWSManagedRulesSQLiRuleSet::SQLi_QUERYARGUMENTS;"
+        "AWS#AWSManagedRulesSQLiRuleSet::SQLiExtendedPatterns_QUERYARGUMENTS"
+    )
+    assert rows[1]["count_rule_ids"] == ""
+    # JSON 상세에는 원래 목록이 그대로 남는다.
+    assert record["count_rule_ids"][0].endswith("SQLi_QUERYARGUMENTS")

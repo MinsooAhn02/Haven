@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-waf-count-001",
+  "suite_kind": "confirmation",
+  "cases": [
+    {
+      "case_id": "WAF-NORMAL-LOGIN-GET",
+      "category": "waf_count",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {"http_status": 200},
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "verification_mode": "http_only",
+      "note": "정상 요청 대조군: WAF ALLOW, Count 매칭이 없어야 오탐 0으로 기록"
+    },
+    {
+      "case_id": "WAF-NORMAL-QUERY-GET",
+      "category": "waf_count",
+      "method": "GET",
+      "path": "/accounts/login/?q=haven-normal-query",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {"http_status": 200},
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "verification_mode": "http_only",
+      "note": "정상 쿼리 대조군: 일반 문자열 쿼리에서 Count 매칭이 없어야 함"
+    },
+    {
+      "case_id": "WAF-SQLI-QUERY-COUNT",
+      "category": "waf_count",
+      "method": "GET",
+      "path": "/accounts/login/?q=1%27%20OR%20%271%27%3D%271",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {"http_status": 200},
+      "expected_waf": "COUNT",
+      "max_requests": 1,
+      "verification_mode": "http_only",
+      "note": "무해한 SQLi 형태 쿼리: Count 모드라 차단 없이 앱 200, SQLi 규칙 Count 기록"
+    },
+    {
+      "case_id": "WAF-XSS-QUERY-COUNT",
+      "category": "waf_count",
+      "method": "GET",
+      "path": "/accounts/login/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {"http_status": 200},
+      "expected_waf": "COUNT",
+      "max_requests": 1,
+      "verification_mode": "http_only",
+      "note": "무해한 XSS 형태 쿼리: Count 모드라 차단 없이 앱 200, XSS 규칙 Count 기록"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
-    "ResourceArn": "arn:aws:wafv2:ap-northeast-2:777171525040:regional/webacl/haven-web-acl/ddd129cb-9894-4907-9807-bbdfb79e36c1",
+    "ResourceArn": "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/webacl/haven-web-acl/ddd129cb-9894-4907-9807-bbdfb79e36c1",
     "LogDestinationConfigs": [
-        "arn:aws:logs:ap-northeast-2:777171525040:log-group:aws-waf-logs-haven"
+        "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:aws-waf-logs-haven"
     ],
     "RedactedFields": [
         {

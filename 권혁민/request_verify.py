@@ -25,6 +25,9 @@ import threading
 import os
 import warnings
 import requests
+import subprocess
+from contextvars import ContextVar
+from functools import wraps
 
 ROLES = {"anonymous", "member_a", "member_b", "member_c", "operator"}
 METHODS = {"GET", "POST"}
@@ -66,6 +69,11 @@ def new_trace_id() -> str:
     epoch_hex = f"{int(time.time()):08x}"
     random_hex = uuid.uuid4().hex[:24]
     return f"Root=1-{epoch_hex}-{random_hex}"
+
+
+def aws_post_marker(run_id: str, case_id: str) -> str:
+    """AWS 시험 실행과 생성 케이스를 식별하는 고유 표식."""
+    return f"[HAVEN-AWS:{run_id}:{case_id}]"
 
 
 def load_json(path: Path):
@@ -241,18 +249,43 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
         post_ref = item.get("post_reference")
 
         if post_ref is not None:
+            allowed_post_path = (
+                item["method"] == "GET"
+                and item["path"] == "/posts/{post_id}/"
+            ) or (
+                item["method"] == "POST"
+                and re.fullmatch(
+                    r"/posts/\{post_id\}/(?:attachments/|delete/|shares/|edit/|shares/\{share_id\}/revoke/)",
+                    item["path"],
+                ) is not None
+            )
+
             if (
                 not isinstance(post_ref, str)
                 or not re.fullmatch(r"[A-Za-z0-9_-]{2,64}", post_ref)
-                or not re.fullmatch(
-                    r"/posts/\{post_id\}/(?:attachments/|delete/)",
-                    item["path"],
-                )
+                or not allowed_post_path
             ):
                 raise ConfigError(f"{cid}: post_reference 설정 오류")
 
         elif "{post_id}" in item["path"]:
             raise ConfigError(f"{cid}: post_id 참조가 없습니다")
+        if "share_recipient_role" in item:
+            recipient_role = item["share_recipient_role"]
+
+            if (
+                not isinstance(recipient_role, str)
+                or recipient_role not in {
+                    "member_a", "member_b", "member_c"
+                }
+                or recipient_role == item["auth_role"]
+                or item["method"] != "POST"
+                or item["path"] != "/posts/{post_id}/shares/"
+                or post_ref is None
+                or _cleanup
+            ):
+                raise ConfigError(
+                    f"{cid}: share_recipient_role 설정 오류"
+                )
         if "critical" in item and type(item["critical"]) is not bool:
             raise ConfigError(f"{cid}: critical은 bool이어야 합니다")
 
@@ -277,8 +310,35 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                 raise ConfigError(f"{cid}: 동적 공유 ID는 공유 해제 POST 경로에서만 사용할 수 있습니다")
             if share_ref.get("allow_missing") and not _cleanup:
                 raise ConfigError(f"{cid}: allow_missing은 cleanup_cases에서만 허용합니다")
-        elif "{share_id}" in item["path"]:
-            raise ConfigError(f"{cid}: 공유 ID 경로에는 share_reference가 필요합니다")
+        elif (
+            "{share_id}" in item["path"]
+            and "share_revoke_role" not in item
+        ):
+            raise ConfigError(
+                f"{cid}: 공유 ID 경로에는 공유 대상 참조가 필요합니다"
+            )
+
+        if "share_revoke_role" in item:
+            revoke_role = item["share_revoke_role"]
+
+            if (
+                not isinstance(revoke_role, str)
+                or revoke_role not in {
+                    "member_a", "member_b", "member_c"
+                }
+                or revoke_role == item["auth_role"]
+                or item["method"] != "POST"
+                or item["path"] != (
+                    "/posts/{post_id}/shares/{share_id}/revoke/"
+                )
+                or post_ref is None
+                or "share_reference" in item
+                or "share_recipient_role" in item
+                or _cleanup
+            ):
+                raise ConfigError(
+                    f"{cid}: share_revoke_role 설정 오류"
+                )
         if "after_case" in item and not _cleanup:
             raise ConfigError(f"{cid}: after_case는 cleanup_cases에서만 허용합니다")
         if not isinstance(item["category"], str) or not item["category"].strip() or not isinstance(item["note"], str):
@@ -372,7 +432,16 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
             ref = case.get("post_reference")
             if ref is not None:
                 source = creators.get(ref)
-                if source is None or source["auth_role"] != case["auth_role"]:
+
+                if source is None:
+                    raise ConfigError(
+                        f"{case['case_id']}: 게시글 생성 선행조건 오류"
+                    )
+
+                if (
+                    case["method"] != "GET"
+                    and source["auth_role"] != case["auth_role"]
+                ):
                     raise ConfigError(
                         f"{case['case_id']}: 게시글 생성 선행조건 오류"
                     )
@@ -388,6 +457,78 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                     raise ConfigError(
                         f"{cleanup_case['case_id']}: 복구 게시글 참조 오류"
                     )
+
+
+def validate_aws_cleanup_suite(suite: dict) -> None:
+    """AWS 공유 환경에서 안전하게 정리 가능한 케이스만 허용한다."""
+    cases = suite["cases"]
+    cleanup_cases = suite.get("cleanup_cases", [])
+
+    creators = {
+        case["case_id"]: case
+        for case in cases
+        if case["method"] == "POST"
+        and case["path"] == "/posts/new/"
+    }
+
+    allowed_mutations = {
+        "/posts/{post_id}/edit/",
+        "/posts/{post_id}/shares/",
+        "/posts/{post_id}/attachments/",
+        "/posts/{post_id}/shares/{share_id}/revoke/",
+    }
+
+    for case in cases:
+        cid = case["case_id"]
+
+        # 기존 cleanup 실행 구조에서는 중간 복구 이후
+        # 생성한 리소스의 마지막 복구가 누락될 수 있다.
+        if case.get("cleanup_before") or "checkpoint_before" in case:
+            raise ConfigError(
+                f"{cid}: AWS 안전 시험에서 수동/중간 체크포인트 금지"
+            )
+
+        if case["method"] != "POST":
+            continue
+
+        if case["path"] == "/posts/new/":
+            if not case.get("capture_post_id"):
+                raise ConfigError(
+                    f"{cid}: AWS 게시글 생성에는 capture_post_id 필요"
+                )
+            continue
+
+        # 기존 글의 변경이나 시험 계정 상태 변경을 차단한다.
+        if (
+            case["path"] not in allowed_mutations
+            or case.get("post_reference") not in creators
+        ):
+            raise ConfigError(
+                f"{cid}: AWS에서는 시험 중 생성한 게시글만 변경 가능"
+            )
+
+    cleanup_counts = {cid: 0 for cid in creators}
+
+    for case in cleanup_cases:
+        ref = case.get("post_reference")
+
+        if (
+            ref not in creators
+            or case["path"] != "/posts/{post_id}/delete/"
+            or case.get("after_case") != ref
+            or case["auth_role"] != creators[ref]["auth_role"]
+        ):
+            raise ConfigError(
+                f"{case['case_id']}: AWS 복구 대상 설정 오류"
+            )
+
+        cleanup_counts[ref] += 1
+
+    for cid, count in cleanup_counts.items():
+        if count != 1:
+            raise ConfigError(
+                f"{cid}: 게시글 생성마다 삭제 복구 케이스가 정확히 1개 필요"
+            )
 
 
 def select_phase(suite: dict, phase: int | None) -> dict:
@@ -581,8 +722,14 @@ class ShareHtmlParser(HTMLParser):
         self.rows = []
         self.open_rows = []
         self.has_share_list = False
+        self.nav_depth = 0
 
     def handle_starttag(self, tag, attrs):
+        if tag == "nav":
+            self.nav_depth += 1
+            return
+        if self.nav_depth:
+            return
         attributes = dict(attrs)
         if ((tag == "h2" and attributes.get("id") == "share-list-heading")
                 or (tag == "section" and attributes.get("aria-labelledby") == "share-list-heading")):
@@ -603,6 +750,12 @@ class ShareHtmlParser(HTMLParser):
             self.open_rows[-1]["title"].append(data)
 
     def handle_endtag(self, tag):
+        if tag == "nav":
+            if self.nav_depth:
+                self.nav_depth -= 1
+            return
+        if self.nav_depth:
+            return
         if not self.open_rows:
             return
         row = self.open_rows[-1]
@@ -648,6 +801,467 @@ def parse_share_id(html: bytes, post_id: int, recipient: str) -> int | None:
     except UnicodeError as exc:
         raise ConfigError("공유 목록이 UTF-8 HTML이 아닙니다") from exc
     return parser.share_id()
+
+
+class AwsPostListParser(HTMLParser):
+    """시험 계정의 게시글 목록에서 제목과 상세 URL을 추출한다."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.rows = []
+        self.current = None
+        self.in_title = False
+        self.title_parts = []
+        self.in_page_count = False
+        self.page_parts = []
+        self.page_count = None
+        self.has_list = False
+        self.has_empty = False
+
+    def handle_starttag(self, tag, attrs):
+        d = dict(attrs)
+        classes = set((d.get("class") or "").split())
+
+        if tag == "ul" and "record-list" in classes:
+            self.has_list = True
+
+        if tag == "section" and "empty-state" in classes:
+            self.has_empty = True
+
+        if tag == "li" and "record-row" in classes:
+            if self.current is not None:
+                raise ConfigError("게시글 목록 구조가 모호합니다")
+            self.current = {"title": None, "href": None}
+
+        elif self.current is not None:
+            if tag == "h2" and "record-title" in classes:
+                if self.in_title or self.current["title"] is not None:
+                    raise ConfigError("게시글 제목이 중복되었습니다")
+                self.in_title = True
+                self.title_parts = []
+
+            elif tag == "a" and "record-link" in classes:
+                if self.current["href"] is not None:
+                    raise ConfigError("게시글 링크가 중복되었습니다")
+                self.current["href"] = d.get("href")
+
+        if tag == "span" and "page-count" in classes:
+            self.in_page_count = True
+            self.page_parts = []
+
+    def handle_data(self, data):
+        if self.in_title:
+            self.title_parts.append(data)
+        if self.in_page_count:
+            self.page_parts.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "h2" and self.in_title:
+            self.current["title"] = "".join(self.title_parts).strip()
+            self.in_title = False
+
+        elif tag == "li" and self.current is not None:
+            if self.in_title:
+                raise ConfigError("게시글 제목이 완결되지 않았습니다")
+            self.rows.append(self.current)
+            self.current = None
+
+        elif tag == "span" and self.in_page_count:
+            self.page_count = "".join(self.page_parts).strip()
+            self.in_page_count = False
+
+
+def parse_aws_post_page(html: bytes, expected_page: int):
+    """게시글 목록 HTML을 검증하고 (제목, ID), 전체 페이지 수를 반환한다."""
+    if not isinstance(html, bytes) or len(html) > 65536:
+        raise ConfigError("게시글 목록 HTML 크기 또는 형식 오류")
+
+    parser = AwsPostListParser()
+
+    try:
+        parser.feed(html.decode("utf-8"))
+        parser.close()
+    except UnicodeError as exc:
+        raise ConfigError("게시글 목록 UTF-8 오류") from exc
+
+    if parser.current is not None or parser.in_title:
+        raise ConfigError("게시글 목록 HTML이 완결되지 않았습니다")
+
+    if parser.has_empty and not parser.has_list:
+        return [], 1
+
+    if not parser.has_list or parser.page_count is None:
+        raise ConfigError("게시글 목록 또는 페이지 정보를 확인하지 못했습니다")
+
+    match = re.fullmatch(
+        r"(\d+)\s*/\s*(\d+)\s*페이지",
+        parser.page_count,
+    )
+
+    if match is None:
+        raise ConfigError("페이지 번호 형식 오류")
+
+    current_page, total_pages = map(int, match.groups())
+
+    if current_page != expected_page or total_pages < current_page:
+        raise ConfigError("게시글 목록 페이지 번호 불일치")
+
+    rows = []
+
+    for row in parser.rows:
+        match = re.fullmatch(
+            r"/posts/([1-9]\d{0,18})/",
+            row["href"] or "",
+        )
+
+        if row["title"] is None or match is None:
+            raise ConfigError("게시글 제목 또는 상세 경로 오류")
+
+        post_id = int(match.group(1))
+
+        if post_id > 2**63 - 1:
+            raise ConfigError("게시글 ID 범위 초과")
+
+        rows.append((row["title"], post_id))
+
+    return rows, total_pages
+
+
+def find_aws_post_by_marker(
+    session, target, budget, run_id, marker
+) -> int | None:
+    """시험 계정이 소유한 게시글에서 고유 표식과 일치하는 ID를 찾는다."""
+
+    found_ids = []
+
+    # 전용 시험 계정의 목록만 조회한다.
+    # 최대 25페이지까지만 허용하고, 초과하면 임의로 판단하지 않는다.
+    for page in range(1, 26):
+        path = "/posts/" if page == 1 else f"/posts/?page={page}"
+
+        detail, html = bounded_send(
+            session,
+            "GET",
+            target,
+            path,
+            budget,
+            str(uuid.uuid4()),
+            headers={RUN_ID_HEADER: run_id},
+            trace_id=new_trace_id(),
+            max_response_bytes=65536,
+            capture_html=True,
+        )
+
+        if detail["status"] != 200 or html is None:
+            raise ExecutionError(
+                "AWS 시험 게시글 목록 조회 실패"
+            )
+
+        rows, total_pages = parse_aws_post_page(html, page)
+
+        for title, post_id in rows:
+            if title.startswith(marker + " "):
+                found_ids.append(post_id)
+
+        if page >= total_pages:
+            break
+    else:
+        raise ExecutionError(
+            "게시글 목록이 25페이지를 초과하여 자동 식별을 중단합니다"
+        )
+
+    if len(found_ids) > 1:
+        raise ExecutionError(
+            "동일 실행 표식의 게시글이 여러 개입니다. 수동 확인 필요"
+        )
+
+    return found_ids[0] if found_ids else None
+
+
+class AdminAccountHtmlParser(HTMLParser):
+    """계정 목록에서 사용자명, 상태, 변경 경로, 페이지를 읽는다."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.rows = []
+        self.row = None
+        self.capture = None
+        self.parts = []
+        self.page_parts = None
+        self.pages = []
+        self.has_list = False
+        self.has_empty = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+
+        if tag == "h2" and attrs.get("id") == "accounts-heading":
+            self.has_list = True
+
+        if (
+            tag == "section"
+            and "empty-state" in (attrs.get("class") or "").split()
+        ):
+            self.has_empty = True
+
+        if tag == "span" and attrs.get("aria-current") == "page":
+            if self.page_parts is not None:
+                raise ConfigError("계정 목록 페이지 구조 오류")
+            self.page_parts = []
+
+        if tag == "tr":
+            if self.row is not None:
+                raise ConfigError("계정 목록 행 중첩 오류")
+            self.row = {
+                "names": [],
+                "cells": [],
+                "actions": [],
+                "next_states": [],
+            }
+
+        elif self.row is not None:
+            if tag == "th" and attrs.get("scope") == "row":
+                self.capture = "names"
+                self.parts = []
+            elif tag == "td":
+                self.capture = "cells"
+                self.parts = []
+            elif tag == "form":
+                self.row["actions"].append((
+                    attrs.get("method", "get").lower(),
+                    attrs.get("action", ""),
+                ))
+            elif tag == "input" and attrs.get("name") == "is_active":
+                self.row["next_states"].append(attrs.get("value"))
+
+    def handle_data(self, data):
+        if self.capture is not None:
+            self.parts.append(data)
+        if self.page_parts is not None:
+            self.page_parts.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "span" and self.page_parts is not None:
+            self.pages.append("".join(self.page_parts).strip())
+            self.page_parts = None
+
+        if self.row is None:
+            return
+
+        if (
+            (tag == "th" and self.capture == "names")
+            or (tag == "td" and self.capture == "cells")
+        ):
+            self.row[self.capture].append(
+                "".join(self.parts).strip()
+            )
+            self.capture = None
+            self.parts = []
+
+        elif tag == "tr":
+            if self.capture is not None:
+                raise ConfigError("계정 목록 셀이 완결되지 않았습니다")
+
+            # 표 머리글 행은 제외한다.
+            if self.row["names"]:
+                self.rows.append(self.row)
+            elif self.row["cells"] or self.row["actions"]:
+                raise ConfigError("사용자명을 확인할 수 없는 계정 행입니다")
+
+            self.row = None
+
+
+def parse_admin_account_page(html, expected_page):
+    """계정 목록 한 페이지를 (계정 목록, 전체 페이지 수)로 반환한다."""
+    if (
+        not isinstance(html, bytes)
+        or len(html) > 65536
+        or type(expected_page) is not int
+        or expected_page < 1
+    ):
+        raise ConfigError("계정 목록 입력 형식 오류")
+
+    parser = AdminAccountHtmlParser()
+
+    try:
+        parser.feed(html.decode("utf-8"))
+        parser.close()
+    except UnicodeError as exc:
+        raise ConfigError("계정 목록 UTF-8 오류") from exc
+
+    if (
+        parser.row is not None
+        or parser.capture is not None
+        or parser.page_parts is not None
+        or len(parser.pages) != 1
+    ):
+        raise ConfigError("계정 목록 HTML 구조 오류")
+
+    match = re.fullmatch(
+        r"(\d+)\s*/\s*(\d+)\s*페이지",
+        parser.pages[0],
+    )
+    if match is None:
+        raise ConfigError("계정 목록 페이지 형식 오류")
+
+    current_page, total_pages = map(int, match.groups())
+
+    if current_page != expected_page or total_pages < current_page:
+        raise ConfigError("계정 목록 페이지 번호 불일치")
+
+    if not parser.rows:
+        if not parser.has_empty:
+            raise ConfigError("빈 계정 목록을 확인하지 못했습니다")
+        return [], total_pages
+
+    if not parser.has_list or parser.has_empty:
+        raise ConfigError("계정 목록 영역이 없거나 모호합니다")
+
+    accounts = []
+    seen_names = set()
+    seen_ids = set()
+
+    for row in parser.rows:
+        if (
+            len(row["names"]) != 1
+            or not row["names"][0]
+            or len(row["cells"]) != 4
+            or len(row["actions"]) != 1
+            or len(row["next_states"]) != 1
+        ):
+            raise ConfigError("계정 행의 필수 정보가 없거나 중복되었습니다")
+
+        username = row["names"][0]
+        status = row["cells"][0]
+        method, action = row["actions"][0]
+
+        match = re.fullmatch(
+            r"/admin/accounts/([1-9]\d{0,18})/status/",
+            action,
+        )
+        if method != "post" or match is None:
+            raise ConfigError("계정 상태 변경 경로 오류")
+
+        account_id = int(match.group(1))
+        if account_id > 2**63 - 1:
+            raise ConfigError("계정 ID 범위 초과")
+
+        if status not in {"활성", "비활성"}:
+            raise ConfigError("계정 활성 상태를 확인하지 못했습니다")
+
+        is_active = status == "활성"
+        expected_next = "false" if is_active else "true"
+
+        if row["next_states"][0] != expected_next:
+            raise ConfigError("계정 상태 표시와 변경 값이 모순됩니다")
+
+        if username in seen_names or account_id in seen_ids:
+            raise ConfigError("계정 목록에 중복된 계정이 있습니다")
+
+        seen_names.add(username)
+        seen_ids.add(account_id)
+        accounts.append({
+            "username": username,
+            "account_id": account_id,
+            "is_active": is_active,
+        })
+
+    return accounts, total_pages
+
+
+def find_admin_account(
+    session, target, budget, run_id,
+    username, prep_events, max_response_bytes,
+):
+    """관리자 세션으로 전체 목록을 확인해 계정명과 정확히 일치하는 계정을 찾는다."""
+    if (
+        not isinstance(username, str)
+        or not username
+        or username.strip() != username
+    ):
+        raise ConfigError("조회할 계정명 형식 오류")
+
+    found = None
+    expected_total = None
+    seen_names = set()
+    seen_ids = set()
+
+    for page in range(1, 26):
+        path = (
+            "/admin/accounts/"
+            if page == 1
+            else f"/admin/accounts/?page={page}"
+        )
+        request_id = str(uuid.uuid4())
+        trace_id = new_trace_id()
+
+        detail, html = bounded_send(
+            session,
+            "GET",
+            target,
+            path,
+            budget,
+            request_id,
+            headers={RUN_ID_HEADER: run_id},
+            trace_id=trace_id,
+            max_response_bytes=min(max_response_bytes, 65536),
+            capture_html=True,
+        )
+
+        prep_events.append({
+            "stage": "admin_account_lookup",
+            "page": page,
+            "http_status": detail["status"],
+            "request_id": request_id,
+            "trace_id": trace_id,
+        })
+
+        if detail["status"] != 200 or html is None:
+            raise ExecutionError(
+                "관리자 계정 목록 조회 실패"
+            )
+
+        accounts, total_pages = parse_admin_account_page(
+            html, page
+        )
+
+        if total_pages > 25:
+            raise ExecutionError(
+                "계정 목록이 25페이지를 초과합니다"
+            )
+
+        if expected_total is None:
+            expected_total = total_pages
+        elif total_pages != expected_total:
+            raise ExecutionError(
+                "조회 중 계정 목록 페이지 수가 변경되었습니다"
+            )
+
+        for account in accounts:
+            name = account["username"]
+            account_id = account["account_id"]
+
+            if name in seen_names or account_id in seen_ids:
+                raise ExecutionError(
+                    "페이지 간 계정 중복으로 조회 결과를 확정할 수 없습니다"
+                )
+
+            seen_names.add(name)
+            seen_ids.add(account_id)
+
+            # 부분 일치나 역할명 추측을 사용하지 않는다.
+            if name == username:
+                found = dict(account)
+
+        if page == total_pages:
+            break
+
+    if found is None:
+        raise ExecutionError(
+            "관리자 목록에서 시험 계정을 찾지 못했습니다"
+        )
+
+    return found
 
 
 class RequestBudget:
@@ -870,9 +1484,54 @@ def get_csrf_token(s: requests.Session) -> str | None:
     return s.cookies.get("csrftoken")
 
 
+_MEMBER_PASSWORDS = ContextVar("haven_member_passwords", default=None)
+
+
+def member_password_scope(func):
+    """실행마다 별도의 비밀번호 보관 영역을 만들고 종료 시 비운다."""
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        cache = {}
+        token = _MEMBER_PASSWORDS.set(cache)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            cache.clear()
+            _MEMBER_PASSWORDS.reset(token)
+
+    return wrapped
+
+
+def aws_member_password():
+    """AWS 테스트 회원 세 계정의 공통 비밀번호를 한 번 입력받는다."""
+    cache = _MEMBER_PASSWORDS.get()
+
+    if cache is not None and "password" in cache:
+        return cache["password"]
+
+    try:
+        password = getpass.getpass(
+            "AWS member_a/member_b/member_c 공통 비밀번호: "
+        )
+    except EOFError as exc:
+        raise ExecutionError(
+            "공통 비밀번호 입력을 받을 수 없습니다"
+        ) from exc
+
+    if not password:
+        raise ExecutionError("공통 비밀번호가 비어 있습니다")
+
+    if cache is not None:
+        cache["password"] = password
+
+    return password
+
+
 def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: str,
                run_id: str, prep_events: list, max_response_bytes: int) -> None:
     """역할별 시험 계정으로 로그인한다. 비밀번호는 대화형 입력하고 기록 금지."""
+    # 재로그인 실패 시 이전 인증 정보가 남지 않도록 제거한다.
+    s.__dict__.pop("_haven_username", None)
     local_test_account = (
         target == "http://127.0.0.1:8000"
         and role in {"member_a", "member_b", "member_c", "operator"}
@@ -882,7 +1541,14 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
         if local_test_account else None
     )
 
-    if seed_password:
+    if (
+        target == canonical_origin("https://orchestration-haven.cloud")
+        and role in {"member_a", "member_b", "member_c"}
+    ):
+        username = role
+        password = aws_member_password()
+        print(f"[인증 준비] {role}: 고정 시험 계정 로그인")
+    elif seed_password:
         username = role
         password = seed_password
         print(f"[인증 준비] {role}: 로컬 시험 계정 자동 로그인")
@@ -938,6 +1604,10 @@ def prep_login(s: requests.Session, target: str, budget: RequestBudget, role: st
     if detail["status"] != 302 or not s.cookies.get("sessionid") or not login_redirect or login_redirect.startswith("/accounts/login/"):
         raise ExecutionError("로그인 인증 준비 실패 (상태/세션 확인)")
 
+    # 성공한 로그인에 사용한 계정명만 메모리에 유지한다.
+    # 공유 대상 및 시험 계정 식별에 사용하며 비밀번호는 저장하지 않는다.
+    s._haven_username = username
+
 
 def resolve_share_id(case: dict, sessions: dict, prepped: dict, target: str,
                      budget: RequestBudget, run_id: str, prep_events: list,
@@ -989,6 +1659,104 @@ def csrf_for_post(s: requests.Session, target: str, budget: RequestBudget,
     return csrf
 
 
+def bind_share_recipient(case, fields, sessions, prepped):
+    """공유 대상 역할을 로그인에 성공한 실제 계정명으로 변환한다."""
+    role = case.get("share_recipient_role")
+
+    if role is None:
+        return fields
+
+    recipient_session = sessions.get(role)
+    owner_session = sessions.get(case["auth_role"])
+
+    recipient = getattr(
+        recipient_session, "_haven_username", None
+    )
+    owner = getattr(
+        owner_session, "_haven_username", None
+    )
+
+    if (
+        not prepped.get(role)
+        or not prepped.get(case["auth_role"])
+        or not isinstance(recipient, str)
+        or not recipient.strip()
+        or not isinstance(owner, str)
+        or not owner.strip()
+    ):
+        raise ExecutionError(
+            "공유 전 소유자와 수신자 로그인이 필요합니다"
+        )
+
+    if recipient == owner:
+        raise ExecutionError(
+            "소유자와 공유 수신자가 동일한 계정입니다"
+        )
+
+    if not isinstance(fields, dict):
+        raise ConfigError("공유 요청 fields 형식 오류")
+
+    resolved = dict(fields)
+    resolved["username"] = recipient
+    return resolved
+
+
+def resolve_created_share_id(
+    post_id, owner_role, recipient_role,
+    sessions, prepped, target, budget,
+    run_id, prep_events, max_response_bytes,
+    *, allow_missing=False,
+):
+    """실제로 생성한 게시글에서 로그인한 수신자의 공유 ID를 찾는다."""
+    if type(allow_missing) is not bool:
+        raise ConfigError("allow_missing은 bool이어야 합니다")
+
+    if type(post_id) is not int or not 1 <= post_id <= 2**63 - 1:
+        raise ConfigError("공유 조회 게시글 ID 오류")
+
+    member_roles = {"member_a", "member_b", "member_c"}
+
+    if (
+        not isinstance(owner_role, str)
+        or owner_role not in member_roles
+        or not isinstance(recipient_role, str)
+        or recipient_role not in member_roles
+        or owner_role == recipient_role
+    ):
+        raise ConfigError("공유 조회 계정 역할 오류")
+
+    # 로그인 완료 여부, 실제 계정명, 동일 계정 여부를 함께 확인한다.
+    fields = bind_share_recipient(
+        {
+            "auth_role": owner_role,
+            "share_recipient_role": recipient_role,
+        },
+        {},
+        sessions,
+        prepped,
+    )
+
+    # 기존 조회 함수를 재사용하되 실제 게시글 ID와 계정명을 전달한다.
+    lookup_case = {
+        "share_reference": {
+            "post_id": post_id,
+            "recipient": fields["username"],
+            "lookup_role": owner_role,
+            "allow_missing": allow_missing,
+        }
+    }
+
+    return resolve_share_id(
+        lookup_case,
+        sessions,
+        prepped,
+        target,
+        budget,
+        run_id,
+        prep_events,
+        max_response_bytes,
+    )
+
 
 def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, target: str,
                          budget: RequestBudget, run_id: str, prep_events: list,
@@ -1011,6 +1779,30 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
         payload = read_payload(fixture_root, case["input_reference"])
 
     fields = dict(payload.get("fields", {}))
+
+    # AWS에서 생성하는 시험용 게시글에 실행 고유 표식 추가.
+    if (
+        target == canonical_origin("https://orchestration-haven.cloud")
+        and case.get("capture_post_id")
+        and case["path"] == "/posts/new/"
+    ):
+        marker = aws_post_marker(run_id, case["case_id"])
+        title = fields.get("title")
+
+        if not isinstance(title, str) or not title.strip():
+            raise ConfigError(
+                "AWS 시험용 게시글에는 유효한 제목이 필요합니다"
+            )
+
+        new_title = f"{marker} {title}"
+
+        if len(new_title) > 200:
+            raise ConfigError(
+                "AWS 시험용 게시글 제목이 200자를 초과합니다"
+            )
+
+        fields["title"] = new_title
+
     csrf = csrf_for_post(s, target, budget, prep_events, max_response_bytes,
                          payload.get("csrf_mode", "valid"), run_id)
     if csrf:
@@ -1128,12 +1920,22 @@ def save_results(outdir: Path, state: dict, records: list, *, correlation=False)
         json.dump(state, fh, ensure_ascii=False, indent=2)
     temp.replace(jsonpath)
     with csvpath.open("w", encoding="utf-8-sig", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=RESULT_FIELDS + ["http_expectation_match", "verdict"], extrasaction="ignore")
+        w = csv.DictWriter(
+            fh,
+            fieldnames=RESULT_FIELDS + ["count_rule_ids", "http_expectation_match", "verdict"],
+            extrasaction="ignore",
+        )
         w.writeheader()
-        for record in records + state.get("cleanup_results", []):
+        for record in (
+            records
+            + state.get("cleanup_results", [])
+            + state.get("cleanup_verification_results", [])
+        ):
             row = {**record}
             row["expected_app"] = json.dumps(row["expected_app"], ensure_ascii=False)
             row["response_summary"] = json.dumps(row["response_summary"], ensure_ascii=False)
+            # WAF Count 매칭 규칙은 상관분석 뒤에만 있으므로, 없으면 빈 칸으로 둔다.
+            row["count_rule_ids"] = ";".join(row.get("count_rule_ids") or [])
             w.writerow(row)
 
 
@@ -1146,6 +1948,235 @@ def get_exit_code(records: list, *, incomplete: bool) -> int:
     if any(r["verdict"] == "FAIL" for r in records):
         return 1
     return 0
+
+
+def build_aws_recovery_plan(state: dict, suite: dict) -> list[dict]:
+    """중단된 AWS 시험 결과에서 안전한 게시글 복구 계획을 만든다."""
+    target = canonical_origin("https://orchestration-haven.cloud")
+
+    if (
+        not isinstance(state, dict)
+        or state.get("schema_version") != 1
+        or state.get("source") != "live_http_run"
+        or state.get("target_origin") != target
+        or state.get("suite_id") != suite.get("suite_id")
+    ):
+        raise ConfigError("AWS 복구 결과 파일의 출처가 올바르지 않습니다")
+
+    run_id = state.get("run_id")
+
+    try:
+        if not isinstance(run_id, str):
+            raise ValueError("run_id")
+        if str(uuid.UUID(run_id)) != run_id:
+            raise ValueError("run_id")
+    except ValueError as exc:
+        raise ConfigError("AWS 복구 run_id 형식 오류") from exc
+
+    validate_aws_cleanup_suite(suite)
+
+    if state.get("cleanup_complete") is True:
+        return []
+
+    creators = {
+        case["case_id"]: case
+        for case in suite["cases"]
+        if case.get("capture_post_id")
+    }
+
+    cleanup_by_source = {
+        case["post_reference"]: case
+        for case in suite.get("cleanup_cases", [])
+    }
+
+    results = state.get("results")
+
+    if not isinstance(results, list):
+        raise ConfigError("복구 결과에 results 목록이 없습니다")
+
+    completed = set()
+
+    for record in state.get("cleanup_results", []):
+        verification = (
+            (record.get("response_summary") or {})
+            .get("verification", {})
+        )
+
+        if (
+            record.get("http_expectation_match") is True
+            and verification.get("post_inaccessible") is True
+        ):
+            completed.add(record.get("after_case"))
+
+    plan = []
+    seen = set()
+
+    for record in results:
+        cid = record.get("case_id")
+
+        if cid not in creators:
+            continue
+
+        if cid in seen:
+            raise ConfigError("복구 대상 생성 케이스가 중복되었습니다")
+        seen.add(cid)
+
+        marker = record.get("post_marker")
+
+        if marker is None:
+            if record.get("request_attempted"):
+                raise ConfigError(
+                    f"{cid}: 전송된 게시글의 복구 표식이 없습니다"
+                )
+            continue
+
+        if marker != aws_post_marker(run_id, cid):
+            raise ConfigError(
+                f"{cid}: 실행 ID와 게시글 표식이 일치하지 않습니다"
+            )
+
+        post_id = record.get("created_post_id")
+
+        if post_id is not None and (
+            type(post_id) is not int
+            or not 1 <= post_id <= 2**63 - 1
+        ):
+            raise ConfigError(f"{cid}: 저장된 게시글 ID 오류")
+
+        if cid in completed:
+            continue
+
+        plan.append({
+            "case_id": cid,
+            "auth_role": creators[cid]["auth_role"],
+            "marker": marker,
+            "saved_post_id": post_id,
+            "cleanup_case_id": cleanup_by_source[cid]["case_id"],
+        })
+
+    return plan
+
+
+def cleanup_post_shares(
+    session, post_id, target, budget, run_id,
+    prep_events, max_response_bytes, events,
+):
+    """표식 검증이 끝난 시험 게시글의 남은 공유를 해제한다."""
+
+    def read_share_ids():
+        request_id = str(uuid.uuid4())
+        trace_id = new_trace_id()
+        path = f"/posts/{post_id}/shares/"
+
+        detail, html = bounded_send(
+            session,
+            "GET",
+            target,
+            path,
+            budget,
+            request_id,
+            headers={RUN_ID_HEADER: run_id},
+            trace_id=trace_id,
+            max_response_bytes=min(max_response_bytes, 65536),
+            capture_html=True,
+        )
+
+        events.append({
+            "stage": "cleanup_share_lookup",
+            "path": path,
+            "http_status": detail["status"],
+            "request_id": request_id,
+            "trace_id": trace_id,
+        })
+
+        if detail["status"] != 200 or html is None:
+            raise ExecutionError("복구용 공유 목록 조회 실패")
+
+        if not isinstance(html, bytes) or len(html) > 65536:
+            raise ConfigError("복구용 공유 목록 크기 또는 형식 오류")
+
+        parser = ShareHtmlParser(post_id, "")
+
+        try:
+            parser.feed(html.decode("utf-8"))
+            parser.close()
+        except UnicodeError as exc:
+            raise ConfigError("복구용 공유 목록 UTF-8 오류") from exc
+
+        if not parser.has_share_list or parser.open_rows:
+            raise ConfigError("복구용 공유 목록 구조를 확인하지 못했습니다")
+
+        share_ids = []
+
+        for row in parser.rows:
+            if len(row["names"]) != 1 or not row["names"][0]:
+                raise ConfigError("복구용 공유 대상 식별 오류")
+
+            # 기존 파서로 같은 게시글의 POST 해제 경로인지 검증한다.
+            share_id = parse_share_id(
+                html, post_id, row["names"][0]
+            )
+
+            if share_id is None or share_id in share_ids:
+                raise ConfigError("복구용 공유 ID가 없거나 중복되었습니다")
+
+            share_ids.append(share_id)
+
+        return share_ids
+
+    share_ids = read_share_ids()
+
+    # 이미 해제된 상태라면 추가 POST 없이 완료한다.
+    if not share_ids:
+        return 0
+
+    for share_id in share_ids:
+        path = f"/posts/{post_id}/shares/{share_id}/revoke/"
+        csrf = csrf_for_post(
+            session,
+            target,
+            budget,
+            prep_events,
+            max_response_bytes,
+            "valid",
+            run_id,
+        )
+        request_id = str(uuid.uuid4())
+        trace_id = new_trace_id()
+
+        detail, _ = bounded_send(
+            session,
+            "POST",
+            target,
+            path,
+            budget,
+            request_id,
+            fields={"csrfmiddlewaretoken": csrf},
+            headers={
+                RUN_ID_HEADER: run_id,
+                "Origin": serialize_origin_header(target),
+                "X-CSRFToken": csrf,
+            },
+            trace_id=trace_id,
+            max_response_bytes=max_response_bytes,
+        )
+
+        events.append({
+            "stage": "cleanup_share_revoke",
+            "path": path,
+            "http_status": detail["status"],
+            "request_id": request_id,
+            "trace_id": trace_id,
+        })
+
+        if detail["status"] != 302:
+            raise ExecutionError("복구용 공유 해제 HTTP 기대값 불일치")
+
+    # 302 응답만으로 완료하지 않고 실제 목록에서 사라졌는지 확인한다.
+    if read_share_ids():
+        raise ExecutionError("복구 후에도 공유 관계가 남아 있습니다")
+
+    return len(share_ids)
 
 
 def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: dict,
@@ -1170,16 +2201,72 @@ def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: d
             if role != "anonymous" and not prepped.get(role):
                 prep_login(session, target, budget, role, run_id, prep_events, max_response_bytes)
                 prepped[role] = True
+            
             if "post_reference" in case:
-                post_id = created_post_ids.get(case["post_reference"])
+                ref = case["post_reference"]
+                post_id = created_post_ids.get(ref)
 
-                if post_id is None:
-                    raise ExecutionError("복구 대상 게시글 ID를 확인하지 못했습니다")
+                is_aws_post_cleanup = (
+                    target == canonical_origin(
+                        "https://orchestration-haven.cloud"
+                    )
+                    and case["path"] == "/posts/{post_id}/delete/"
+                )
+
+                if is_aws_post_cleanup:
+                    # 이번 실행에서 생성한 게시글만 찾는다.
+                    marker = aws_post_marker(run_id, ref)
+
+                    found_id = find_aws_post_by_marker(
+                        session,
+                        target,
+                        budget,
+                        run_id,
+                        marker,
+                    )
+
+                    if found_id is None:
+                        raise ExecutionError(
+                            "고유 표식의 게시글을 찾지 못했습니다. "
+                            "삭제 여부를 별도로 확인해야 합니다"
+                        )
+
+                    # 응답에서 얻은 ID와 목록에서 찾은 ID가
+                    # 다르면 다른 게시글을 삭제하지 않도록 중단한다.
+                    if post_id is not None and post_id != found_id:
+                        raise ExecutionError(
+                            "생성 응답 ID와 고유 표식 조회 ID가 "
+                            "일치하지 않아 복구를 중단합니다"
+                        )
+
+                    post_id = found_id
+
+                    record["verified_post_id"] = post_id
+                    record["verified_post_marker"] = marker
+
+                    record["share_cleanup_events"] = []
+                    record["revoked_share_count"] = cleanup_post_shares(
+                        session,
+                        post_id,
+                        target,
+                        budget,
+                        run_id,
+                        prep_events,
+                        max_response_bytes,
+                        record["share_cleanup_events"],
+                    )
+                    record["shares_absent_verified"] = True
+
+                elif post_id is None:
+                    raise ExecutionError(
+                        "복구 대상 게시글 ID를 확인하지 못했습니다"
+                    )
 
                 case["path"] = case["path"].replace(
                     "{post_id}", str(post_id)
                 )
                 record["path"] = safe_path_log(case["path"])
+
             if "share_reference" in case:
                 share_id = resolve_share_id(case, sessions, prepped, target, budget,
                                             run_id, prep_events, max_response_bytes)
@@ -1202,8 +2289,53 @@ def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: d
                                             "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],
                                             "headers": detail["headers"]}, transport_status="OK",
                           http_expectation_match=check_http_expected(detail, case["expected_app"], target_origin=target))
+            
             if not record["http_expectation_match"]:
                 complete = False
+
+            # AWS에서 이번 실행이 생성한 게시글을 삭제한 경우,
+            # 삭제 후 다시 조회하여 접근 차단 여부를 확인한다.
+            elif (
+                target == canonical_origin("https://orchestration-haven.cloud")
+                and case.get("post_reference")
+                and case["path"] == f"/posts/{post_id}/delete/"
+            ):
+                verify_path = f"/posts/{post_id}/"
+                verify_request_id = str(uuid.uuid4())
+                verify_trace_id = new_trace_id()
+                verify_timing = {"timestamp_utc": None}
+
+                verify_detail, _ = bounded_send(
+                    session,
+                    "GET",
+                    target,
+                    verify_path,
+                    budget,
+                    verify_request_id,
+                    headers={RUN_ID_HEADER: run_id},
+                    trace_id=verify_trace_id,
+                    max_response_bytes=max_response_bytes,
+                    on_send=lambda timestamp: verify_timing.update(timestamp_utc=timestamp),
+                )
+
+                inaccessible = verify_detail["status"] == 404
+
+                record["response_summary"]["verification"] = {
+                    "path": verify_path,
+                    "http_status": verify_detail["status"],
+                    "request_id": verify_request_id,
+                    "trace_id": verify_trace_id,
+                    "post_inaccessible": inaccessible,
+                    "verification_level": "HTTP_ONLY",
+                    "db_cleanup_verified": False,
+                    "file_cleanup_verified": False,
+                    "method": "GET",
+                    "timestamp_utc": verify_timing["timestamp_utc"],
+                }
+
+                if not inaccessible:
+                    complete = False
+
         except (ExecutionError, ConfigError, KeyboardInterrupt) as exc:
             record.update(transport_status="ERROR", verdict="ERROR",
                           response_summary={"error": "KeyboardInterrupt" if isinstance(exc, KeyboardInterrupt) else str(exc)})
@@ -1265,6 +2397,7 @@ def print_run_summary(state: dict) -> None:
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
+@member_password_scope
 def run(args) -> int:
     """승인한 대상의 고정 케이스를 순차 실행한다. HTTP 결과만으로 보안 PASS 금지."""
     # 1) 실행 전 검증: 대상이 allowlist와 정확히 일치해야 전송 가능.
@@ -1305,6 +2438,10 @@ def run(args) -> int:
     if {case["case_id"] for case in suite["cases"]} & {case["case_id"] for case in cleanup_cases}:
         raise ConfigError("확장된 시험 ID와 cleanup ID가 충돌합니다")
 
+    # Haven AWS 공유 환경은 실행 전에 복구 가능성을 검증한다.
+    if target == canonical_origin("https://orchestration-haven.cloud"):
+        validate_aws_cleanup_suite(suite)
+
     execution_cases = len(suite["cases"])
 
     phase_label = "전체" if phase is None else f"{phase}회차"
@@ -1328,7 +2465,11 @@ def run(args) -> int:
             "execution_cases": execution_cases, "cleanup_cases": len(cleanup_cases),
             "authenticated_roles": sorted(roles), "minimum_login_requests": 2 * len(roles),
             "minimum_http_requests_excluding_extra_preparation_and_cleanup": execution_cases + 2 * len(roles),
-            "share_lookup_case_count": sum("share_reference" in case for case in all_cases),
+            "share_lookup_case_count": sum(
+                "share_reference" in case
+                or "share_revoke_role" in case
+                for case in all_cases
+            ),
             "request_budget": args.max_requests, "max_duration_seconds": args.max_duration,
             "output_dir": str(args.output_dir),
             "count_note": "실행 전 하한이며 실제 요청 수가 아닙니다. 추가 CSRF·공유 ID 조회·조건부 복구도 같은 예산에 포함합니다.",
@@ -1339,6 +2480,167 @@ def run(args) -> int:
         return _execute_run(args, target, root, suite, total_cases, selected_cases)
 
 
+@member_password_scope
+def recover(args) -> int:
+    """중단된 AWS 시험의 복구 계획 확인 또는 실제 재복구."""
+    if args.dry_run == args.apply:
+        raise ConfigError("--dry-run 또는 --apply 중 하나만 선택하세요")
+
+    target = canonical_origin(args.target)
+    aws_target = canonical_origin(
+        "https://orchestration-haven.cloud"
+    )
+
+    if target != aws_target:
+        raise ConfigError("재복구는 Haven AWS 대상만 지원합니다")
+
+    allow = load_json(args.allowlist)
+    if (
+        not isinstance(allow, dict)
+        or not isinstance(allow.get("approved_origins"), list)
+    ):
+        raise ConfigError("allowlist 형식 오류")
+
+    approved = {
+        canonical_origin(origin)
+        for origin in allow["approved_origins"]
+    }
+
+    if target not in approved:
+        raise ConfigError("재복구 대상이 allowlist에 없습니다")
+
+    root = args.fixture_dir.resolve(strict=True)
+    suite = load_json(args.cases)
+    state = load_json(args.run_json)
+
+    validate_suite(suite, root)
+
+    phase = state.get("selected_phase")
+    suite = select_phase(suite, phase)
+    suite = expand_suite_variants(suite, root)
+
+    plan = build_aws_recovery_plan(state, suite)
+
+    print(json.dumps({
+        "run_id": state["run_id"],
+        "target": target,
+        "recovery_count": len(plan),
+        "required_roles": sorted({
+            item["auth_role"] for item in plan
+        }),
+        "recovery_plan": plan,
+    }, ensure_ascii=False, indent=2))
+
+    if args.dry_run:
+        print("DRY RUN: 로그인·삭제 요청을 전송하지 않았습니다.")
+        return 0
+
+    if not plan:
+        print("재복구 계획에 남은 게시글이 없습니다.")
+        return 0
+
+    if args.output_dir is None:
+        raise ConfigError("--apply에는 --output-dir이 필요합니다")
+
+    if args.output_dir.exists():
+        raise ConfigError("복구 결과 폴더가 이미 존재합니다")
+
+    validate_limits(args)
+
+    if any(
+        item["auth_role"] not in {
+            "member_a", "member_b", "member_c"
+        }
+        for item in plan
+    ):
+        raise ConfigError("지원하지 않는 복구 계정 역할입니다")
+
+    cleanup_map = {
+        case["case_id"]: case
+        for case in suite.get("cleanup_cases", [])
+    }
+
+    selected_cleanup = [
+        cleanup_map[item["cleanup_case_id"]]
+        for item in plan
+    ]
+
+    attempted = {
+        item["case_id"]
+        for item in plan
+    }
+
+    created_post_ids = {
+        item["case_id"]: item["saved_post_id"]
+        for item in plan
+        if item["saved_post_id"] is not None
+    }
+
+    args.output_dir.mkdir(parents=True, exist_ok=False)
+
+    budget = RequestBudget(args)
+    sessions = {}
+    prepped = {}
+    prep_events = []
+    cleanup_results = []
+
+    recovery_state = {
+        "schema_version": 1,
+        "source": "aws_recovery",
+        "source_run_json": str(args.run_json),
+        "run_id": state["run_id"],
+        "target_origin": target,
+        "started_utc": utc_now(),
+        "cleanup_complete": False,
+        "cleanup_results": cleanup_results,
+        "preparation_events": prep_events,
+        "recovery_count": len(plan),
+    }
+
+    recovery_state["cleanup_verification_level"] = "HTTP_ONLY"
+    recovery_state["db_cleanup_verified"] = False
+    recovery_state["file_cleanup_verified"] = False
+
+    try:
+        recovery_state["cleanup_complete"] = execute_cleanup(
+            cases=selected_cleanup,
+            attempted=attempted,
+            sessions=sessions,
+            prepped=prepped,
+            target=target,
+            budget=budget,
+            run_id=state["run_id"],
+            prep_events=prep_events,
+            fixture_root=root,
+            max_response_bytes=args.max_response_bytes,
+            results=cleanup_results,
+            created_post_ids=created_post_ids,
+        )
+    finally:
+        for session in sessions.values():
+            session.close()
+
+        recovery_state["ended_utc"] = utc_now()
+        recovery_state["total_http_requests_including_preparation"] = (
+            budget.count
+        )
+        recovery_state["http_responses_received"] = (
+            budget.responses_received
+        )
+
+        save_results(
+            args.output_dir,
+            recovery_state,
+            [],
+        )
+
+    print(
+        f"복구 결과: {args.output_dir / 'results.json'}"
+    )
+
+    return 0 if recovery_state["cleanup_complete"] else 2
+
+
 def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, selected_cases: int) -> int:
     """검증과 선택적 인증 정보 준비가 끝난 뒤 기존 실행 루프를 수행한다."""
     phase = getattr(args, "phase", None)
@@ -1346,9 +2648,32 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
     cleanup_cases = suite.get("cleanup_cases", [])
     args.output_dir.mkdir(parents=True, exist_ok=False)
     # 2) 실행 단위 ID와 전역 요청 예산을 생성한다.
+    
     run_id = str(uuid.uuid4())
-    budget = RequestBudget(args)
+
+    # AWS 공유 환경에서는 복구에 필요한 요청 수를 미리 예약한다.
+    aws_mode = target == canonical_origin(
+        "https://orchestration-haven.cloud"
+    )
+
+    cleanup_reserve = (
+        max(8, len(cleanup_cases) * 3 + 5)
+        if aws_mode and cleanup_cases
+        else 0
+    )
+
+    if cleanup_reserve >= args.max_requests:
+        raise ConfigError(
+            "AWS 복구용 요청을 예약할 수 없습니다. "
+            "--max-requests 값을 늘려주세요."
+        )
+
+    main_args = argparse.Namespace(**vars(args))
+    main_args.max_requests = args.max_requests - cleanup_reserve
+
+    budget = RequestBudget(main_args)
     sessions = {}
+
     prepped = {}
     prep_events = []
     state = {"schema_version": 1, "run_id": run_id, "suite_id": suite["suite_id"],
@@ -1364,6 +2689,12 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
         cleanup_results=[], cleanup_complete=None, cleanup_http_requests=0,
         test_http_requests=0, preparation_http_requests=0, http_responses_received=0,
     )
+
+    if aws_mode:
+        state["cleanup_verification_level"] = "HTTP_ONLY"
+        state["db_cleanup_verified"] = False
+        state["file_cleanup_verified"] = False
+
     records = []
     attempted = set()
     created_post_ids = {}
@@ -1371,24 +2702,50 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
     
     cleanup_done = False
     cleanup_http_requests = 0
+    cleanup_http_responses = 0
 
     def perform_cleanup_once():
-        nonlocal cleanup_done, cleanup_http_requests
+        nonlocal cleanup_done, cleanup_http_requests, cleanup_http_responses
 
         if cleanup_done:
             return
 
-        started = budget.count
+        # 로컬 시험은 기존 예산을 그대로 사용한다.
+        # AWS 시험은 예약한 요청 수와 독립된 실행 시간을 사용한다.
+        active_budget = budget
+
+        if aws_mode and cleanup_cases:
+            cleanup_args = argparse.Namespace(**vars(args))
+            cleanup_args.max_requests = cleanup_reserve
+            cleanup_args.max_duration = 300
+            cleanup_args.rate = min(args.rate, 1.0)
+
+            # 복구 시작 시점부터 시간을 계산한다.
+            active_budget = RequestBudget(cleanup_args)
+
+        started = active_budget.count
+        responses_started = active_budget.responses_received
+
         try:
             state["cleanup_complete"] = execute_cleanup(
-                cleanup_cases, attempted, sessions, prepped,
-                target, budget, run_id, prep_events,
-                root, args.max_response_bytes,
+                cleanup_cases,
+                attempted,
+                sessions,
+                prepped,
+                target,
+                active_budget,
+                run_id,
+                prep_events,
+                root,
+                args.max_response_bytes,
                 state["cleanup_results"],
                 created_post_ids=created_post_ids,
             )
         finally:
-            cleanup_http_requests += budget.count - started
+            cleanup_http_requests += active_budget.count - started
+            cleanup_http_responses += (
+                active_budget.responses_received - responses_started
+            )
             state["cleanup_http_requests"] = cleanup_http_requests
             cleanup_done = True
 
@@ -1486,6 +2843,30 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                         "timestamp_utc": utc_now(),
                     })
 
+                if "share_revoke_role" in case:
+                    resolved_post_id = created_post_ids.get(
+                        case["post_reference"]
+                    )
+
+                    share_id = resolve_created_share_id(
+                        resolved_post_id,
+                        role,
+                        case["share_revoke_role"],
+                        sessions,
+                        prepped,
+                        target,
+                        budget,
+                        run_id,
+                        prep_events,
+                        args.max_response_bytes,
+                    )
+
+                    case["path"] = case["path"].replace(
+                        "{share_id}", str(share_id)
+                    )
+                    record["path"] = safe_path_log(case["path"])
+                    record["resolved_share_id"] = share_id
+
                 if "share_reference" in case:
                     share_id = resolve_share_id(case, sessions, prepped, target, budget,
                                                 run_id, prep_events, args.max_response_bytes)
@@ -1496,6 +2877,31 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                 fields, headers, file_info = prepare_case_request(
                     sess, case, root, target, budget, run_id, prep_events, args.max_response_bytes
                 )
+
+                fields = bind_share_recipient(
+                    case, fields, sessions, prepped
+                )
+
+                # AWS 게시글 생성 전 복구 식별자를 디스크에 기록.
+                if aws_mode and case.get("capture_post_id"):
+                    marker = aws_post_marker(
+                        run_id, case["case_id"]
+                    )
+
+                    record["post_marker"] = marker
+
+                    state["pending_post_creation"] = {
+                        "case_id": case["case_id"],
+                        "auth_role": role,
+                        "marker": marker,
+                    }
+
+                    save_results(
+                        args.output_dir,
+                        state,
+                        records + [record],
+                    )
+
                 detail, _ = bounded_send(
                     sess, case["method"], target, case["path"], budget, record["request_id"],
                     fields=fields, file_info=file_info, headers=headers,
@@ -1530,6 +2936,10 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                         raise ExecutionError("중복된 생성 게시글 ID입니다")
 
                     created_post_ids[case["case_id"]] = post_id
+
+                    if aws_mode:
+                        state["pending_post_creation"] = None
+                        record["created_post_id"] = post_id
                 
                 # No WAF/app log evidence in run: do not invent a pass based on HTTP 403.
                 record["verdict"] = "UNKNOWN"
@@ -1555,10 +2965,20 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
             if record["request_attempted"]:
                 attempted.add(case.get("parent_case_id", case["case_id"]))
             state["test_http_requests"] = sum(row["request_attempted"] for row in records)
-            state["preparation_http_requests"] = (budget.count - state["test_http_requests"] - cleanup_http_requests)
-            state["http_responses_received"] = budget.responses_received
+            state["preparation_http_requests"] = (
+                budget.count
+                - state["test_http_requests"]
+                - (0 if aws_mode else cleanup_http_requests)
+            )
+            state["http_responses_received"] = (
+                budget.responses_received
+                + (cleanup_http_responses if aws_mode else 0)
+            )
             state["unexecuted_cases"] = len(suite["cases"]) - len(records)
-            state["total_http_requests_including_preparation"] = budget.count
+            state["total_http_requests_including_preparation"] = (
+                budget.count
+                + (cleanup_http_requests if aws_mode else 0)
+            )
             state["ended_utc"] = utc_now()
             if failed:
                 state["stopped_reason"] = f"case {case['case_id']}: " + record["response_summary"].get("error", "핵심 선행조건 HTTP 기대값 불일치")
@@ -1581,10 +3001,16 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
             state["preparation_http_requests"] = (
                 budget.count
                 - state["test_http_requests"]
-                - cleanup_http_requests
+                - (0 if aws_mode else cleanup_http_requests)
             )
-            state["http_responses_received"] = budget.responses_received
-            state["total_http_requests_including_preparation"] = budget.count
+            state["http_responses_received"] = (
+                budget.responses_received
+                + (cleanup_http_responses if aws_mode else 0)
+            )
+            state["total_http_requests_including_preparation"] = (
+                budget.count
+                + (cleanup_http_requests if aws_mode else 0)
+            )
             state["ended_utc"] = utc_now()
             state["unexecuted_cases"] = (
                 len(suite["cases"]) - len(records)
@@ -1790,6 +3216,89 @@ def plausible_event(event: dict, row: dict, origin: str) -> bool:
     )
 
 
+def correlation_cleanup_records(state):
+    """정리 기록을 검증하고 원래 순서를 유지한다."""
+    rows = state.get("cleanup_results", [])
+
+    if not isinstance(rows, list) or any(
+        not isinstance(row, dict) for row in rows
+    ):
+        raise ConfigError("정리 결과 목록 형식 오류")
+
+    return rows
+
+
+def correlation_verification_records(state):
+    """삭제 후 확인 GET을 독립적인 상관분석 기록으로 만든다."""
+    records = []
+
+    for parent in correlation_cleanup_records(state):
+        summary = parent.get("response_summary") or {}
+        verification = summary.get("verification")
+
+        if verification is None:
+            continue
+        if not isinstance(verification, dict):
+            raise ConfigError("삭제 후 확인 기록 형식 오류")
+
+        post_id = parent.get("verified_post_id")
+        if (
+            type(post_id) is not int
+            or not 1 <= post_id <= 2**63 - 1
+            or parent.get("method") != "POST"
+            or parent.get("path") != f"/posts/{post_id}/delete/"
+            or verification.get("path") != f"/posts/{post_id}/"
+            or verification.get("method", "GET") != "GET"
+        ):
+            raise ConfigError("삭제 요청과 확인 요청의 대상 불일치")
+
+        status = verification.get("http_status")
+        request_id = verification.get("request_id")
+        trace_id = verification.get("trace_id")
+
+        if (
+            type(status) is not int
+            or not 100 <= status <= 599
+            or not isinstance(request_id, str)
+            or not request_id.strip()
+            or extract_trace_root(trace_id) is None
+        ):
+            raise ConfigError("삭제 후 확인 요청의 응답·식별자 오류")
+
+        row = base_record(parent["run_id"], {
+            "case_id": parent["case_id"] + "-VERIFY",
+            "category": "cleanup_verification",
+            "method": "GET",
+            "path": verification["path"],
+            "auth_role": parent["auth_role"],
+            "expected_app": {"http_status": 404},
+            "expected_waf": "ALLOW",
+            "verification_mode": "http_only",
+        })
+
+        row.update(
+            parent_case_id=parent["case_id"],
+            execution_stage="cleanup_verification",
+            request_id=request_id,
+            trace_id=trace_id,
+            # 과거 기록에 없는 시각을 생성하거나 추정하지 않는다.
+            timestamp_utc=verification.get("timestamp_utc"),
+            http_status=status,
+            transport_status="OK",
+            request_attempted=True,
+            http_expectation_match=(status == 404),
+            response_summary={
+                "verification_level": "HTTP_ONLY",
+                "db_cleanup_verified": False,
+                "file_cleanup_verified": False,
+            },
+            verdict="UNKNOWN",
+        )
+        records.append(row)
+
+    return records
+
+
 def correlate(args) -> int:
     """실행 결과와 WAF·앱 로그를 Trace Root 기준으로 연결하고 검증한다."""
     state = load_json(args.run_json)
@@ -1797,6 +3306,10 @@ def correlate(args) -> int:
         raise ConfigError("올바른 run results JSON이 아닙니다")
     if not state["results"]:
         raise ConfigError("대조할 run 결과가 비어 있습니다")
+    cleanup_sources = correlation_cleanup_records(state)
+    verification_sources = correlation_verification_records(state)
+    test_count = len(state["results"])
+    cleanup_count = len(cleanup_sources)
     # 로그는 별도 로컬 파일을 읽으며 인터넷에서 직접 수집하지 않는다.
     waf = log_lines(args.waf_log)
     app = log_lines(args.app_log)
@@ -1805,7 +3318,7 @@ def correlate(args) -> int:
     args.output_dir.mkdir(parents=True, exist_ok=False)
     records = []
     origin = state.get("target_origin", "")
-    for src in state["results"]:
+    for src in (state["results"] + cleanup_sources + verification_sources):
         row = dict(src)
         if row.get("transport_status") != "OK":
             records.append(row)
@@ -1939,13 +3452,55 @@ def correlate(args) -> int:
                 row["verdict"] = "UNKNOWN"
 
         records.append(row)
-    out = {k: v for k, v in state.items() if k not in {"results", "preparation_events"}}
+    cleanup_end = test_count + cleanup_count
+    test_records = records[:test_count]
+    cleanup_records = records[test_count:cleanup_end]
+    verification_records = records[cleanup_end:]
+
+    out = {
+        k: v
+        for k, v in state.items()
+        if k not in {
+            "results",
+            "preparation_events",
+            "cleanup_results",
+            "cleanup_verification_results",
+        }
+    }
+    out["cleanup_results"] = cleanup_records
+    out["cleanup_verification_results"] = verification_records
     out["source"] = "correlated_from_local_logs"
     out["correlated_utc"] = utc_now()
     out["source_run_json"] = args.run_json.name
-    save_results(args.output_dir, out, records, correlation=True)
-    code = get_exit_code(records, incomplete=bool(state.get("stopped_reason")) or bool(state.get("unexecuted_cases")) or state.get("cleanup_complete") is False)
-    print(f"correlate 결과: {args.output_dir / 'correlated_results.json'} (종료 코드 {code})", file=sys.stderr)
+
+    save_results(
+        args.output_dir,
+        out,
+        test_records,
+        correlation=True,
+    )
+
+    # 실행되지 않은 정리는 판정 대상에서 제외한다.
+    # 실제 정리 오류·로그 부족·불일치는 종료 코드에 반영한다.
+    verdict_records = test_records + [
+        row for row in cleanup_records
+        if row.get("transport_status") != "SKIPPED"
+    ] + verification_records
+    code = get_exit_code(
+        verdict_records,
+        incomplete=(
+            bool(state.get("stopped_reason"))
+            or bool(state.get("unexecuted_cases"))
+            or state.get("cleanup_complete") is False
+        ),
+    )
+
+    print(
+        f"correlate 결과: "
+        f"{args.output_dir / 'correlated_results.json'} "
+        f"(종료 코드 {code})",
+        file=sys.stderr,
+    )
     return code
 
 
@@ -2007,6 +3562,920 @@ def extract_count_rule_ids(event: dict) -> list[str]:
     return list(dict.fromkeys(counts))
 
 
+def get_aws_identity(profile: str, region: str = "ap-northeast-2") -> dict:
+    """AWS CLI 프로필로 현재 인증된 계정과 사용자·역할을 확인한다."""
+    if (
+        not isinstance(profile, str)
+        or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", profile)
+    ):
+        raise ConfigError("AWS 프로필명 형식 오류")
+
+    if (
+        not isinstance(region, str)
+        or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-\d+", region)
+    ):
+        raise ConfigError("AWS 리전 형식 오류")
+
+    command = [
+        "aws",
+        "sts",
+        "get-caller-identity",
+        "--profile", profile,
+        "--region", region,
+        "--output", "json",
+        "--no-cli-pager",
+        "--no-cli-auto-prompt",
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            shell=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise ExecutionError(
+            "AWS CLI를 찾을 수 없습니다. 설치와 PATH를 확인하세요"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ExecutionError(
+            "AWS 인증 확인 시간이 초과되었습니다"
+        ) from exc
+    except OSError as exc:
+        raise ExecutionError(
+            "AWS CLI 프로세스를 실행하지 못했습니다"
+        ) from exc
+
+    if result.returncode != 0:
+        # 원본 stderr를 결과 파일이나 예외 메시지에 그대로 넣지 않는다.
+        raise ExecutionError(
+            f"AWS 인증 확인 실패 (종료 코드 {result.returncode}). "
+            f"터미널에서 aws sts get-caller-identity "
+            f"--profile {profile} --region {region}로 원인을 확인하세요"
+        )
+
+    try:
+        identity = json.loads(result.stdout)
+    except (ValueError, TypeError) as exc:
+        raise ExecutionError(
+            "AWS 인증 응답이 올바른 JSON이 아닙니다"
+        ) from exc
+
+    if not isinstance(identity, dict):
+        raise ExecutionError("AWS 인증 응답 형식 오류")
+
+    account = identity.get("Account")
+    arn = identity.get("Arn")
+    user_id = identity.get("UserId")
+
+    if (
+        not isinstance(account, str)
+        or not re.fullmatch(r"\d{12}", account)
+        or not isinstance(arn, str)
+        or not isinstance(user_id, str)
+        or not user_id.strip()
+    ):
+        raise ExecutionError("AWS 인증 응답의 필수 정보가 잘못되었습니다")
+
+    arn_parts = arn.split(":", 5)
+    if (
+        len(arn_parts) != 6
+        or arn_parts[0] != "arn"
+        or arn_parts[1] not in {"aws", "aws-cn", "aws-us-gov"}
+        or arn_parts[2] not in {"iam", "sts"}
+        or arn_parts[4] != account
+        or not arn_parts[5]
+    ):
+        raise ExecutionError("AWS 인증 응답의 ARN과 계정이 일치하지 않습니다")
+
+    return {
+        "profile": profile,
+        "region": region,
+        "account_id": account,
+        "arn": arn,
+        "user_id": user_id,
+    }
+
+
+def cloudwatch_window_from_run(state, *, padding_seconds=120):
+    """실행 시작·종료 시각을 CloudWatch 조회용 epoch 밀리초로 변환한다."""
+    if not isinstance(state, dict):
+        raise ConfigError("실행 결과 형식 오류")
+
+    if (
+        type(padding_seconds) is not int
+        or not 0 <= padding_seconds <= 300
+    ):
+        raise ConfigError("로그 조회 여유 시간은 0~300초 정수여야 합니다")
+
+    def parse_time(field):
+        value = state.get(field)
+
+        if not isinstance(value, str) or not value.strip():
+            raise ConfigError(f"실행 결과에 {field} 시각이 없습니다")
+
+        try:
+            parsed = datetime.fromisoformat(
+                value.replace("Z", "+00:00")
+            )
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise ValueError("timezone missing")
+
+            return parsed.astimezone(timezone.utc)
+        except (ValueError, OverflowError) as exc:
+            raise ConfigError(
+                f"{field}는 시간대가 포함된 ISO 시각이어야 합니다"
+            ) from exc
+
+    started = parse_time("started_utc")
+    ended = parse_time("ended_utc")
+
+    if ended < started:
+        raise ConfigError("실행 종료 시각이 시작 시각보다 빠릅니다")
+
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    def epoch_ms(value):
+        delta = value - epoch
+        return (
+            delta.days * 86400000
+            + delta.seconds * 1000
+            + delta.microseconds // 1000
+        )
+
+    started_ms = epoch_ms(started)
+    ended_ms = epoch_ms(ended)
+
+    if started_ms < 0:
+        raise ConfigError("실행 시각은 Unix epoch 이후여야 합니다")
+
+    padding_ms = padding_seconds * 1000
+    start_ms = max(0, started_ms - padding_ms)
+
+    # 종료 시각이 속한 밀리초까지 조회 범위에 포함한다.
+    end_ms = ended_ms + padding_ms + 1
+
+    if end_ms - start_ms > 60 * 60 * 1000:
+        raise ConfigError(
+            "여유 시간을 포함한 로그 조회 범위가 1시간을 초과합니다"
+        )
+
+    return {
+        "start_ms": start_ms,
+        "end_ms": end_ms,
+        "padding_seconds": padding_seconds,
+    }
+
+
+def fetch_cloudwatch_page(
+    profile, region, log_group,
+    start_ms, end_ms, *, next_token=None,
+):
+    """지정한 시간 범위의 CloudWatch 로그 한 페이지를 가져온다."""
+    if (
+        not isinstance(profile, str)
+        or not re.fullmatch(
+            r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", profile
+        )
+        or not isinstance(region, str)
+        or not re.fullmatch(
+            r"[a-z]{2}(?:-[a-z]+)+-\d+", region
+        )
+    ):
+        raise ConfigError("AWS 프로필명 또는 리전 형식 오류")
+
+    if (
+        not isinstance(log_group, str)
+        or log_group not in {
+            "aws-waf-logs-haven", "/haven/web"
+        }
+    ):
+        raise ConfigError("허용되지 않은 로그 그룹입니다")
+
+    if (
+        type(start_ms) is not int
+        or type(end_ms) is not int
+        or start_ms < 0
+        or end_ms <= start_ms
+        or end_ms - start_ms > 60 * 60 * 1000
+    ):
+        raise ConfigError(
+            "로그 조회 범위는 밀리초 정수이며 1시간 이하여야 합니다"
+        )
+
+    if next_token is not None and (
+        not isinstance(next_token, str)
+        or not next_token
+    ):
+        raise ConfigError("CloudWatch 다음 페이지 토큰 형식 오류")
+
+    request = {
+        "logGroupName": log_group,
+        "startTime": start_ms,
+        "endTime": end_ms,
+        "limit": 1000,
+    }
+    if next_token is not None:
+        request["nextToken"] = next_token
+
+    command = [
+        "aws",
+        "logs",
+        "filter-log-events",
+        "--cli-input-json", json.dumps(request),
+        "--profile", profile,
+        "--region", region,
+        "--no-paginate",
+        "--output", "json",
+        "--no-cli-pager",
+        "--no-cli-auto-prompt",
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            shell=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            timeout=60,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise ExecutionError("AWS CLI를 찾을 수 없습니다") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ExecutionError("CloudWatch 로그 조회 시간 초과") from exc
+    except UnicodeError as exc:
+        raise ExecutionError("CloudWatch 응답 인코딩 오류") from exc
+    except OSError as exc:
+        raise ExecutionError("AWS CLI 실행 실패") from exc
+
+    if result.returncode != 0:
+        raise ExecutionError(
+            f"CloudWatch 로그 조회 실패 "
+            f"(종료 코드 {result.returncode}, 그룹 {log_group})"
+        )
+
+    try:
+        page = json.loads(result.stdout)
+    except (ValueError, TypeError) as exc:
+        raise ExecutionError("CloudWatch 응답 JSON 오류") from exc
+
+    if (
+        not isinstance(page, dict)
+        or not isinstance(page.get("events"), list)
+    ):
+        raise ExecutionError("CloudWatch 이벤트 목록 형식 오류")
+
+    token = page.get("nextToken")
+    if token is not None and (
+        not isinstance(token, str) or not token
+    ):
+        raise ExecutionError("CloudWatch 응답 토큰 형식 오류")
+
+    for event in page["events"]:
+        if (
+            not isinstance(event, dict)
+            or not isinstance(event.get("eventId"), str)
+            or not event["eventId"]
+            or not isinstance(event.get("logStreamName"), str)
+            or not event["logStreamName"]
+            or type(event.get("timestamp")) is not int
+            or event["timestamp"] < 0
+            or not isinstance(event.get("message"), str)
+        ):
+            raise ExecutionError("CloudWatch 이벤트 필수 정보 오류")
+
+    return {
+        "events": page["events"],
+        "next_token": token,
+    }
+
+
+def collect_cloudwatch_events(
+    profile, region, log_group, start_ms, end_ms,
+    *, max_pages=20, max_events=10000,
+):
+    """마지막 페이지까지 조회하고 이벤트 ID 기준으로 중복을 제거한다."""
+    if (
+        type(max_pages) is not int
+        or not 1 <= max_pages <= 100
+        or type(max_events) is not int
+        or not 1 <= max_events <= 100000
+    ):
+        raise ConfigError("CloudWatch 수집 한도 설정 오류")
+
+    next_token = None
+    seen_tokens = set()
+    unique_events = {}
+
+    for page_number in range(1, max_pages + 1):
+        page = fetch_cloudwatch_page(
+            profile,
+            region,
+            log_group,
+            start_ms,
+            end_ms,
+            next_token=next_token,
+        )
+
+        for event in page["events"]:
+            # 스트림이 다른 이벤트를 잘못 합치지 않는다.
+            key = (event["logStreamName"], event["eventId"])
+
+            if key in unique_events:
+                if unique_events[key] != event:
+                    raise ExecutionError(
+                        "동일 CloudWatch 이벤트 ID의 내용이 충돌합니다"
+                    )
+                continue
+
+            if len(unique_events) >= max_events:
+                raise ExecutionError(
+                    "CloudWatch 이벤트 수집 한도를 초과했습니다"
+                )
+
+            unique_events[key] = dict(event)
+
+        next_token = page["next_token"]
+
+        # 이벤트가 0건이어도 종료 여부는 토큰으로 판단한다.
+        if next_token is None:
+            events = sorted(
+                unique_events.values(),
+                key=lambda event: (
+                    event["timestamp"],
+                    event["logStreamName"],
+                    event["eventId"],
+                ),
+            )
+            return {
+                "events": events,
+                "pages_fetched": page_number,
+                "event_count": len(events),
+                "pagination_complete": True,
+            }
+
+        if next_token in seen_tokens:
+            raise ExecutionError(
+                "CloudWatch 다음 페이지 토큰이 반복되었습니다"
+            )
+
+        seen_tokens.add(next_token)
+
+    raise ExecutionError(
+        "CloudWatch 페이지 수집 한도를 초과했습니다. "
+        "조회 시간 범위를 줄이거나 수집 한도를 조정하세요"
+    )
+
+
+def check_aws_account(args) -> int:
+    """AWS 프로필의 인증 계정이 예상한 프로젝트 계정인지 확인한다."""
+    expected_account = args.expected_account
+
+    if (
+        not isinstance(expected_account, str)
+        or not re.fullmatch(r"\d{12}", expected_account)
+    ):
+        raise ConfigError("예상 AWS 계정 ID는 12자리 숫자여야 합니다")
+
+    identity = get_aws_identity(
+        args.profile,
+        args.region,
+    )
+
+    if identity["account_id"] != expected_account:
+        raise ExecutionError(
+            "AWS 계정 불일치: "
+            f"예상={expected_account}, "
+            f"실제={identity['account_id']}"
+        )
+
+    print(json.dumps({
+        "source": "aws_identity_check",
+        "checked_utc": utc_now(),
+        "account_match": True,
+        **identity,
+    }, ensure_ascii=False, indent=2))
+
+    return 0
+
+
+def inspect_accounts(args) -> int:
+    """관리자 로그인 후 지정한 시험 계정의 ID와 활성 상태를 조회한다."""
+    validate_limits(args)
+    target = canonical_origin(args.target)
+
+    if target != canonical_origin(
+        "https://orchestration-haven.cloud"
+    ):
+        raise ConfigError(
+            "inspect-accounts는 Haven AWS 대상만 지원합니다"
+        )
+
+    allow = load_json(args.allowlist)
+    if (
+        not isinstance(allow, dict)
+        or not isinstance(allow.get("approved_origins"), list)
+    ):
+        raise ConfigError("allowlist 형식 오류")
+
+    approved = {
+        canonical_origin(origin)
+        for origin in allow["approved_origins"]
+    }
+    if target not in approved:
+        raise ConfigError("대상 origin이 allowlist에 없습니다")
+
+    usernames = args.username
+    if (
+        not usernames
+        or any(
+            not isinstance(name, str)
+            or not name
+            or name.strip() != name
+            for name in usernames
+        )
+        or len(set(usernames)) != len(usernames)
+    ):
+        raise ConfigError("조회 계정명이 비어 있거나 중복되었습니다")
+
+    run_id = str(uuid.uuid4())
+    budget = RequestBudget(args)
+    prep_events = []
+    accounts = []
+
+    with new_session() as session:
+        # 일반 시험 계정과 별도로 관리자 계정 정보를 입력받는다.
+        prep_login(
+            session,
+            target,
+            budget,
+            "operator",
+            run_id,
+            prep_events,
+            args.max_response_bytes,
+        )
+
+        for username in usernames:
+            account = find_admin_account(
+                session,
+                target,
+                budget,
+                run_id,
+                username,
+                prep_events,
+                args.max_response_bytes,
+            )
+
+            if any(
+                previous["account_id"] == account["account_id"]
+                for previous in accounts
+            ):
+                raise ExecutionError(
+                    "서로 다른 계정명이 같은 ID로 조회되었습니다"
+                )
+
+            accounts.append(account)
+
+    print(json.dumps({
+        "source": "aws_account_inspection",
+        "run_id": run_id,
+        "target_origin": target,
+        "inspected_utc": utc_now(),
+        "accounts": accounts,
+        "account_state_changed": False,
+        "total_http_requests": budget.count,
+    }, ensure_ascii=False, indent=2))
+
+    return 0
+
+
+def parse_cloudwatch_message(raw, *, allow_app_prefix=False):
+    """순수 JSON 또는 확인된 앱 스트림의 Gunicorn JSON을 해석한다."""
+    message = raw["message"]
+
+    try:
+        return json.loads(message)
+    except ValueError:
+        if not allow_app_prefix:
+            raise
+
+    stream = raw.get("logStreamName")
+    if (
+        not isinstance(stream, str)
+        or re.fullmatch(r"i-[0-9a-f]+/app", stream) is None
+    ):
+        raise ValueError("지원하지 않는 앱 로그 스트림")
+
+    match = re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T"
+        r"\d{2}:\d{2}:\d{2}(?:\.\d+)?"
+        r"(?:Z|[+-]\d{2}:\d{2}) "
+        r"[A-Za-z0-9_.-]+ gunicorn\[[0-9]+\]: "
+        r"(?P<payload>\{[^\r\n]*\})[ \t]*",
+        message,
+    )
+    if match is None:
+        raise ValueError("지원하지 않는 앱 로그 접두사")
+
+    return json.loads(match.group("payload"))
+
+
+def select_cloudwatch_run_logs(raw_events, state, *, allow_app_prefix=False):
+    """CloudWatch message를 해석하고 이번 시험의 Trace Root로 선별한다."""
+    if (
+        not isinstance(raw_events, list)
+        or not isinstance(state, dict)
+        or not isinstance(state.get("results"), list)
+        or not state["results"]
+    ):
+        raise ConfigError("로그 선별 입력 형식 오류")
+
+    expected_roots = set()
+    cleanup_rows = correlation_cleanup_records(state)
+    verification_rows = correlation_verification_records(state)
+
+    for row in state["results"] + cleanup_rows + verification_rows:
+        if not isinstance(row, dict):
+            raise ConfigError("실행 결과의 요청 기록 형식 오류")
+
+        root = extract_trace_root(row.get("trace_id"))
+        if root is None:
+            raise ConfigError(
+                "실행 결과에 유효한 Trace ID가 없는 요청이 있습니다"
+            )
+
+        if root in expected_roots:
+            raise ConfigError("실행 결과의 Trace ID가 중복되었습니다")
+
+        expected_roots.add(root)
+
+    selected = []
+    counts = {
+        "raw_events": len(raw_events),
+        "non_json": 0,
+        "non_object": 0,
+        "missing_trace": 0,
+        "other_trace": 0,
+        "selected": 0,
+    }
+
+    for raw in raw_events:
+        if (
+            not isinstance(raw, dict)
+            or not isinstance(raw.get("message"), str)
+        ):
+            raise ConfigError("CloudWatch 원본 이벤트 형식 오류")
+
+        try:
+            event = parse_cloudwatch_message(
+                raw,
+                allow_app_prefix=allow_app_prefix,
+            )
+        except ValueError:
+            # 지원하지 않는 텍스트 형식은 판정 근거로 사용하지 않는다.
+            counts["non_json"] += 1
+            continue
+
+        if not isinstance(event, dict):
+            counts["non_object"] += 1
+            continue
+
+        root = log_trace_root(event)
+
+        if root is None:
+            counts["missing_trace"] += 1
+            continue
+
+        if root not in expected_roots:
+            counts["other_trace"] += 1
+            continue
+
+        # run_id·시각·HTTP 상태의 충돌은 correlate에서 판정한다.
+        # 여기서 정상값으로 덮어쓰거나 충돌 로그를 제거하지 않는다.
+        selected.append(event)
+        counts["selected"] += 1
+
+    return {
+        "events": selected,
+        "counts": counts,
+    }
+
+
+def load_cloudwatch_collection(run_json, logs_dir):
+    """실행 결과와 수집 명세를 대조하고 원본 로그 두 개를 읽는다."""
+    state = load_json(run_json)
+
+    if (
+        not isinstance(state, dict)
+        or state.get("source") != "live_http_run"
+        or state.get("target_origin") != canonical_origin(
+            "https://orchestration-haven.cloud"
+        )
+        or not isinstance(state.get("results"), list)
+        or not state["results"]
+    ):
+        raise ConfigError("AWS 시험의 원본 results.json이 필요합니다")
+
+    run_id = state.get("run_id")
+    try:
+        if not isinstance(run_id, str):
+            raise ValueError("run_id")
+        if str(uuid.UUID(run_id)) != run_id:
+            raise ValueError("run_id")
+    except ValueError as exc:
+        raise ConfigError("실행 결과의 run_id 형식 오류") from exc
+
+    manifest = load_json(
+        safe_relative(logs_dir, "collection_manifest.json")
+    )
+
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schema_version") != 1
+        or manifest.get("source") != "cloudwatch_log_collection"
+    ):
+        raise ConfigError("CloudWatch 수집 명세 형식 오류")
+
+    if manifest.get("run_id") != run_id:
+        raise ConfigError("실행 결과와 수집 로그의 run_id 불일치")
+
+    if (
+        manifest.get("collection_complete") is not True
+        or manifest.get("error_type") is not None
+    ):
+        raise ConfigError("완료되지 않은 로그 수집 결과입니다")
+
+    account_id = manifest.get("account_id")
+    if (
+        not isinstance(account_id, str)
+        or not re.fullmatch(r"[0-9]{12}", account_id)
+    ):
+        raise ConfigError("수집 명세의 AWS 계정 ID 형식 오류")
+
+    window = manifest.get("window")
+    if not isinstance(window, dict):
+        raise ConfigError("수집 명세의 조회 시간 범위가 없습니다")
+
+    expected_window = cloudwatch_window_from_run(
+        state,
+        padding_seconds=window.get("padding_seconds"),
+    )
+    if window != expected_window:
+        raise ConfigError("실행 결과와 로그 조회 시간 범위 불일치")
+
+    groups = manifest.get("groups")
+    if not isinstance(groups, list) or len(groups) != 2:
+        raise ConfigError("WAF와 앱 로그 수집 정보가 모두 필요합니다")
+
+    expected_files = {
+        "aws-waf-logs-haven": "waf_events.jsonl",
+        "/haven/web": "app_events.jsonl",
+    }
+    raw_logs = {}
+
+    for group in groups:
+        if not isinstance(group, dict):
+            raise ConfigError("로그 그룹 명세 형식 오류")
+
+        name = group.get("log_group")
+
+        if (
+            not isinstance(name, str)
+            or name not in expected_files
+            or name in raw_logs
+            or group.get("file") != expected_files[name]
+            or group.get("pagination_complete") is not True
+            or type(group.get("pages_fetched")) is not int
+            or not 1 <= group["pages_fetched"] <= 100
+            or type(group.get("event_count")) is not int
+            or not 0 <= group["event_count"] <= 100000
+        ):
+            raise ConfigError("로그 그룹·파일·수집 건수 설정 오류")
+
+        path = safe_relative(logs_dir, expected_files[name])
+        events = log_lines(path)
+
+        if len(events) != group["event_count"]:
+            raise ConfigError("수집 명세와 로그 파일의 이벤트 건수 불일치")
+
+        raw_logs[name] = events
+
+    return {
+        "state": state,
+        "manifest": manifest,
+        "waf_events": raw_logs["aws-waf-logs-haven"],
+        "app_events": raw_logs["/haven/web"],
+    }
+
+
+def collect_logs(args) -> int:
+    """AWS 실행 결과의 시간 범위에 해당하는 WAF·앱 로그를 수집한다."""
+    if not re.fullmatch(r"[0-9]{12}", args.expected_account):
+        raise ConfigError("예상 AWS 계정 ID는 12자리 숫자여야 합니다")
+
+    state = load_json(args.run_json)
+
+    if (
+        not isinstance(state, dict)
+        or state.get("source") != "live_http_run"
+        or state.get("target_origin") != canonical_origin(
+            "https://orchestration-haven.cloud"
+        )
+        or not isinstance(state.get("results"), list)
+        or not state["results"]
+    ):
+        raise ConfigError("AWS 시험의 원본 results.json이 필요합니다")
+
+    run_id = state.get("run_id")
+    try:
+        if not isinstance(run_id, str):
+            raise ValueError("run_id")
+        if str(uuid.UUID(run_id)) != run_id:
+            raise ValueError("run_id")
+    except ValueError as exc:
+        raise ConfigError("실행 결과의 run_id 형식 오류") from exc
+
+    window = cloudwatch_window_from_run(
+        state,
+        padding_seconds=args.padding_seconds,
+    )
+
+    if args.output_dir.exists():
+        raise ConfigError("로그 출력 폴더가 이미 존재합니다")
+
+    identity = get_aws_identity(args.profile, args.region)
+    if identity["account_id"] != args.expected_account:
+        raise ExecutionError(
+            "AWS 계정 불일치: "
+            f"예상={args.expected_account}, "
+            f"실제={identity['account_id']}"
+        )
+
+    args.output_dir.mkdir(parents=True, exist_ok=False)
+
+    manifest = {
+        "schema_version": 1,
+        "source": "cloudwatch_log_collection",
+        "run_id": run_id,
+        "source_run_json": str(args.run_json.resolve()),
+        "profile": args.profile,
+        "region": args.region,
+        "account_id": identity["account_id"],
+        "started_utc": utc_now(),
+        "window": window,
+        "groups": [],
+        "collection_complete": False,
+        "error_type": None,
+    }
+
+    def write_manifest():
+        temporary = args.output_dir / "collection_manifest.json.tmp"
+        destination = args.output_dir / "collection_manifest.json"
+
+        temporary.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporary.replace(destination)
+
+    try:
+        write_manifest()
+
+        for group, filename in (
+            ("aws-waf-logs-haven", "waf_events.jsonl"),
+            ("/haven/web", "app_events.jsonl"),
+        ):
+            collected = collect_cloudwatch_events(
+                args.profile,
+                args.region,
+                group,
+                window["start_ms"],
+                window["end_ms"],
+            )
+
+            destination = args.output_dir / filename
+            temporary = args.output_dir / (filename + ".tmp")
+
+            with temporary.open(
+                "w", encoding="utf-8", newline="\n"
+            ) as output:
+                for event in collected["events"]:
+                    output.write(
+                        json.dumps(event, ensure_ascii=False) + "\n"
+                    )
+
+            temporary.replace(destination)
+
+            manifest["groups"].append({
+                "log_group": group,
+                "file": filename,
+                "event_count": collected["event_count"],
+                "pages_fetched": collected["pages_fetched"],
+                "pagination_complete": collected["pagination_complete"],
+            })
+            write_manifest()
+
+        manifest["collection_complete"] = True
+
+    except (
+        ConfigError, ExecutionError, OSError, KeyboardInterrupt
+    ) as exc:
+        manifest["error_type"] = type(exc).__name__
+        raise
+
+    finally:
+        manifest["ended_utc"] = utc_now()
+        write_manifest()
+
+    print(json.dumps({
+        "run_id": run_id,
+        "collection_complete": True,
+        "groups": manifest["groups"],
+        "manifest": str(
+            args.output_dir / "collection_manifest.json"
+        ),
+    }, ensure_ascii=False, indent=2))
+
+    return 0
+
+
+def correlate_cloudwatch(args) -> int:
+    """수집한 CloudWatch 로그를 검증·선별하고 기존 상관분석을 실행한다."""
+    if not re.fullmatch(r"[0-9]{12}", args.expected_account):
+        raise ConfigError("예상 AWS 계정 ID는 12자리 숫자여야 합니다")
+
+    if args.output_dir.exists():
+        raise ConfigError("상관분석 출력 폴더가 이미 존재합니다")
+
+    loaded = load_cloudwatch_collection(
+        args.run_json, args.logs_dir
+    )
+    manifest = loaded["manifest"]
+
+    if manifest["account_id"] != args.expected_account:
+        raise ConfigError("수집 로그의 AWS 계정이 예상 계정과 다릅니다")
+
+    selected = {
+        "waf": select_cloudwatch_run_logs(
+            loaded["waf_events"], loaded["state"]
+        ),
+        "app": select_cloudwatch_run_logs(
+            loaded["app_events"],
+            loaded["state"],
+            allow_app_prefix=True,
+        ),
+    }
+
+    args.output_dir.mkdir(parents=True, exist_ok=False)
+
+    for kind in ("waf", "app"):
+        path = args.output_dir / f"{kind}_selected.jsonl"
+        with path.open(
+            "w", encoding="utf-8", newline="\n"
+        ) as output:
+            for event in selected[kind]["events"]:
+                output.write(
+                    json.dumps(event, ensure_ascii=False) + "\n"
+                )
+
+    selection_report = {
+        "schema_version": 1,
+        "source": "cloudwatch_log_selection",
+        "run_id": loaded["state"]["run_id"],
+        "account_id": manifest["account_id"],
+        "source_run_json": str(args.run_json.resolve()),
+        "source_collection_manifest": str(
+            (args.logs_dir / "collection_manifest.json").resolve()
+        ),
+        "selected_utc": utc_now(),
+        "waf": selected["waf"]["counts"],
+        "app": selected["app"]["counts"],
+    }
+
+    (args.output_dir / "selection_summary.json").write_text(
+        json.dumps(
+            selection_report, ensure_ascii=False, indent=2
+        ),
+        encoding="utf-8",
+    )
+
+    # PASS/FAIL/UNKNOWN 판정과 종료 코드는 기존 함수를 그대로 사용한다.
+    return correlate(argparse.Namespace(
+        run_json=args.run_json,
+        waf_log=args.output_dir / "waf_selected.jsonl",
+        app_log=args.output_dir / "app_selected.jsonl",
+        output_dir=args.output_dir / "correlated",
+    ))
+
+
 def create_parser():
     """명령행 인터페이스 run / correlate 옵션 정의."""
     parser = argparse.ArgumentParser(description="Haven 승인된 요청 재현 / WAF·앱 로그 대조 CLI")
@@ -2026,11 +4495,115 @@ def create_parser():
     r.add_argument("--manual-checkpoints", action="store_true", help="계정 상태 변경 등 수동 체크포인트 허용")
     r.add_argument("--dry-run", action="store_true", help="입력·출력 폴더 생성·HTTP 없이 선택한 시험 계획만 검증")
     r.add_argument("--prompt-seed-password", action="store_true", help="로컬 127.0.0.1:8000 시험 계정의 공통 비밀번호를 한 번 가려서 입력")
+    
+    rec = commands.add_parser(
+        "recover",
+        help="중단된 AWS 시험의 재복구 계획 확인 및 실행"
+    )
+    rec.add_argument("--run-json", required=True, type=Path)
+    rec.add_argument("--target", required=True)
+    rec.add_argument("--allowlist", required=True, type=Path)
+    rec.add_argument("--cases", required=True, type=Path)
+    rec.add_argument(
+        "--fixture-dir", type=Path, default=Path("fixtures")
+    )
+    rec.add_argument("--output-dir", type=Path)
+
+    mode = rec.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--apply", action="store_true")
+
+    rec.add_argument("--timeout", type=float, default=10)
+    rec.add_argument("--max-requests", type=int, default=100)
+    rec.add_argument("--rate", type=float, default=1)
+    rec.add_argument("--max-duration", type=float, default=300)
+    rec.add_argument(
+        "--max-response-bytes",
+        type=int,
+        default=MAX_RESPONSE,
+    )
+
     c = commands.add_parser("correlate", help="기존 run 결과에 로컬 JSONL WAF/앱 로그를 연결")
     c.add_argument("--run-json", required=True, type=Path)
     c.add_argument("--waf-log", required=True, type=Path)
     c.add_argument("--app-log", required=True, type=Path)
     c.add_argument("--output-dir", required=True, type=Path)
+
+    inspect = commands.add_parser(
+        "inspect-accounts",
+        help="관리자 로그인 후 시험 계정 ID와 활성 상태 조회",
+    )
+    inspect.add_argument("--target", required=True)
+    inspect.add_argument(
+        "--allowlist", required=True, type=Path
+    )
+    inspect.add_argument(
+        "--username",
+        action="append",
+        required=True,
+        help="조회할 실제 계정명. 여러 계정은 옵션을 반복 지정",
+    )
+    inspect.add_argument("--timeout", type=float, default=10)
+    inspect.add_argument("--max-requests", type=int, default=100)
+    inspect.add_argument("--rate", type=float, default=1)
+    inspect.add_argument("--max-duration", type=float, default=300)
+    inspect.add_argument(
+        "--max-response-bytes",
+        type=int,
+        default=MAX_RESPONSE,
+    )
+
+    aws_check = commands.add_parser(
+        "aws-check",
+        help="AWS 프로필 인증 및 프로젝트 계정 일치 확인",
+    )
+    aws_check.add_argument("--profile", required=True)
+    aws_check.add_argument(
+        "--region", default="ap-northeast-2"
+    )
+    aws_check.add_argument(
+        "--expected-account",
+        required=True,
+        help="사용하려는 프로젝트 AWS 계정의 12자리 ID",
+    )
+
+    collect = commands.add_parser(
+        "collect-logs",
+        help="AWS 시험 결과의 시간 범위로 CloudWatch 로그 수집",
+    )
+    collect.add_argument(
+        "--run-json", required=True, type=Path
+    )
+    collect.add_argument("--profile", required=True)
+    collect.add_argument(
+        "--region", default="ap-northeast-2"
+    )
+    collect.add_argument(
+        "--expected-account", required=True
+    )
+    collect.add_argument(
+        "--output-dir", required=True, type=Path
+    )
+    collect.add_argument(
+        "--padding-seconds", type=int, default=120
+    )
+
+    cw = commands.add_parser(
+        "correlate-cloudwatch",
+        help="수집한 CloudWatch 로그를 선별하여 상관분석",
+    )
+    cw.add_argument(
+        "--run-json", required=True, type=Path
+    )
+    cw.add_argument(
+        "--logs-dir", required=True, type=Path
+    )
+    cw.add_argument(
+        "--expected-account", required=True
+    )
+    cw.add_argument(
+        "--output-dir", required=True, type=Path
+    )
 
     return parser
 
@@ -2040,7 +4613,19 @@ def main(argv=None) -> int:
     parser = create_parser()
     args = parser.parse_args(argv)
     try:
-        return run(args) if args.command == "run" else correlate(args)
+        if args.command == "run":
+            return run(args)
+        if args.command == "recover":
+            return recover(args)
+        if args.command == "inspect-accounts":
+            return inspect_accounts(args)
+        if args.command == "aws-check":
+            return check_aws_account(args)
+        if args.command == "collect-logs":
+            return collect_logs(args)
+        if args.command == "correlate-cloudwatch":
+            return correlate_cloudwatch(args)
+        return correlate(args)
     except KeyboardInterrupt:
         print("중단됨: 사용자가 Ctrl+C를 눌렀습니다", file=sys.stderr)
         return 2

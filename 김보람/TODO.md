@@ -30,7 +30,7 @@
 ### 4회차 · 7~8일차
 
 - [ ] 권한 허용/거부 결과와 잔여 비용을 최종 확인한다. 보존/종료 목록을 취합하고 별도 확인 후 각 자원 담당자가 종료하도록 관리한다.
-- [ ] 검증 결과를 아래에 기록하고 main 통합용 PR 제출
+- [ ] 검증 결과를 아래에 기록하고 main 통합용 PR 제출 (최종 4회차 검증·인계 결과 기록 및 병합 확인 대기)
 
 ## 인계·완료 기준
 
@@ -49,8 +49,8 @@
 |---|---|---|---|---|
 | 1 | 부분 완료 | **11/06:** 시험용 IAM 사용자 MFA·재로그인, 비용 조회 허용/정보 조회 거부 시험, 서울 리전 자원·크레딧 확인.<br>**11/08:** 루트 MFA·복구 연락처 확인. | [1회차](1~4회차/1회차.md), [결정 현황](민수_인계_결정현황.md), [PR #8](https://github.com/MinsooAhn02/Haven/pull/8) | 예비 MFA·복구 시험, 타 리전 자원 확인 |
 | 2 | IAM·S3 구성 완료 / 후속 실환경 시험 일부 완료 | **11/09~10:** 민수·민성 IAM 계정, SSM·PassRole·EC2/VPC 권한, 예산·알림, S3 백업 버킷과 정책 구성. IAM 시뮬레이터 허용·거부 4건 확인.<br>**11/13 민성님 보고:** S3 백업 및 격리 복원 성공(DB 13개 테이블 행 수 일치, 업로드 7개 SHA-256 일치). web-1 전용 IAM Role 전환 후 SSM Online 및 S3·CloudWatch·배포 동작 확인. 기존 공통 Role과 새 Web Role의 권한 범위는 구분해야 함. | [2회차](1~4회차/2회차.md), [JSON 정책](JSON/), [PR #29](https://github.com/MinsooAhn02/Haven/pull/29), [PR #91](https://github.com/MinsooAhn02/Haven/pull/91), [PR #98](https://github.com/MinsooAhn02/Haven/pull/98) | 민수님 개인 SSM 허용·거부 및 MFA 시험 증빙, 민성님 EC2 삭제 DryRun·타 대상 거부 시험 확인 |
-| 3 | 주요 실환경 검증 완료 / 일부 권한 시험 잔여 | **11/11~12:** SG 삭제 정책 범위 축소, Route 53·ALB·ACM·SES·WAF·CloudWatch IAM 보완, SES 도메인 DKIM 인증, 자원·종료 목록 및 누적 사용 요금 $2.72(11/12 조회) 기록. web-1 nginx·앱 로그의 CloudWatch 도착 확인(PR #76).<br>**11/13 민성님 시험:** 시험용 `haven-sg-test` 삭제 허용 1건, 운영용 SG 3개와 default SG 삭제 거부 4건(PR #98). web-1 전용 Role 교체·SSM Online 확인, WAF–ALB 연결 성공(단 `GetWebACLForResource` 거부 오류 잔여).<br>**11/13 메일 시험:** `noreply@orchestration-haven.cloud` 발신 정책 적용, Django 메일 수신 성공(EXT-03) 및 권한 거부 시 실패 표시 확인(EXT-04). SES 자체 `MessageRejected` 경로는 미시험. 혁민님 로그 조회·EC2/WAF 조회 허용 및 SSM 시작 거부 시험 기록 있음(PR #97). | [3회차 상세 기록](1~4회차/3회차.md), [SES 인증](SES_도메인_DKIM_인증_2026-11-11.md), [PR #76](https://github.com/MinsooAhn02/Haven/pull/76), [PR #97](https://github.com/MinsooAhn02/Haven/pull/97), [PR #98](https://github.com/MinsooAhn02/Haven/pull/98) | WAF `GetWebACLForResource` 거부 원인 보완·재시험, SES 자체 거부 경로 및 미확인 IAM 시험, 최신 비용 확인 |
-| 4 | 후속 검증 진행 / 최종 정리 대기 | **11/13 기준 팀 실행 결과:** SG 삭제 허용·거부, S3 격리 복원, web-1 역할 전환·SSM/로그/배포, Django 메일 수신·실패 표시, WAF–ALB 연결 등 확인된 결과를 인계 대상으로 정리. 이는 팀원 실행·보고 결과이며 보람이 각 AWS API를 직접 재시험했다는 뜻은 아님.<br>**미완료:** 종료 시점 자원별 보존·삭제 승인, 타 리전 자원·잔여 과금 및 최종 실사용액 확인, 일부 IAM 거부·오류 재시험. | [3회차 상세 기록](1~4회차/3회차.md), [자원·종료 목록](AWS_자원현황_종료확인목록_2026-11-11.md), [PR #91](https://github.com/MinsooAhn02/Haven/pull/91), [PR #98](https://github.com/MinsooAhn02/Haven/pull/98) | 자원 보존·종료 승인 및 담당자 인계, 실제 사용액·미해결 권한 시험 최종 확인 |
+| 3 | 주요 실환경 검증 완료 / 일부 권한 시험 잔여 | **11/11~12:** SG 삭제 정책 범위 축소, Route 53·ALB·ACM·SES·WAF·CloudWatch IAM 보완, SES 도메인 DKIM 인증, 자원·종료 목록 및 누적 사용 요금 $2.72(11/12 조회) 기록. web-1 nginx·앱 로그의 CloudWatch 도착 확인(PR #76).<br>**11/13 민성님 시험:** 시험용 `haven-sg-test` 삭제 허용 1건, 운영용 SG 3개와 default SG 삭제 거부 4건(PR #98). web-1 전용 Role 교체·SSM Online 확인, WAF–ALB 연결 성공(11/13 당시 `GetWebACLForResource` 조회 거부, **11/16 민성님 CLI 재시험 조회 성공**).<br>**11/13 메일 시험:** `noreply@orchestration-haven.cloud` 발신 정책 적용, Django 메일 수신 성공(EXT-03) 및 권한 거부 시 실패 표시 확인(EXT-04). SES 자체 `MessageRejected` 경로는 미시험. 혁민님 로그 조회·EC2/WAF 조회 허용 및 SSM 시작 거부 시험 기록 있음(PR #97). | [3회차 상세 기록](1~4회차/3회차.md), [SES 인증](SES_도메인_DKIM_인증_2026-11-11.md), [PR #76](https://github.com/MinsooAhn02/Haven/pull/76), [PR #97](https://github.com/MinsooAhn02/Haven/pull/97), [PR #98](https://github.com/MinsooAhn02/Haven/pull/98) | WAF 연결 상태 조회 재시험 성공(11/16, 민성님 보고). 남은 항목: SES 자체 거부 경로·기타 미확인 IAM 시험·최신 실사용 비용 확인 |
+| 4 | **최종 점검 대기** | 4회차는 최종 검증 단계. 권한 허용·거부 결과의 최종 대조, AWS 전체 잔여 비용 확인, 자원 보존·종료 승인 및 담당자별 종료 확인 **미완료**. 기존 3회차 재시험·정책 보완 결과는 회차별 상세 기록에 분리함. | [4회차 작업 기록](1~4회차/4회차.md), [자원·종료 목록](AWS_자원현황_종료확인목록_2026-11-11.md) | IAM 미확인 거부 시험, 최신 비용·크레딧·타 리전 자원, 보존·종료 승인 및 담당자 확인 후 4회차 최종 PR/병합 확인 |
 
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
@@ -69,7 +69,7 @@
 
 ### 미완료·다음에 진행
 - [x] AWS `minsung` 사용자에 `Haven-Minsung-Infra-Policy` 연결 확인 (4개 정책 화면)
-- [ ] 이민성 구축 스크립트의 EC2/VPC 권한·태그 조건 확인 및 실제 허용·거부 시험
+- [x] 이민성 구축 스크립트의 EC2/VPC 권한·태그 조건 확인 및 실제 허용·거부 시험 (11/10 실제 VPC·EC2 구축 성공, 태그 없는 EC2 생성 요청 및 공인 IP 자동 할당 거부 결과 확인; [2회차 기록](1~4회차/2회차.md), [민성 TODO](../이민성/TODO.md))
 - [x] `minsung` 사용자에 본인 MFA 등록용 인라인 정책 `Haven-Minsung-Self-MFA-Policy` 연결 확인(11/09 사용자 제공 IAM 화면)
 - [ ] 민성님 실제 MFA 등록·최초 로그인·IAM 허용/거부 시험 기록
 - [x] IAM 사용자 `minsoo` 생성 및 `Haven-Minsoo-SSM-Policy` 인라인 정책 연결(서울 `/haven/*` 읽기·쓰기, 사용자 작업 완료 보고)
@@ -199,7 +199,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [ ] 민성: Git Bash `aws login`, MFA·STS 계정 확인, #34 EC2 시작·중지 및 구축 실제 허용/거부 결과
 - [ ] 민수: Haven 태그 EC2 SSM 세션 접속 및 타 대상 거부, 본인 세션 종료/재개 검증
 - [ ] 민수: S3 백업/복원 실제 시험 및 경로·권한 오류 결과 공유
-- [ ] 보람: 시험 결과를 받아 IAM 정책 보완·필요시 재시험 및 프로젝트 종료 자원 목록 정리
+- [x] 보람: 시험 결과를 받아 IAM 정책 보완·필요시 재시험 및 프로젝트 종료 자원 목록 정리 (담당자 시험·재시험 기록 확인, IAM 보완 반영, [자원·종료 점검 목록](AWS_자원현황_종료확인목록_2026-11-11.md) 작성 완료. 최종 종료 승인·실행은 별도 대기)
 
 세부 내용은 [2회차 11/10 추가 기록](1~4회차/2회차.md) 참조. **구성 성공과 실제 서비스 접속 시험 성공을 혼동하지 않는다.**
 
@@ -211,7 +211,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 추가 요청 정책 2개를 개인 브랜치에 문서화하고 [PR #42](https://github.com/MinsooAhn02/Haven/pull/42)에 함께 제출: [13번 EC2 종료(삭제) 권한](JSON/13_Minsung_TerminateInstances_Policy.json), [14번 민성 SSM 세션 접속 권한](JSON/14_Minsung_SessionManager_Policy.json).
 - [ ] **AWS 실적용 확인:** 위 13·14번 정책이 `minsung`에게 실제 연결·저장됐는지 확인. GitHub PR만으로 AWS 정책은 바뀌지 않음.
 - [ ] **담당자 검증 대기:** 민성님의 Haven 서버 SSM 접속·비대상 접근 거부 시험, EC2 종료 권한 시험(실제 영구 삭제 전 민수님 승인), 21시 NAT/EIP 정리 결과 및 비용 확인.
-- **권한 범위 주의:** `TerminateInstances` 정책은 서울 리전 `Project=Haven`, `Owner=minsung` 태그가 모두 붙은 서버에만 허용하지만, 시험 서버뿐 아니라 실제 Haven 서버도 삭제할 수 있음.
+- **권한 범위 최신 확인:** 초기에는 `Project=Haven`, `Owner=minsung` 태그 조건만으로 운영 서버도 삭제 대상이 될 수 있었으나, **11/10 이후 AWS 실제 `Haven-Minsung-Delete-Policy`에는 `Name=haven-test*` 조건도 추가**되어 시험용 EC2로 제한됨. [13번 정책](JSON/13_Minsung_TerminateInstances_Policy.json)·[34번 통합 정책](JSON/34_Haven-Minsung-Delete-Policy.json) 참조. 단, 시험용 EC2 삭제 허용·운영 EC2 삭제 거부 실환경 시험은 미확인.
 
 ## 2026-11-10 민성 추가 권한 오류 및 SG 삭제 요청
 
@@ -219,18 +219,18 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 13번 [민성 EC2 삭제 IAM 정책](JSON/13_Minsung_TerminateInstances_Policy.json)의 태그 조건 재확인. 정책 JSON 조건은 일치하나 **AWS 사용자 실제 연결 여부는 미확인**.
 - [x] 민성님 요청 `haven-sg-test` SG 정리용 `ec2:DeleteSecurityGroup` 정책을 [15번 JSON](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)으로 추가. 서울 리전, `Project=Haven` 태그 SG만 허용하도록 제한.
 - [x] 위 추가 작업을 [PR #42](https://github.com/MinsooAhn02/Haven/pull/42)에 기록. AWS IAM 변경은 콘솔에서 별도 적용 필요.
-- [ ] AWS `minsung` 사용자에게 13·14·15번 인라인 정책 연결 여부 확인 후 실환경 `--dry-run` 허용/거부 시험 결과 민성님에게 요청.
-- [ ] SG에는 `Project=Haven` 태그 존재 여부를 확인하고, 실제 삭제는 민수님 승인 후 시험용 `haven-sg-test` 대상으로만 수행. 다른 Haven SG도 태그만 맞으면 정책상 삭제 가능하므로 주의.
+- [ ] **남은 확인:** 13·15번은 AWS 고객 관리형 `Haven-Minsung-Delete-Policy`(34번 통합 기록)에 반영·연결됨. SG 삭제 허용/거부는 11/13 민성님 시험 완료. **14번 SSM 정책의 별도 연결 확인과 EC2 영구 삭제 권한의 시험용 허용·운영용 거부 시험은 미확인**이므로 담당자 검증 필요.
+- [x] **11/13 민성님 SG 삭제 시험 완료:** `Project=Haven`·`Name=haven-sg-test` 태그를 갖춘 시험용 SG를 생성하여 `--dry-run` 권한 확인 후 실제 삭제 성공(허용 1건). 운영용 SG 3개와 기본 SG 1개는 `--dry-run`에서 삭제 거부 4건 확인. 현재 정책은 두 태그 조건을 모두 요구하며, 다른 정책을 통한 삭제 우회 가능성은 별도 미검증([3회차 기록](1~4회차/3회차.md)).
 
 ## 2026-11-10 민수님 추가 지시 — 시험용 EC2 삭제 범위 제한 (최신)
 
 - [x] **AWS 적용 확인:** IAM 사용자 `minsung` 권한 목록에 고객 관리형 정책 `Haven-Minsung-Delete-Policy` 연결됨(11/10 콘솔 캡처).
 - [x] **AWS JSON 저장 확인:** EC2 종료(`ec2:TerminateInstances`) 조건에 `Project=Haven`, `Owner=minsung`, `Name StringLike haven-test*` 적용(11/10 정책 JSON 조회 캡처). 이 조건이 없는 이전 13번 정책보다 범위를 좁힘.
-- [x] GitHub [13번 TerminateInstances 정책](JSON/13_Minsung_TerminateInstances_Policy.json)을 해당 Name 조건에 맞춰 갱신. [15번 SG 삭제 정책](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)은 `Project=Haven` 조건 유지. GitHub에서는 파일을 나눠 기록하지만 AWS 실제 정책 `Haven-Minsung-Delete-Policy`에는 두 작업이 한 정책에 포함됨.
-- [ ] **민성님 실제 검증 대기:** `haven-test*` 시험용 EC2 삭제 허용, `web-1`·`db-1` 삭제 거부(안전한 DryRun으로 확인), 시험용 SG `haven-sg-test` 삭제 권한 시험 결과 공유.
+- [x] GitHub [13번 EC2 삭제 정책](JSON/13_Minsung_TerminateInstances_Policy.json)에 `Name=haven-test*` 제한을 반영함. [15번 SG 삭제 정책](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)도 11/11에 `Project=Haven` **및** `Name=haven-sg-test` 조건으로 축소함. AWS 실제 고객 관리형 정책에는 두 작업이 함께 포함되어 있음([34번](JSON/34_Haven-Minsung-Delete-Policy.json)).
+- [ ] **민성님 EC2 삭제 권한 시험 대기:** `haven-test*` EC2 삭제 허용과 `web-1`·`db-1` 삭제 거부(DryRun) 근거 미확인. **SG 삭제 시험은 11/13 별도 완료:** `haven-sg-test` 삭제 허용 1건·운영/기본 SG 거부 4건([3회차 기록](1~4회차/3회차.md)).
 - [ ] 실제 시험용 EC2를 삭제할 때만 대상 Name·Instance ID 확인 후 해당 ID **하나만** 종료. `bash destroy.sh --delete` **사용 금지**.
-- [ ] 매일 21시 운영 종료는 별도 `bash night.sh`만 사용(EC2 중지 + NAT 삭제 + EIP 해제). 실제 실행 및 비용 결과는 민성님 확인.
-- **추가 주의:** 시험 전에는 정책 연결·JSON 저장과 실제 실행 성공을 구분한다. SG 삭제 정책은 `Project=Haven`이 붙은 운영 SG도 포함할 수 있어 대상 확인 필수.
+- [ ] 21시 운영 종료는 별도 `bash night.sh`를 사용(EC2 중지 + NAT 삭제 + EIP 해제). **민성님 11/10 21:02·11/11 21:14 실행 기록은 있으나**, 매일 운영 결과 및 최종 비용 확인까지 완료된 것은 아니므로 미완료 유지.
+- **추가 주의(최신):** 정책 연결·JSON 저장과 실제 실행 성공은 구분한다. SG 삭제 조건은 11/11 이후 `Project=Haven` **및** `Name=haven-sg-test`를 모두 요구하며 11/13 실환경 허용·거부 시험이 완료됨. 단, 다른 정책을 통한 우회 가능성은 별도 미검증.
 
 ## 2026-11-11 SG 삭제 IAM 정책 제한 — 실환경 적용 확인
 
@@ -238,9 +238,9 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] EC2 시험용 서버 영구 삭제 조건(`Project=Haven`, `Owner=minsung`, `Name=haven-test*`)은 유지.
 - [x] SG 삭제 허용(`ec2:DeleteSecurityGroup`)은 `Project=Haven` **및** `Name=haven-sg-test` **리소스 태그 둘 다 있는 대상**으로 좁힘. 기존 운영용 `haven-sg-web`, `haven-sg-db`, `haven-sg-alb` 이름만으로 허용하지 않음.
 - [x] GitHub [15번 SG 삭제 정책](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)에 새로운 태그 조건 반영. 이 파일은 15번 부분의 기록이며, 실제 AWS 고객 관리형 정책에는 EC2 종료 권한과 SG 삭제 권한이 **함께** 있음.
-- [x] **실행 시험 완료(11/13, 민성님 CLI 보고):** 시험용 `haven-sg-test` 삭제 허용 1건·운영 SG 및 default SG 삭제 거부 4건 확인. 시험용 `haven-sg-test`는 11/11 서울 리전 목록에 없었으며, 재생성은 확인되지 않음.
+- [x] **실행 시험 완료(11/13, 민성님 CLI 보고):** 시험용 `haven-sg-test`를 생성 후 `--dry-run` 허용 확인·실제 삭제 성공·NotFound 확인(허용 1건), 운영 SG 3개·default SG 삭제 `--dry-run` 거부 4건 확인. 11/11 기준 목록에 없던 시험용 SG를 11/13 새로 생성해 시험함.
 - [ ] **추가 안전 확인:** 다른 IAM 정책의 삭제 허용 및 SG 태그 수정 가능 범위를 점검해야 운영용 SG 삭제가 완전히 불가능하다고 결론 내릴 수 있음.
-- **주의:** 이 기록은 IAM **설정 저장 성공** 확인이며 실제 삭제 허용/거부 시험 완료로 간주하지 않음. 이미 삭제된 SG나 실제 AWS SG 자체는 수정하지 않음.
+- **주의:** 11/11 정책 편집은 **설정 저장 성공**이고, 11/13 민성님 별도 시험으로 **SG 삭제 허용·거부를 확인**함. EC2 영구 삭제 권한의 허용·거부 시험과는 구분함.
 
 ## 2026-11-11 오전 추가 기록 — Route 53 및 SES
 
@@ -248,19 +248,19 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 민성님이 `route53:CreateHostedZone` 실행 시 **identity-based policy 미허용(AccessDenied)** 오류를 공유함.
 - [x] AWS IAM 사용자 `minsung` 권한 목록에서 **`Haven-Minsung-Route53-...` 인라인 정책 연결** 확인(11/11 사용자 제공 IAM 콘솔 캡처).
 - [x] 요청에 맞는 최소 생성 액션 `route53:CreateHostedZone`, `Resource: "*"` 정책 JSON을 AWS에 입력·저장하고 같은 내용을 [16번 JSON](JSON/16_Haven-Minsung-Route53-Create.json)에 기록.
-- [ ] **민성님 실제 재시험 대기:** Route 53 호스팅 영역 생성 성공/실패 결과와 중복 생성 여부 확인. DNS 레코드 관리, ACM 검증 등에 추가 IAM 권한이 필요하면 구체적인 거부 오류를 받아 별도 검토.
+- [x] **민성님 실제 생성 성공 확인(11/11 10:42):** Route 53 호스팅 영역 생성 완료, 네임서버 4개 확인([3회차 기록](1~4회차/3회차.md)). **중복 생성 여부 및 개별 Route 53 조회 API 재시험은 별도 미확인**(아래 조회 권한 점검 항목 참고).
 - **담당 구분:** 도메인·DNS·ALB 연결은 민성님, 계정 IAM·추가 비용 기록은 보람 담당. 기존 도메인과 DNS 설정을 보람이 직접 수정하지 않음.
 
 ### SES 발신 주소 확인 및 메일 시험
 - [x] 서울 리전 SES에서 테스트용 발신 이메일 자격 증명 **확인됨(Verified)** 상태 확인.
 - [x] **SES 테스트 메일 발송·수신 확인**(단독 시험). 서비스 앱 연동 시험은 별도 진행 예정.
-- [x] Haven 정식 발신 주소(프로젝트 도메인 사용 여부)·발송 방식의 앱 적용 입력을 요찬님과 확정하고, 그 주소에 맞춘 EC2 Role의 `ses:SendEmail` 최소 권한 설정. **정식 서비스 발신 주소는 미확정**.
-- [x] 11/12(목) 요찬님과 실제 Django 이메일 발송·수신/실패 동작 검증 (SES 샌드박스 제한 여부 확인 포함).
+- [x] Haven 정식 발신 주소 `noreply@orchestration-haven.cloud` 적용, Web 전용 역할 `haven-ec2-web-role`의 `ses:SendEmail` 최소 권한 설정. **11/13 실제 시험 메일 발송·수신 성공**(EXT-03, [PR #117](https://github.com/MinsooAhn02/Haven/pull/117)).
+- [x] **11/13 실제 Django 이메일 시험 완료:** EXT-03 SES 발송·수신 성공, EXT-04 미허용 주소에 `AccessDeniedException` 발생·접수 없음 확인. SES 샌드박스 상태 확인([요찬 4회차 기록](../신요찬/4회차_앱_검증기록.md)).
 
 ### 다음 점검
-- [ ] 민성님 SSM Session Manager 실제 접속 및 권한 거부 시험 결과 수신.
+- [ ] **민성님 SSM 최종 확인:** Haven 서버 SSM 실제 세션 접속 성공은 담당자 실행 기록에서 확인됨. **비허용 대상 접속 거부 시험은 미확인**이므로 근거 수신 후 완료 처리.
 - [x] WAF·CloudWatch Logs 권한은 담당자 요청 시 확인·최소 범위 보완.
-- [ ] 11/13 종료 시 지울 자원 목록 및 실사용액 재확인.
+- [ ] **11/13 종료 대상·비용 확인:** [자원·종료 확인 목록](AWS_자원현황_종료확인목록_2026-11-11.md)에 11/13 후속 현황 반영 완료(실제 종료·승인 아님). **11/13 실사용액 재조회는 미확인**이므로 비용 확인 대기.
 
 ## 2026-11-11 Route 53 호스팅 영역 조회 권한 — AWS 적용 및 민성 인계
 
@@ -269,7 +269,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 별도 **고객 관리형 정책** `Haven-Minsung-Route53-Read` 생성 성공 및 IAM 사용자 `minsung`에게 **직접 정책 연결** 완료(사용자 확인).
 - [x] [17번 Route 53 조회 정책](JSON/17_Haven-Minsung-Route53-Read.json)에 AWS에 입력한 JSON 기록. `GetHostedZoneCount`, `ListHostedZones`, `ListHostedZonesByName` 및 특정 호스팅 영역 `Z08342321QNIZCEME3KGF`에 대한 `GetHostedZone`, `ListResourceRecordSets` 조회만 허용. DNS 레코드 변경·삭제 권한은 추가하지 않음.
 - [x] 민성님이 **호스팅 영역 생성 완료**, Route 53 네임서버 4개를 공유했다고 보고함(11/11 10:42). 도메인 등록업체 NS 위임 및 외부 DNS 정상 응답까지 완료했다는 의미는 아님.
-- [ ] **담당자 검증 대기:** 민성님이 `GetHostedZoneCount` 및 호스팅 영역 조회를 다시 수행한 결과/추가 거부 오류 공유. 생성 완료 보고와 개별 API 조회 권한 시험을 구분함.
+- [ ] **Route 53 개별 조회 재시험 대기:** 민성님 호스팅 영역 생성·DNS 연결 성공은 별도 확인됨. 다만 `GetHostedZoneCount` 및 개별 조회 API의 직접 재시험 결과·추가 거부 오류는 미확인([3회차 기록](1~4회차/3회차.md)).
 - **담당:** 민성님=호스팅 영역·DNS 후속 설정 및 검증 / 보람=권한 생성·연결·기록.
 
 ## 2026-11-11 3회차 ALB·HTTPS 민성 IAM 추가 권한 — AWS 적용 기록
@@ -281,9 +281,9 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 해당 고객 관리형 정책을 JSON으로 편집·저장 완료했다고 사용자 확인. AWS 권한 요약 화면에서 Certificate Manager, ELB/ELB v2, IAM, Route 53 항목 표시 확인.
 - [x] AWS에 입력·저장한 정책 JSON을 [18번 파일](JSON/18_Haven-Minsung-ALB-ACM-DNS-Policy.json)에 동일하게 기록.
 - **권한 범위:** ELB는 서울 `ap-northeast-2`, Haven 접두어 `haven-*`와 요청/리소스의 `Project=Haven` 태그를 조건으로 설정. ACM 요청은 `Project=Haven`, `Owner=minsung` 요청 태그 조건. Route 53 변경은 호스팅 영역 `Z08342321QNIZCEME3KGF`로 제한, 단 `route53:GetChange` 조회는 AWS change ARN 사용.
-- [ ] **민성님 실제 검증 대기:** ALB·ACM 읽기, 인증서 요청·태그, ALB 생성·리스너 생성, DNS 변경 권한, 서비스 연결 역할 자동 생성 성공/거부와 추가 오류 공유. 저장 성공만으로 모든 API 호출 성공을 보장하지 않음.
-- [ ] **삭제는 민수님 확인 후에만:** 권한에 ELB DeleteListener/TargetGroup/LoadBalancer를 포함했어도 실제 삭제 실행은 별도 승인 및 대상 식별 후 진행.
-- **주의:** 새 정책은 유효성/동작 시뮬레이터 및 실제 허용·거부 시험이 아직 검증되지 않음. 세부 조건이 API 호출 시 적용되지 않거나 권한 부족이 추가로 나올 수 있으며 그 경우 최소 수정 필요. WAF 권한은 미추가.
+- [ ] **민성님 추가 권한 검증:** ALB·인증서·리스너·DNS 연결은 11/11 실제 성공. 서비스 연결 역할 등 개별 권한의 허용·거부 시험은 미확인.
+- [ ] **삭제는 조장 승인 후에만:** ALB·리스너·대상 그룹 삭제는 대상 확인 및 별도 승인 후 진행.
+- **주의:** ALB·HTTPS 실제 구축은 성공했지만 모든 IAM 권한의 개별 허용·거부 시험이 끝난 것은 아님. WAF 권한은 이후 별도 정책으로 보완함.
 
 ## 2026-11-11 민성 ALB 생성 중 EC2 조회 권한 추가
 
@@ -291,7 +291,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] AWS 고객 관리형 정책 `Haven-Minsung-Infra-Policy`의 `ReadEC2InSeoul`에 `ec2:GetSecurityGroupsForVpc`를 추가. 기존 `ec2:Describe*` 및 `aws:RequestedRegion=ap-northeast-2` 조건 유지(보람 AWS JSON 편집 화면 확인).
 - [x] AWS 정책 편집 후 권한 요약 화면 확인(보람 제공 캡처). **저장 완료는 보람의 확인 기준으로 기록**, 실제 EC2 조회·ALB 생성 성공은 민성님 시험이 필요.
 - [x] GitHub [12번 인프라 정책](JSON/12_Minsung_Infra_Policy.json)에 동일 변경 반영. 이미 `minsung`에게 연결된 고객 관리형 정책이므로 새 연결 작업은 필요하지 않음.
-- [ ] **민성님 재시험 대기:** `CreateLoadBalancer` 재시도 및 결과 공유. 추가 오류가 있으면 정확한 거부 액션을 확인 후 최소 권한으로 보완.
+- [x] **민성님 재시험 완료(11/11):** `CreateLoadBalancer` 재시도 성공, ALB·리스너·HTTPS 연결 확인.
 - **참고:** 기존 `ec2:Describe*`에 `ec2:DescribeAccountAttributes`·`ec2:DescribeInternetGateways`·`ec2:DescribeAddresses`가 포함되므로 별도 추가하지 않음.
 
 
@@ -380,8 +380,5 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 ## 민성's comment · 2026-11-16 오후 · 병합 정리와 남은 일
 
 - **병합됨:** #111, #113, #115, #118, #119, #121. 27번에서 `DescribeInstances`·`DescribeSubnets` 제거, 혁민 20번 `/haven/db` 읽기 추가, 계정 번호 변수화, DB 로그 수집량(30일 약 10 MB)이 main에 들어갔다.
-- **남은 것:**
-  1. #121의 DB 로그 비용을 요금표 기준 금액으로 한 줄 적는다(지금은 용량과 "저장 부담은 낮다"만 있다).
-  2. `김보람/JSON/02·04·06·07·08`에 남은 `${AWS_ACCOUNT_ID}`를 `${ACCOUNT_ID}`로 통일한다.
-  3. 12번이 기대는 `ConfigureHavenInfrastructureInSeoul`(`Resource: *`)의 범위를 한 번 확인한다.
-  4. 시험 메일이 스팸함으로 간 건(DKIM은 pass, 구민철 #117)에 대해 DMARC·SES 사용자 지정 MAIL FROM 설정 의견을 남긴다. 설정할지는 조장이 정한다.
+- **11/17 조장 요청 후속 처리:** DB 로그 예상 비용(월 약 $0.008, 추정치) 기록 및 JSON 02·04·06·07·08 변수명 통일 완료. 12번 IAM `Resource: "*"` 범위는 확인 후 [민성님 검토 요청](https://github.com/MinsooAhn02/Haven/pull/127#issuecomment-6935037215) 완료(수정 결정 대기). 시험 메일 스팸 분류 건은 [#117 의견 전달](https://github.com/MinsooAhn02/Haven/pull/117#issuecomment-6935371122) 완료(재수신 및 AWS 적용 결정 대기). 세부 내용은 [3회차 작업 기록](1~4회차/3회차.md)에 기재함.
+- **계속 미완료:** 시험용 EC2 삭제 허용·운영 EC2 거부 검증, AWS 최종 사용액·타 리전·잔여 과금 확인, 보존·종료 승인 및 실제 종료 확인. 4회차 완료 처리하지 않음.

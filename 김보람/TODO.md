@@ -281,9 +281,9 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 해당 고객 관리형 정책을 JSON으로 편집·저장 완료했다고 사용자 확인. AWS 권한 요약 화면에서 Certificate Manager, ELB/ELB v2, IAM, Route 53 항목 표시 확인.
 - [x] AWS에 입력·저장한 정책 JSON을 [18번 파일](JSON/18_Haven-Minsung-ALB-ACM-DNS-Policy.json)에 동일하게 기록.
 - **권한 범위:** ELB는 서울 `ap-northeast-2`, Haven 접두어 `haven-*`와 요청/리소스의 `Project=Haven` 태그를 조건으로 설정. ACM 요청은 `Project=Haven`, `Owner=minsung` 요청 태그 조건. Route 53 변경은 호스팅 영역 `HOSTED_ZONE_ID_MASKED`로 제한, 단 `route53:GetChange` 조회는 AWS change ARN 사용.
-- [ ] **민성님 실제 검증 대기:** ALB·ACM 읽기, 인증서 요청·태그, ALB 생성·리스너 생성, DNS 변경 권한, 서비스 연결 역할 자동 생성 성공/거부와 추가 오류 공유. 저장 성공만으로 모든 API 호출 성공을 보장하지 않음.
-- [ ] **삭제는 민수님 확인 후에만:** 권한에 ELB DeleteListener/TargetGroup/LoadBalancer를 포함했어도 실제 삭제 실행은 별도 승인 및 대상 식별 후 진행.
-- **주의:** 새 정책은 유효성/동작 시뮬레이터 및 실제 허용·거부 시험이 아직 검증되지 않음. 세부 조건이 API 호출 시 적용되지 않거나 권한 부족이 추가로 나올 수 있으며 그 경우 최소 수정 필요. WAF 권한은 미추가.
+- [ ] **민성님 추가 권한 검증:** ALB·인증서·리스너·DNS 연결은 11/11 실제 성공. 서비스 연결 역할 등 개별 권한의 허용·거부 시험은 미확인.
+- [ ] **삭제는 조장 승인 후에만:** ALB·리스너·대상 그룹 삭제는 대상 확인 및 별도 승인 후 진행.
+- **주의:** ALB·HTTPS 실제 구축은 성공했지만 모든 IAM 권한의 개별 허용·거부 시험이 끝난 것은 아님. WAF 권한은 이후 별도 정책으로 보완함.
 
 ## 2026-11-11 민성 ALB 생성 중 EC2 조회 권한 추가
 

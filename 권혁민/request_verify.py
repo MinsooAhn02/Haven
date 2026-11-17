@@ -1920,7 +1920,11 @@ def save_results(outdir: Path, state: dict, records: list, *, correlation=False)
         json.dump(state, fh, ensure_ascii=False, indent=2)
     temp.replace(jsonpath)
     with csvpath.open("w", encoding="utf-8-sig", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=RESULT_FIELDS + ["http_expectation_match", "verdict"], extrasaction="ignore")
+        w = csv.DictWriter(
+            fh,
+            fieldnames=RESULT_FIELDS + ["count_rule_ids", "http_expectation_match", "verdict"],
+            extrasaction="ignore",
+        )
         w.writeheader()
         for record in (
             records
@@ -1930,6 +1934,8 @@ def save_results(outdir: Path, state: dict, records: list, *, correlation=False)
             row = {**record}
             row["expected_app"] = json.dumps(row["expected_app"], ensure_ascii=False)
             row["response_summary"] = json.dumps(row["response_summary"], ensure_ascii=False)
+            # WAF Count 매칭 규칙은 상관분석 뒤에만 있으므로, 없으면 빈 칸으로 둔다.
+            row["count_rule_ids"] = ";".join(row.get("count_rule_ids") or [])
             w.writerow(row)
 
 

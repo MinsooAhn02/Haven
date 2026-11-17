@@ -3962,7 +3962,6 @@ def test_failed_checkpoint_cleanup_stops_remaining_cases(
 # M2: post_reference는 허용된 경로에서만 사용
 @pytest.mark.parametrize("path", [
     "/posts/{post_id}/",
-    "/posts/{post_id}/shares/",
     "/posts/{post_id}/attachments/extra/",
 ])
 def test_post_reference_rejects_unsupported_paths(path):
@@ -4237,3 +4236,2812 @@ def test_capture_rejects_malformed_expected_app(expected):
             phase2_make_suite([case]),
             ROOT / "fixtures",
         )
+
+
+def test_aws_cleanup_suite_valid():
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+
+    cli.validate_aws_cleanup_suite(suite)
+
+
+def test_aws_cleanup_suite_rejects_missing_cleanup():
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+
+    suite["cleanup_cases"] = []
+
+    with pytest.raises(cli.ConfigError):
+        cli.validate_aws_cleanup_suite(suite)
+
+
+def test_aws_cleanup_suite_rejects_fixed_post_mutation():
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+
+    suite["cases"][1]["path"] = "/posts/1/attachments/"
+
+    with pytest.raises(cli.ConfigError):
+        cli.validate_aws_cleanup_suite(suite)
+
+
+@pytest.mark.parametrize(
+    "get_status, expected_complete",
+    [
+        (404, True),
+        (200, False),
+    ],
+)
+def test_aws_cleanup_verifies_post_inaccessible(
+    monkeypatch, get_status, expected_complete
+):
+    # 공유 정리 자체는 별도 테스트에서 검증한다.
+    monkeypatch.setattr(
+        cli,
+        "cleanup_post_shares",
+        lambda *args, **kwargs: 0,
+    )
+    
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    cleanup_case = suite["cleanup_cases"][0]
+
+    budget = cli.RequestBudget(
+        Namespace(
+            max_requests=10,
+            rate=5,
+            max_duration=60,
+            timeout=3,
+        )
+    )
+
+    session = cli.new_session()
+    session.cookies.set("csrftoken", "synthetic-csrf")
+
+    sent = []
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        budget.begin()
+        sent.append((method, path))
+        on_send = kwargs.get("on_send")
+        if on_send:
+            on_send(
+                "2026-11-16T01:49:44.000+00:00"
+                if method == "POST"
+                else "2026-11-16T01:49:46.000+00:00"
+            )
+
+        status = 302 if method == "POST" else get_status
+
+        return phase2_detail(status), None
+
+    
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    # 6-3단계에서 추가한 게시글 표식 조회를 모의 처리한다.
+    # 이번 테스트는 삭제 후 404 검증이 목적이므로
+    # 표식 조회는 정상적으로 ID 17을 반환하도록 설정한다.
+    def fake_lookup(session, target, budget, run_id, marker):
+        assert marker == cli.aws_post_marker(
+            run_id, "AWS-SETUP-A-POST"
+        )
+        return 17
+
+    monkeypatch.setattr(
+        cli, "find_aws_post_by_marker", fake_lookup
+    )
+
+    results = []
+
+    complete = cli.execute_cleanup(
+        cases=[cleanup_case],
+        attempted={"AWS-SETUP-A-POST"},
+        sessions={"member_a": session},
+        prepped={"member_a": True},
+        target=cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        budget=budget,
+        run_id="synthetic-test-run",
+        prep_events=[],
+        fixture_root=ROOT / "fixtures",
+        max_response_bytes=cli.MAX_RESPONSE,
+        results=results,
+        created_post_ids={"AWS-SETUP-A-POST": 17},
+    )
+
+    assert complete is expected_complete
+
+    assert sent == [
+        ("POST", "/posts/17/delete/"),
+        ("GET", "/posts/17/"),
+    ]
+
+    verification = results[0]["response_summary"]["verification"]
+
+    assert verification["http_status"] == get_status
+    assert verification["post_inaccessible"] is expected_complete
+    assert verification["method"] == "GET"
+    assert verification["timestamp_utc"] == (
+        "2026-11-16T01:49:46.000+00:00"
+    )
+    assert verification["timestamp_utc"] != results[0]["timestamp_utc"]
+    assert verification["request_id"] != results[0]["request_id"]
+    assert verification["trace_id"] != results[0]["trace_id"]
+
+    session.close()
+
+
+def test_aws_post_creation_adds_unique_marker(monkeypatch):
+    monkeypatch.setattr(
+        cli, "csrf_for_post",
+        lambda *args, **kwargs: "test-csrf"
+    )
+
+    case = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )["cases"][0]
+
+    run_id = "11111111-2222-4333-8444-555555555555"
+
+    with cli.new_session() as session:
+        fields, headers, file_info = cli.prepare_case_request(
+            session,
+            case,
+            ROOT / "fixtures",
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            run_id,
+            [],
+            cli.MAX_RESPONSE,
+        )
+
+    marker = cli.aws_post_marker(
+        run_id, "AWS-SETUP-A-POST"
+    )
+
+    assert fields["title"].startswith(marker + " ")
+    assert len(fields["title"]) <= 200
+    assert fields["body"]
+    assert file_info is None
+
+
+def test_aws_post_parser_finds_actual_id():
+    html = """
+    <ul class="record-list">
+      <li class="record-row">
+        <h2 class="record-title">[HAVEN-AWS:test:CREATE] Test</h2>
+        <a class="record-link" href="/posts/57/">Open</a>
+      </li>
+    </ul>
+    <span class="page-count">1 / 1 페이지</span>
+    """.encode("utf-8")
+
+    rows, pages = cli.parse_aws_post_page(html, 1)
+
+    assert rows == [
+        ("[HAVEN-AWS:test:CREATE] Test", 57)
+    ]
+    assert pages == 1
+
+
+def test_aws_post_parser_rejects_invalid_link():
+    html = """
+    <ul class="record-list">
+      <li class="record-row">
+        <h2 class="record-title">Test</h2>
+        <a class="record-link" href="https://evil.invalid/">Open</a>
+      </li>
+    </ul>
+    <span class="page-count">1 / 1 페이지</span>
+    """.encode("utf-8")
+
+    with pytest.raises(cli.ConfigError):
+        cli.parse_aws_post_page(html, 1)
+
+
+def test_aws_post_parser_rejects_wrong_page():
+    html = """
+    <ul class="record-list"></ul>
+    <span class="page-count">2 / 3 페이지</span>
+    """.encode("utf-8")
+
+    with pytest.raises(cli.ConfigError):
+        cli.parse_aws_post_page(html, 1)
+
+
+@pytest.mark.parametrize(
+    "saved_id, expected_complete",
+    [
+        (None, True),
+        (57, True),
+        (58, False),
+    ],
+)
+def test_aws_cleanup_recovers_post_by_marker(
+    monkeypatch, saved_id, expected_complete
+):
+    # 공유 정리 자체는 별도 테스트에서 검증한다.
+    monkeypatch.setattr(
+        cli,
+        "cleanup_post_shares",
+        lambda *args, **kwargs: 0,
+    )
+    
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    cleanup_case = suite["cleanup_cases"][0]
+
+    budget = cli.RequestBudget(
+        Namespace(
+            max_requests=20,
+            rate=5,
+            max_duration=60,
+            timeout=3,
+        )
+    )
+
+    sent = []
+
+    def fake_lookup(
+        session, target, budget, run_id, marker
+    ):
+        budget.begin()
+        assert marker == cli.aws_post_marker(
+            run_id, "AWS-SETUP-A-POST"
+        )
+        return 57
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        budget.begin()
+        sent.append((method, path))
+
+        status = 302 if method == "POST" else 404
+        return phase2_detail(status), None
+
+    monkeypatch.setattr(
+        cli, "find_aws_post_by_marker", fake_lookup
+    )
+    monkeypatch.setattr(
+        cli, "bounded_send", fake_send
+    )
+    monkeypatch.setattr(
+        cli, "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf"
+    )
+
+    created_ids = (
+        {}
+        if saved_id is None
+        else {"AWS-SETUP-A-POST": saved_id}
+    )
+
+    results = []
+
+    with cli.new_session() as session:
+        complete = cli.execute_cleanup(
+            cases=[cleanup_case],
+            attempted={"AWS-SETUP-A-POST"},
+            sessions={"member_a": session},
+            prepped={"member_a": True},
+            target=cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            budget=budget,
+            run_id="synthetic-test-run",
+            prep_events=[],
+            fixture_root=ROOT / "fixtures",
+            max_response_bytes=cli.MAX_RESPONSE,
+            results=results,
+            created_post_ids=created_ids,
+        )
+
+    assert complete is expected_complete
+
+    if expected_complete:
+        assert sent == [
+            ("POST", "/posts/57/delete/"),
+            ("GET", "/posts/57/"),
+        ]
+        assert results[0]["verified_post_id"] == 57
+    else:
+        assert sent == []
+        assert results[0]["transport_status"] == "ERROR"
+
+
+def test_aws_recovery_plan_preserves_real_post_id():
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+
+    run_id = "11111111-2222-4333-8444-555555555555"
+
+    state = {
+        "schema_version": 1,
+        "source": "live_http_run",
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "suite_id": suite["suite_id"],
+        "run_id": run_id,
+        "cleanup_complete": False,
+        "cleanup_results": [],
+        "results": [
+            {
+                "case_id": "AWS-SETUP-A-POST",
+                "post_marker": cli.aws_post_marker(
+                    run_id, "AWS-SETUP-A-POST"
+                ),
+                "created_post_id": 57,
+                "request_attempted": True,
+            }
+        ],
+    }
+
+    plan = cli.build_aws_recovery_plan(state, suite)
+
+    assert len(plan) == 1
+    assert plan[0]["saved_post_id"] == 57
+    assert plan[0]["auth_role"] == "member_a"
+
+
+def test_aws_recovery_plan_rejects_wrong_marker():
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+
+    state = {
+        "schema_version": 1,
+        "source": "live_http_run",
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "suite_id": suite["suite_id"],
+        "run_id": "11111111-2222-4333-8444-555555555555",
+        "cleanup_complete": False,
+        "cleanup_results": [],
+        "results": [
+            {
+                "case_id": "AWS-SETUP-A-POST",
+                "post_marker": "[HAVEN-AWS:wrong:CREATE]",
+                "request_attempted": True,
+            }
+        ],
+    }
+
+    with pytest.raises(cli.ConfigError):
+        cli.build_aws_recovery_plan(state, suite)
+
+
+def test_aws_recover_dry_run_no_network(
+    tmp_path, monkeypatch, capsys
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    run_id = "11111111-2222-4333-8444-555555555555"
+
+    state = {
+        "schema_version": 1,
+        "source": "live_http_run",
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "suite_id": suite["suite_id"],
+        "selected_phase": None,
+        "run_id": run_id,
+        "cleanup_complete": False,
+        "cleanup_results": [],
+        "results": [{
+            "case_id": "AWS-SETUP-A-POST",
+            "post_marker": cli.aws_post_marker(
+                run_id, "AWS-SETUP-A-POST"
+            ),
+            "created_post_id": 57,
+            "request_attempted": True,
+        }],
+    }
+
+    run_json = tmp_path / "results.json"
+    run_json.write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+
+    monkeypatch.setattr(
+        cli, "bounded_send",
+        lambda *args, **kwargs: pytest.fail(
+            "Dry Run에서 HTTP 요청이 발생했습니다"
+        )
+    )
+
+    result = cli.main([
+        "recover",
+        "--run-json", str(run_json),
+        "--target", "https://orchestration-haven.cloud",
+        "--allowlist",
+        str(ROOT / "fixtures" / "allowlist_aws.json"),
+        "--cases",
+        str(ROOT / "fixtures" / "cases_haven_aws.json"),
+        "--fixture-dir", str(ROOT / "fixtures"),
+        "--dry-run",
+    ])
+
+    assert result == 0
+
+    output = capsys.readouterr().out
+    assert '"recovery_count": 1' in output
+    assert '"saved_post_id": 57' in output
+    assert '"member_a"' in output
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["remaining", "already_empty", "lookup_failed"],
+)
+def test_aws_recover_apply_uses_marker_verified_id(
+    tmp_path, monkeypatch, mode
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    run_id = "11111111-2222-4333-8444-555555555555"
+
+    state = {
+        "schema_version": 1,
+        "source": "live_http_run",
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "suite_id": suite["suite_id"],
+        "selected_phase": None,
+        "run_id": run_id,
+        "cleanup_complete": False,
+        "cleanup_results": [],
+        "results": [{
+            "case_id": "AWS-SETUP-A-POST",
+            "post_marker": cli.aws_post_marker(
+                run_id, "AWS-SETUP-A-POST"
+            ),
+            "created_post_id": None,
+            "request_attempted": True,
+        }],
+    }
+
+    run_json = tmp_path / "original_results.json"
+    run_json.write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    original_bytes = run_json.read_bytes()
+
+    shared = mode == "remaining"
+    deleted = False
+    sent = []
+    login_roles = []
+
+    def fake_login(session, target, budget, role, *args):
+        login_roles.append(role)
+        assert role == "member_a"
+        session._haven_username = "aws_test_a"
+        session.cookies.set("csrftoken", "synthetic-csrf")
+
+    def fake_lookup(
+        session, target, budget, run_id_arg, marker
+    ):
+        budget.begin()
+        assert run_id_arg == run_id
+        assert marker == cli.aws_post_marker(
+            run_id, "AWS-SETUP-A-POST"
+        )
+        return 57
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        nonlocal shared, deleted
+
+        budget.begin()
+        sent.append((method, path))
+
+        on_send = kwargs.get("on_send")
+        if on_send:
+            on_send(cli.utc_now())
+
+        if method == "GET" and path == "/posts/57/shares/":
+            if mode == "lookup_failed":
+                return phase2_detail(403), None
+
+            row = ""
+            if shared:
+                row = """
+                <li>
+                  <h3 class="record-title">aws_test_b</h3>
+                  <form method="post"
+                        action="/posts/57/shares/209/revoke/">
+                  </form>
+                </li>
+                """
+
+            html = f"""
+            <section aria-labelledby="share-list-heading">
+              <ul>{row}</ul>
+            </section>
+            """.encode("utf-8")
+
+            return phase2_detail(200), html
+
+        if method == "POST" and path == (
+            "/posts/57/shares/209/revoke/"
+        ):
+            assert shared is True
+            shared = False
+            return phase2_detail(302), None
+
+        if method == "POST" and path == "/posts/57/delete/":
+            assert shared is False
+            deleted = True
+            return phase2_detail(302), None
+
+        if method == "GET" and path == "/posts/57/":
+            assert deleted is True
+            return phase2_detail(404), None
+
+        pytest.fail(f"예상하지 않은 요청: {method} {path}")
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(
+        cli, "find_aws_post_by_marker", fake_lookup
+    )
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        cli,
+        "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf",
+    )
+
+    # cleanup_post_shares는 실제 함수를 실행한다.
+    output_dir = tmp_path / "recovery_output"
+
+    result = cli.main([
+        "recover",
+        "--run-json", str(run_json),
+        "--target", "https://orchestration-haven.cloud",
+        "--allowlist",
+        str(ROOT / "fixtures" / "allowlist_aws.json"),
+        "--cases",
+        str(ROOT / "fixtures" / "cases_haven_aws.json"),
+        "--fixture-dir", str(ROOT / "fixtures"),
+        "--output-dir", str(output_dir),
+        "--apply",
+    ])
+
+    recovery = cli.load_json(
+        output_dir / "results.json"
+    )
+    cleanup = recovery["cleanup_results"][0]
+
+    # 이전 실행의 B 세션 없이 A 로그인만으로 복구한다.
+    assert login_roles == ["member_a"]
+    assert cleanup["verified_post_id"] == 57
+    assert run_json.read_bytes() == original_bytes
+
+    if mode == "lookup_failed":
+        assert result == 2
+        assert recovery["cleanup_complete"] is False
+        assert cleanup["transport_status"] == "ERROR"
+        assert deleted is False
+        assert sent == [
+            ("GET", "/posts/57/shares/")
+        ]
+        return
+
+    assert result == 0
+    assert recovery["cleanup_complete"] is True
+    assert cleanup["shares_absent_verified"] is True
+    assert cleanup["revoked_share_count"] == (
+        1 if mode == "remaining" else 0
+    )
+    assert cleanup["response_summary"]["verification"][
+        "post_inaccessible"
+    ] is True
+
+    assert shared is False
+    assert deleted is True
+
+    expected = [("GET", "/posts/57/shares/")]
+
+    if mode == "remaining":
+        expected += [
+            ("POST", "/posts/57/shares/209/revoke/"),
+            ("GET", "/posts/57/shares/"),
+        ]
+
+    expected += [
+        ("POST", "/posts/57/delete/"),
+        ("GET", "/posts/57/"),
+    ]
+
+    assert sent == expected
+
+
+@pytest.mark.parametrize(
+    "role",
+    ["member_a", "member_b", "member_c", "anonymous"],
+)
+def test_dynamic_post_detail_allows_read_by_other_roles(role):
+    create = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        role="member_a",
+        status=302,
+        capture_post_id=True,
+    )
+    read = phase2_make_case(
+        "READ",
+        method="GET",
+        path="/posts/{post_id}/",
+        role=role,
+        status=200 if role == "member_a" else (
+            302 if role == "anonymous" else 404
+        ),
+        post_reference="CREATE",
+    )
+
+    cli.validate_suite(
+        phase2_make_suite([create, read]),
+        ROOT / "fixtures",
+    )
+
+
+def test_dynamic_post_cleanup_rejects_other_role():
+    create = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        role="member_a",
+        status=302,
+        capture_post_id=True,
+    )
+    cleanup = phase2_make_case(
+        "CLEANUP",
+        method="POST",
+        path="/posts/{post_id}/delete/",
+        role="member_b",
+        status=302,
+        post_reference="CREATE",
+        after_case="CREATE",
+    )
+
+    with pytest.raises(cli.ConfigError, match="복구 게시글 참조"):
+        cli.validate_suite(
+            phase2_make_suite(
+                [create],
+                cleanup_cases=[cleanup],
+            ),
+            ROOT / "fixtures",
+        )
+
+
+@pytest.mark.parametrize("post_id", [15, 25, 57])
+def test_dynamic_post_reads_use_actual_created_id(
+    tmp_path, monkeypatch, post_id
+):
+    create = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        role="member_a",
+        status=302,
+        capture_post_id=True,
+    )
+
+    reads = [
+        phase2_make_case(
+            f"READ-{role}",
+            method="GET",
+            path="/posts/{post_id}/",
+            role=role,
+            status=200 if role == "member_a" else 404,
+            post_reference="CREATE",
+        )
+        for role in ("member_a", "member_b", "member_c")
+    ]
+
+    args = phase2_make_args(
+        tmp_path,
+        phase2_make_suite([create, *reads]),
+    )
+
+    session_roles = {}
+    sent = []
+
+    def fake_login(session, target, budget, role, *args):
+        session_roles[id(session)] = role
+        session.cookies.set("csrftoken", "synthetic-csrf")
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        budget.begin()
+        role = session_roles[id(session)]
+        sent.append((role, method, path))
+
+        if method == "POST":
+            return phase2_detail(
+                302, f"/posts/{post_id}/"
+            ), None
+
+        return phase2_detail(
+            200 if role == "member_a" else 404
+        ), None
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        cli,
+        "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf",
+    )
+
+    # 로그 대조 전이므로 UNKNOWN 종료 코드가 정상이다.
+    assert cli.run(args) == 3
+
+    assert sent == [
+        ("member_a", "POST", "/posts/new/"),
+        ("member_a", "GET", f"/posts/{post_id}/"),
+        ("member_b", "GET", f"/posts/{post_id}/"),
+        ("member_c", "GET", f"/posts/{post_id}/"),
+    ]
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+    assert result["unexecuted_cases"] == 0
+    assert all(
+        row["http_expectation_match"]
+        for row in result["results"]
+    )
+
+
+@pytest.mark.parametrize("login_ok", [True, False])
+def test_login_remembers_username_only_after_success(
+    monkeypatch, login_ok
+):
+    def unexpected_username_prompt(prompt):
+        pytest.fail("AWS 시험 회원은 사용자 이름을 입력받으면 안 됩니다")
+
+    monkeypatch.setattr(
+        "builtins.input",
+        unexpected_username_prompt,
+    )
+    monkeypatch.setattr(
+        cli.getpass,
+        "getpass",
+        lambda prompt: "synthetic-password",
+    )
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        if method == "GET":
+            session.cookies.set(
+                "csrftoken", "synthetic-csrf"
+            )
+            return phase2_detail(200), None
+
+        assert kwargs["fields"]["username"] == "member_b"
+        assert kwargs["fields"]["password"] == "synthetic-password"
+
+        if login_ok:
+            session.cookies.set(
+                "sessionid", "synthetic-session"
+            )
+            return phase2_detail(302, "/posts/"), None
+
+        return phase2_detail(200), None
+
+    monkeypatch.setattr(
+        cli, "bounded_send", fake_send
+    )
+
+    with cli.new_session() as session:
+        session._haven_username = "old-account"
+        prep_events = []
+
+        def login():
+            cli.prep_login(
+                session,
+                cli.canonical_origin(
+                    "https://orchestration-haven.cloud"
+                ),
+                None,
+                "member_b",
+                "synthetic-run",
+                prep_events,
+                cli.MAX_RESPONSE,
+            )
+
+        if login_ok:
+            login()
+            assert session._haven_username == "member_b"
+        else:
+            with pytest.raises(
+                cli.ExecutionError,
+                match="로그인 인증 준비 실패",
+            ):
+                login()
+
+            assert not hasattr(
+                session, "_haven_username"
+            )
+
+        assert "synthetic-password" not in json.dumps(
+            prep_events
+        )
+        assert "synthetic-password" not in repr(
+            vars(session)
+        )
+
+
+def test_share_recipient_uses_actual_login_username():
+    case = {
+        "auth_role": "member_a",
+        "share_recipient_role": "member_b",
+    }
+    fields = {
+        "username": "member_b",
+        "csrfmiddlewaretoken": "synthetic-csrf",
+    }
+
+    sessions = {
+        "member_a": Namespace(_haven_username="aws_test_a"),
+        "member_b": Namespace(_haven_username="aws_test_b"),
+    }
+    prepped = {"member_a": True, "member_b": True}
+
+    actual = cli.bind_share_recipient(
+        case, fields, sessions, prepped
+    )
+
+    assert actual["username"] == "aws_test_b"
+    assert actual["csrfmiddlewaretoken"] == "synthetic-csrf"
+
+    # 원본 입력은 변경하지 않는다.
+    assert fields["username"] == "member_b"
+
+
+@pytest.mark.parametrize("recipient, logged_in", [
+    (None, True),
+    ("aws_test_b", False),
+    ("aws_test_a", True),
+])
+def test_share_recipient_rejects_unready_or_same_account(
+    recipient, logged_in
+):
+    case = {
+        "auth_role": "member_a",
+        "share_recipient_role": "member_b",
+    }
+    sessions = {
+        "member_a": Namespace(_haven_username="aws_test_a"),
+        "member_b": Namespace(_haven_username=recipient),
+    }
+
+    with pytest.raises(cli.ExecutionError):
+        cli.bind_share_recipient(
+            case,
+            {"username": "member_b"},
+            sessions,
+            {"member_a": True, "member_b": logged_in},
+        )
+
+
+@pytest.mark.parametrize("recipient_role", [
+    "operator", "anonymous", "member_a", "", None, [],
+])
+def test_share_recipient_role_rejects_invalid_config(
+    recipient_role
+):
+    create = phase2_make_case(
+        "CREATE",
+        method="POST",
+        path="/posts/new/",
+        status=302,
+        capture_post_id=True,
+    )
+    share = phase2_make_case(
+        "SHARE",
+        method="POST",
+        path="/posts/{post_id}/shares/",
+        status=302,
+        post_reference="CREATE",
+        share_recipient_role=recipient_role,
+        input_reference="basic_share_grant.json",
+    )
+
+    with pytest.raises(
+        cli.ConfigError, match="share_recipient_role"
+    ):
+        cli.validate_suite(
+            phase2_make_suite([create, share]),
+            ROOT / "fixtures",
+        )
+
+
+@pytest.mark.parametrize(
+    "post_id, share_id",
+    [(15, 81), (25, 103), (57, 209)],
+)
+def test_created_share_lookup_uses_actual_ids_and_username(
+    monkeypatch, post_id, share_id
+):
+    owner = Namespace(_haven_username="aws_test_a")
+    recipient = Namespace(_haven_username="aws_test_b")
+
+    sessions = {
+        "member_a": owner,
+        "member_b": recipient,
+    }
+    prepped = {"member_a": True, "member_b": True}
+    sent = []
+
+    html = f"""
+    <section aria-labelledby="share-list-heading">
+      <ul>
+        <li>
+          <h3 class="record-title">another_user</h3>
+          <form method="post"
+                action="/posts/{post_id}/shares/999/revoke/">
+          </form>
+        </li>
+        <li>
+          <h3 class="record-title">aws_test_b</h3>
+          <form method="post"
+                action="/posts/{post_id}/shares/{share_id}/revoke/">
+          </form>
+        </li>
+      </ul>
+    </section>
+    """.encode("utf-8")
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        assert session is owner
+        assert kwargs["capture_html"] is True
+        sent.append((method, path))
+        return phase2_detail(200), html
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    actual = cli.resolve_created_share_id(
+        post_id,
+        "member_a",
+        "member_b",
+        sessions,
+        prepped,
+        cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        None,
+        "synthetic-run",
+        [],
+        cli.MAX_RESPONSE,
+    )
+
+    assert actual == share_id
+    assert sent == [
+        ("GET", f"/posts/{post_id}/shares/")
+    ]
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "/posts/58/shares/209/revoke/",
+        "https://other.invalid/posts/57/shares/209/revoke/",
+    ],
+)
+def test_created_share_lookup_rejects_wrong_revoke_target(
+    monkeypatch, action
+):
+    sessions = {
+        "member_a": Namespace(_haven_username="aws_test_a"),
+        "member_b": Namespace(_haven_username="aws_test_b"),
+    }
+
+    html = f"""
+    <section aria-labelledby="share-list-heading">
+      <ul>
+        <li>
+          <h3 class="record-title">aws_test_b</h3>
+          <form method="post" action="{action}"></form>
+        </li>
+      </ul>
+    </section>
+    """.encode("utf-8")
+
+    monkeypatch.setattr(
+        cli,
+        "bounded_send",
+        lambda *args, **kwargs: (phase2_detail(200), html),
+    )
+
+    with pytest.raises(cli.ConfigError):
+        cli.resolve_created_share_id(
+            57,
+            "member_a",
+            "member_b",
+            sessions,
+            {"member_a": True, "member_b": True},
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            "synthetic-run",
+            [],
+            cli.MAX_RESPONSE,
+        )
+
+
+def test_created_share_lookup_rejects_missing_recipient(
+    monkeypatch,
+):
+    sessions = {
+        "member_a": Namespace(_haven_username="aws_test_a"),
+        "member_b": Namespace(_haven_username="aws_test_b"),
+    }
+
+    html = b"""
+    <section aria-labelledby="share-list-heading">
+      <ul></ul>
+    </section>
+    """
+
+    monkeypatch.setattr(
+        cli,
+        "bounded_send",
+        lambda *args, **kwargs: (phase2_detail(200), html),
+    )
+
+    with pytest.raises(cli.ExecutionError, match="공유 대상 관계"):
+        cli.resolve_created_share_id(
+            57,
+            "member_a",
+            "member_b",
+            sessions,
+            {"member_a": True, "member_b": True},
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            "synthetic-run",
+            [],
+            cli.MAX_RESPONSE,
+        )
+
+
+@pytest.mark.parametrize(
+    "post_id, share_id",
+    [(25, 103), (57, 209)],
+)
+def test_dynamic_share_grant_and_revoke_flow(
+    tmp_path, monkeypatch, post_id, share_id
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    cli.validate_suite(suite, ROOT / "fixtures")
+    cli.validate_aws_cleanup_suite(suite)
+
+    args = phase2_make_args(tmp_path, suite)
+    args.phase = None
+
+    usernames = {
+        "member_a": "aws_test_a",
+        "member_b": "aws_test_b",
+        "member_c": "aws_test_c",
+    }
+    session_roles = {}
+    sent = []
+    shared = False
+
+    def fake_login(session, target, budget, role, *args):
+        session_roles[id(session)] = role
+        session._haven_username = usernames[role]
+        session.cookies.set("csrftoken", "synthetic-csrf")
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        nonlocal shared
+        budget.begin()
+        role = session_roles[id(session)]
+        sent.append((role, method, path))
+
+        if method == "POST" and path == "/posts/new/":
+            assert role == "member_a"
+            return phase2_detail(
+                302, f"/posts/{post_id}/"
+            ), None
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/attachments/"
+        ):
+            assert role == "member_a"
+            return phase2_detail(302), None
+
+        if path == f"/posts/{post_id}/shares/":
+            assert role == "member_a"
+
+            if method == "POST":
+                assert kwargs["fields"]["username"] == "aws_test_b"
+                shared = True
+                return phase2_detail(302), None
+
+            assert method == "GET"
+            assert shared is True
+
+            html = f"""
+            <section aria-labelledby="share-list-heading">
+              <ul>
+                <li>
+                  <h3 class="record-title">aws_test_b</h3>
+                  <form method="post"
+                    action="/posts/{post_id}/shares/{share_id}/revoke/">
+                  </form>
+                </li>
+              </ul>
+            </section>
+            """.encode("utf-8")
+
+            return phase2_detail(200), html
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/shares/{share_id}/revoke/"
+        ):
+            assert role == "member_a"
+            assert shared is True
+            shared = False
+            return phase2_detail(302), None
+
+        if method == "GET" and path == f"/posts/{post_id}/":
+            allowed = (
+                role == "member_a"
+                or (role == "member_b" and shared)
+            )
+            return phase2_detail(200 if allowed else 404), None
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/delete/"
+        ):
+            assert role == "member_a"
+            assert shared is False
+            return phase2_detail(302), None
+
+        pytest.fail(f"예상하지 않은 요청: {role} {method} {path}")
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        cli,
+        "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf",
+    )
+
+    assert cli.run(args) == 3
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+    rows = {
+        row["case_id"]: row
+        for row in result["results"]
+    }
+
+    assert len(rows) == 9
+    assert result["unexecuted_cases"] == 0
+    assert result["cleanup_complete"] is True
+    assert all(
+        row["http_expectation_match"]
+        for row in rows.values()
+    )
+
+    assert rows["AWS-B-POST-DENIED"]["http_status"] == 404
+    assert rows["AWS-B-SHARED-READ"]["http_status"] == 200
+    assert rows["AWS-B-REVOKED-DENIED"]["http_status"] == 404
+
+    revoke = rows["AWS-A-REVOKE-B"]
+    assert revoke["resolved_share_id"] == share_id
+    assert revoke["path"] == (
+        f"/posts/{post_id}/shares/{share_id}/revoke/"
+    )
+
+    assert sent[-1] == (
+        "member_a", "POST", f"/posts/{post_id}/delete/"
+    )
+
+
+@pytest.mark.parametrize("allow_missing", [False, True])
+def test_created_share_lookup_missing_policy(
+    monkeypatch, allow_missing
+):
+    sessions = {
+        "member_a": Namespace(_haven_username="aws_test_a"),
+        "member_b": Namespace(_haven_username="aws_test_b"),
+    }
+    sent = []
+
+    # B의 공유는 없지만, 다른 사용자의 공유는 남아 있다.
+    html = b"""
+    <section aria-labelledby="share-list-heading">
+      <ul>
+        <li>
+          <h3 class="record-title">another_user</h3>
+          <form method="post"
+                action="/posts/57/shares/999/revoke/">
+          </form>
+        </li>
+      </ul>
+    </section>
+    """
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        assert session is sessions["member_a"]
+        sent.append((method, path))
+        return phase2_detail(200), html
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    def lookup():
+        return cli.resolve_created_share_id(
+            57,
+            "member_a",
+            "member_b",
+            sessions,
+            {"member_a": True, "member_b": True},
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            "synthetic-run",
+            [],
+            cli.MAX_RESPONSE,
+            allow_missing=allow_missing,
+        )
+
+    if allow_missing:
+        assert lookup() is None
+    else:
+        with pytest.raises(
+            cli.ExecutionError, match="공유 대상 관계"
+        ):
+            lookup()
+
+    # 다른 사용자의 공유를 해제하는 POST는 발생하지 않는다.
+    assert sent == [("GET", "/posts/57/shares/")]
+
+
+@pytest.mark.parametrize("value", [None, 1, "true"])
+def test_created_share_lookup_rejects_invalid_missing_policy(
+    monkeypatch, value
+):
+    monkeypatch.setattr(
+        cli,
+        "bounded_send",
+        lambda *args, **kwargs: pytest.fail(
+            "설정 오류에서 HTTP 요청이 발생했습니다"
+        ),
+    )
+
+    with pytest.raises(cli.ConfigError, match="allow_missing"):
+        cli.resolve_created_share_id(
+            57,
+            "member_a",
+            "member_b",
+            {},
+            {},
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            "synthetic-run",
+            [],
+            cli.MAX_RESPONSE,
+            allow_missing=value,
+        )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["already_empty", "remaining", "still_present", "lookup_failed"],
+)
+def test_cleanup_post_shares(monkeypatch, mode):
+    target = cli.canonical_origin(
+        "https://orchestration-haven.cloud"
+    )
+    sent = []
+    events = []
+    lookups = 0
+
+    empty_html = b"""
+    <section aria-labelledby="share-list-heading">
+      <ul></ul>
+    </section>
+    """
+
+    shared_html = b"""
+    <section aria-labelledby="share-list-heading">
+      <ul>
+        <li>
+          <h3 class="record-title">aws_test_b</h3>
+          <form method="post"
+                action="/posts/57/shares/209/revoke/">
+          </form>
+        </li>
+      </ul>
+    </section>
+    """
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        nonlocal lookups
+        sent.append((method, path))
+
+        if method == "GET":
+            assert path == "/posts/57/shares/"
+            lookups += 1
+
+            if mode == "lookup_failed":
+                return phase2_detail(403), None
+
+            if mode == "already_empty":
+                return phase2_detail(200), empty_html
+
+            if lookups == 1 or mode == "still_present":
+                return phase2_detail(200), shared_html
+
+            return phase2_detail(200), empty_html
+
+        assert method == "POST"
+        assert path == "/posts/57/shares/209/revoke/"
+        assert kwargs["fields"] == {
+            "csrfmiddlewaretoken": "synthetic-csrf"
+        }
+        return phase2_detail(302), None
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        cli,
+        "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf",
+    )
+
+    with cli.new_session() as session:
+        def cleanup():
+            return cli.cleanup_post_shares(
+                session,
+                57,
+                target,
+                None,
+                "synthetic-run",
+                [],
+                cli.MAX_RESPONSE,
+                events,
+            )
+
+        if mode in {"still_present", "lookup_failed"}:
+            with pytest.raises(cli.ExecutionError):
+                cleanup()
+        else:
+            assert cleanup() == (
+                0 if mode == "already_empty" else 1
+            )
+
+    if mode in {"already_empty", "lookup_failed"}:
+        assert sent == [
+            ("GET", "/posts/57/shares/")
+        ]
+    else:
+        assert sent == [
+            ("GET", "/posts/57/shares/"),
+            ("POST", "/posts/57/shares/209/revoke/"),
+            ("GET", "/posts/57/shares/"),
+        ]
+
+    assert len(events) == len(sent)
+    assert all(
+        event["request_id"] and event["trace_id"]
+        for event in events
+    )
+
+
+@pytest.mark.parametrize("interruption", ["network_error", "ctrl_c"])
+def test_aws_interrupted_share_runs_cleanup(
+    tmp_path, monkeypatch, interruption
+):
+    suite = cli.load_json(
+        ROOT / "fixtures" / "cases_haven_aws.json"
+    )
+    args = phase2_make_args(tmp_path, suite)
+    args.phase = None
+    args.target = "https://orchestration-haven.cloud"
+
+    args.allowlist.write_text(
+        json.dumps({"approved_origins": [args.target]}),
+        encoding="utf-8",
+    )
+
+    post_id = 57
+    share_id = 209
+    shared = False
+    deleted = False
+    sent = []
+    session_roles = {}
+
+    usernames = {
+        "member_a": "aws_test_a",
+        "member_b": "aws_test_b",
+        "member_c": "aws_test_c",
+    }
+
+    def fake_login(session, target, budget, role, *args):
+        session_roles[id(session)] = role
+        session._haven_username = usernames[role]
+        session.cookies.set("csrftoken", "synthetic-csrf")
+
+    def fake_lookup(session, target, budget, run_id, marker):
+        assert session_roles[id(session)] == "member_a"
+        assert marker == cli.aws_post_marker(
+            run_id, "AWS-SETUP-A-POST"
+        )
+        budget.begin()
+        budget.responses_received += 1
+        return post_id
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        nonlocal shared, deleted
+
+        budget.begin()
+        role = session_roles[id(session)]
+        sent.append((role, method, path))
+
+        # 실제 전송 직전의 기록 처리도 재현한다.
+        on_send = kwargs.get("on_send")
+        if on_send:
+            on_send(cli.utc_now())
+
+        # 공유 생성 요청은 응답을 받기 전에 중단되는 상황이다.
+        interrupted_request = (
+            method == "POST"
+            and path == f"/posts/{post_id}/shares/"
+        )
+        if not interrupted_request:
+            budget.responses_received += 1
+
+        if method == "POST" and path == "/posts/new/":
+            assert role == "member_a"
+            return phase2_detail(
+                302, f"/posts/{post_id}/"
+            ), None
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/attachments/"
+        ):
+            assert role == "member_a"
+            return phase2_detail(302), None
+
+        if path == f"/posts/{post_id}/shares/":
+            assert role == "member_a"
+
+            if method == "POST":
+                assert kwargs["fields"]["username"] == "aws_test_b"
+                shared = True
+
+                if interruption == "ctrl_c":
+                    raise KeyboardInterrupt()
+
+                raise cli.ExecutionError(
+                    "synthetic response failure after share creation"
+                )
+
+            assert method == "GET"
+
+            row = ""
+            if shared:
+                row = f"""
+                <li>
+                  <h3 class="record-title">aws_test_b</h3>
+                  <form method="post"
+                    action="/posts/{post_id}/shares/{share_id}/revoke/">
+                  </form>
+                </li>
+                """
+
+            html = f"""
+            <section aria-labelledby="share-list-heading">
+              <ul>{row}</ul>
+            </section>
+            """.encode("utf-8")
+
+            return phase2_detail(200), html
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/shares/{share_id}/revoke/"
+        ):
+            assert role == "member_a"
+            assert shared is True
+            shared = False
+            return phase2_detail(302), None
+
+        if method == "POST" and path == (
+            f"/posts/{post_id}/delete/"
+        ):
+            assert role == "member_a"
+            assert shared is False
+            deleted = True
+            return phase2_detail(302), None
+
+        if method == "GET" and path == f"/posts/{post_id}/":
+            allowed = not deleted and (
+                role == "member_a"
+                or (role == "member_b" and shared)
+            )
+            return phase2_detail(200 if allowed else 404), None
+
+        pytest.fail(f"예상하지 않은 요청: {role} {method} {path}")
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(
+        cli, "find_aws_post_by_marker", fake_lookup
+    )
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+    monkeypatch.setattr(
+        cli,
+        "csrf_for_post",
+        lambda *args, **kwargs: "synthetic-csrf",
+    )
+
+    # 본 시험의 중단은 복구 성공 후에도 ERROR로 남긴다.
+    assert cli.run(args) == 2
+
+    result = cli.load_json(
+        args.output_dir / "results.json"
+    )
+
+    assert result["stopped_reason"]
+    assert result["unexecuted_cases"] == 3
+    assert result["cleanup_complete"] is True
+
+    failed = result["results"][-1]
+    assert failed["case_id"] == "AWS-A-SHARE-B"
+    assert failed["request_attempted"] is True
+    assert failed["transport_status"] == "ERROR"
+
+    cleanup = result["cleanup_results"][0]
+    assert cleanup["verified_post_id"] == post_id
+    assert cleanup["revoked_share_count"] == 1
+    assert cleanup["shares_absent_verified"] is True
+    assert cleanup["response_summary"]["verification"][
+        "post_inaccessible"
+    ] is True
+
+    assert shared is False
+    assert deleted is True
+
+    assert sent[-5:] == [
+        ("member_a", "GET", f"/posts/{post_id}/shares/"),
+        (
+            "member_a",
+            "POST",
+            f"/posts/{post_id}/shares/{share_id}/revoke/",
+        ),
+        ("member_a", "GET", f"/posts/{post_id}/shares/"),
+        ("member_a", "POST", f"/posts/{post_id}/delete/"),
+        ("member_a", "GET", f"/posts/{post_id}/"),
+    ]
+
+    # 응답 없이 중단된 공유 생성 요청 1건만 제외한다.
+    # 정리용 별도 예산에서 받은 응답도 전체 집계에 포함되어야 한다.
+    assert result["http_responses_received"] == (
+        result["total_http_requests_including_preparation"] - 1
+    )
+
+
+def admin_account_page_html(
+    *,
+    active=True,
+    action="/admin/accounts/37/status/",
+    duplicate=False,
+    page=1,
+):
+    status = "활성" if active else "비활성"
+    next_state = "false" if active else "true"
+
+    row = f"""
+    <tr>
+      <th scope="row">aws_test_b</th>
+      <td>{status}</td>
+      <td>가입일</td>
+      <td>최근 로그인</td>
+      <td>
+        <form method="post" action="{action}">
+          <input type="hidden" name="is_active"
+                 value="{next_state}">
+        </form>
+      </td>
+    </tr>
+    """
+
+    return f"""
+    <section aria-labelledby="accounts-heading">
+      <h2 id="accounts-heading">계정 목록</h2>
+      <table>
+        <thead><tr><th scope="col">아이디</th></tr></thead>
+        <tbody>{row}{row if duplicate else ""}</tbody>
+      </table>
+      <span aria-current="page">{page} / 3 페이지</span>
+    </section>
+    """.encode("utf-8")
+
+
+@pytest.mark.parametrize("active", [True, False])
+def test_parse_admin_account_actual_id_and_state(active):
+    accounts, total_pages = cli.parse_admin_account_page(
+        admin_account_page_html(active=active),
+        1,
+    )
+
+    assert accounts == [{
+        "username": "aws_test_b",
+        "account_id": 37,
+        "is_active": active,
+    }]
+    assert total_pages == 3
+
+
+@pytest.mark.parametrize("action", [
+    "https://other.invalid/admin/accounts/37/status/",
+    "/admin/accounts/0/status/",
+])
+def test_parse_admin_account_rejects_invalid_action(action):
+    with pytest.raises(cli.ConfigError, match="경로"):
+        cli.parse_admin_account_page(
+            admin_account_page_html(action=action),
+            1,
+        )
+
+
+def test_parse_admin_account_rejects_duplicate():
+    with pytest.raises(cli.ConfigError, match="중복"):
+        cli.parse_admin_account_page(
+            admin_account_page_html(duplicate=True),
+            1,
+        )
+
+
+def test_parse_admin_account_rejects_wrong_page():
+    with pytest.raises(cli.ConfigError, match="페이지 번호"):
+        cli.parse_admin_account_page(
+            admin_account_page_html(page=2),
+            1,
+        )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["found", "missing", "duplicate", "page_count_changed", "forbidden"],
+)
+def test_find_admin_account_across_pages(monkeypatch, mode):
+    sent = []
+    events = []
+    operator_session = object()
+
+    def make_page(page, username, account_id, active, total=2):
+        html = admin_account_page_html(
+            active=active,
+            action=f"/admin/accounts/{account_id}/status/",
+            page=page,
+        ).decode("utf-8")
+
+        html = html.replace("aws_test_b", username)
+        html = html.replace(
+            f"{page} / 3 페이지",
+            f"{page} / {total} 페이지",
+        )
+        return html.encode("utf-8")
+
+    def fake_send(
+        session, method, target, path,
+        budget, request_id, **kwargs
+    ):
+        assert session is operator_session
+        assert method == "GET"
+        assert kwargs["capture_html"] is True
+        sent.append(path)
+
+        if mode == "forbidden":
+            return phase2_detail(403), None
+
+        if path == "/admin/accounts/":
+            # 접두사가 같아도 다른 계정으로 취급해야 한다.
+            if mode == "duplicate":
+                name, account_id = "aws_test_b", 37
+            else:
+                name, account_id = "aws_test_b_extra", 12
+
+            return phase2_detail(200), make_page(
+                1, name, account_id, True
+            )
+
+        assert path == "/admin/accounts/?page=2"
+
+        name = (
+            "another_user"
+            if mode == "missing"
+            else "aws_test_b"
+        )
+        total = 3 if mode == "page_count_changed" else 2
+
+        return phase2_detail(200), make_page(
+            2, name, 37, False, total=total
+        )
+
+    monkeypatch.setattr(cli, "bounded_send", fake_send)
+
+    def lookup():
+        return cli.find_admin_account(
+            operator_session,
+            cli.canonical_origin(
+                "https://orchestration-haven.cloud"
+            ),
+            None,
+            "synthetic-run",
+            "aws_test_b",
+            events,
+            cli.MAX_RESPONSE,
+        )
+
+    if mode == "found":
+        assert lookup() == {
+            "username": "aws_test_b",
+            "account_id": 37,
+            "is_active": False,
+        }
+    else:
+        with pytest.raises(cli.ExecutionError):
+            lookup()
+
+    expected_paths = ["/admin/accounts/"]
+    if mode != "forbidden":
+        expected_paths.append("/admin/accounts/?page=2")
+
+    assert sent == expected_paths
+    assert len(events) == len(sent)
+    assert all(
+        event["stage"] == "admin_account_lookup"
+        and event["request_id"]
+        and event["trace_id"]
+        for event in events
+    )
+
+
+@pytest.mark.parametrize("active", [True, False])
+def test_inspect_accounts_command(
+    tmp_path, monkeypatch, capsys, active
+):
+    allowlist = tmp_path / "allowlist.json"
+    allowlist.write_text(
+        json.dumps({
+            "approved_origins": [
+                "https://orchestration-haven.cloud"
+            ]
+        }),
+        encoding="utf-8",
+    )
+
+    login_roles = []
+    looked_up = []
+
+    def fake_login(session, target, budget, role, *args):
+        login_roles.append(role)
+        session._haven_username = "aws_operator"
+
+    def fake_lookup(
+        session, target, budget, run_id,
+        username, prep_events, max_response_bytes
+    ):
+        assert session._haven_username == "aws_operator"
+        looked_up.append(username)
+
+        return {
+            "username": username,
+            "account_id": {
+                "aws_test_a": 15,
+                "aws_test_b": 37,
+            }[username],
+            "is_active": active,
+        }
+
+    monkeypatch.setattr(cli, "prep_login", fake_login)
+    monkeypatch.setattr(
+        cli, "find_admin_account", fake_lookup
+    )
+    monkeypatch.setattr(
+        cli,
+        "bounded_send",
+        lambda *args, **kwargs: pytest.fail(
+            "모의 처리 밖의 HTTP 요청이 발생했습니다"
+        ),
+    )
+
+    result = cli.main([
+        "inspect-accounts",
+        "--target", "https://orchestration-haven.cloud",
+        "--allowlist", str(allowlist),
+        "--username", "aws_test_a",
+        "--username", "aws_test_b",
+    ])
+
+    assert result == 0
+    assert login_roles == ["operator"]
+    assert looked_up == ["aws_test_a", "aws_test_b"]
+
+    report = json.loads(capsys.readouterr().out)
+    assert report["account_state_changed"] is False
+    assert report["accounts"] == [
+        {
+            "username": "aws_test_a",
+            "account_id": 15,
+            "is_active": active,
+        },
+        {
+            "username": "aws_test_b",
+            "account_id": 37,
+            "is_active": active,
+        },
+    ]
+
+
+def test_inspect_accounts_rejects_duplicate_before_login(
+    tmp_path, monkeypatch
+):
+    allowlist = tmp_path / "allowlist.json"
+    allowlist.write_text(
+        json.dumps({
+            "approved_origins": [
+                "https://orchestration-haven.cloud"
+            ]
+        }),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "prep_login",
+        lambda *args, **kwargs: pytest.fail(
+            "설정 오류인데 로그인이 실행됐습니다"
+        ),
+    )
+
+    assert cli.main([
+        "inspect-accounts",
+        "--target", "https://orchestration-haven.cloud",
+        "--allowlist", str(allowlist),
+        "--username", "aws_test_a",
+        "--username", "aws_test_a",
+    ]) == 2
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["success", "cli_error", "invalid_json", "timeout"],
+)
+def test_get_aws_identity(monkeypatch, mode):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+
+        assert kwargs["shell"] is False
+        assert kwargs["capture_output"] is True
+        assert kwargs["timeout"] == 60
+
+        if mode == "timeout":
+            raise cli.subprocess.TimeoutExpired(
+                command, kwargs["timeout"]
+            )
+
+        if mode == "cli_error":
+            return Namespace(
+                returncode=255,
+                stdout="",
+                stderr="synthetic-private-error-detail",
+            )
+
+        if mode == "invalid_json":
+            return Namespace(
+                returncode=0,
+                stdout="not-json",
+                stderr="",
+            )
+
+        return Namespace(
+            returncode=0,
+            stdout=json.dumps({
+                "Account": "123456789012",
+                "Arn": "arn:aws:iam::123456789012:user/test-auditor",
+                "UserId": "SYNTHETIC_USER_ID",
+            }),
+            stderr="",
+        )
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    if mode == "success":
+        assert cli.get_aws_identity("hyeokmin") == {
+            "profile": "hyeokmin",
+            "region": "ap-northeast-2",
+            "account_id": "123456789012",
+            "arn": "arn:aws:iam::123456789012:user/test-auditor",
+            "user_id": "SYNTHETIC_USER_ID",
+        }
+    else:
+        with pytest.raises(cli.ExecutionError) as caught:
+            cli.get_aws_identity("hyeokmin")
+
+        assert "synthetic-private-error-detail" not in str(
+            caught.value
+        )
+
+    assert calls == [[
+        "aws",
+        "sts",
+        "get-caller-identity",
+        "--profile", "hyeokmin",
+        "--region", "ap-northeast-2",
+        "--output", "json",
+        "--no-cli-pager",
+        "--no-cli-auto-prompt",
+    ]]
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["matched", "mismatched", "invalid_expected"],
+)
+def test_aws_check_command(monkeypatch, capsys, mode):
+    calls = []
+
+    def fake_identity(profile, region):
+        calls.append((profile, region))
+        return {
+            "profile": profile,
+            "region": region,
+            "account_id": "123456789012",
+            "arn": "arn:aws:iam::123456789012:user/test-auditor",
+            "user_id": "SYNTHETIC_USER_ID",
+        }
+
+    monkeypatch.setattr(
+        cli, "get_aws_identity", fake_identity
+    )
+
+    expected_account = {
+        "matched": "123456789012",
+        "mismatched": "999999999999",
+        "invalid_expected": "invalid",
+    }[mode]
+
+    result = cli.main([
+        "aws-check",
+        "--profile", "hyeokmin",
+        "--region", "ap-northeast-2",
+        "--expected-account", expected_account,
+    ])
+
+    captured = capsys.readouterr()
+
+    if mode == "matched":
+        assert result == 0
+        report = json.loads(captured.out)
+        assert report["account_match"] is True
+        assert report["account_id"] == expected_account
+        assert report["profile"] == "hyeokmin"
+    else:
+        assert result == 2
+        assert captured.out == ""
+
+        if mode == "mismatched":
+            assert "AWS 계정 불일치" in captured.err
+        else:
+            assert "12자리" in captured.err
+
+    assert calls == (
+        []
+        if mode == "invalid_expected"
+        else [("hyeokmin", "ap-northeast-2")]
+    )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["event", "empty_next", "empty_end", "cli_error", "invalid_json"],
+)
+def test_fetch_cloudwatch_page(monkeypatch, mode):
+    calls = []
+    start_ms = 1700000000000
+    end_ms = start_ms + 60000
+
+    event = {
+        "eventId": "synthetic-event-1",
+        "logStreamName": "synthetic-stream",
+        "timestamp": start_ms + 1000,
+        "message": '{"synthetic_fixture": true}',
+    }
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        assert kwargs["shell"] is False
+        assert kwargs["timeout"] == 60
+
+        request = json.loads(
+            command[command.index("--cli-input-json") + 1]
+        )
+        assert request == {
+            "logGroupName": "/haven/web",
+            "startTime": start_ms,
+            "endTime": end_ms,
+            "limit": 1000,
+            "nextToken": "previous-page-token",
+        }
+        assert "--no-paginate" in command
+
+        if mode == "cli_error":
+            return Namespace(
+                returncode=255,
+                stdout="",
+                stderr="synthetic-private-error",
+            )
+
+        if mode == "invalid_json":
+            return Namespace(
+                returncode=0,
+                stdout="not-json",
+                stderr="",
+            )
+
+        page = {
+            "events": [event] if mode == "event" else []
+        }
+        if mode == "empty_next":
+            page["nextToken"] = "next-page-token"
+
+        return Namespace(
+            returncode=0,
+            stdout=json.dumps(page),
+            stderr="",
+        )
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    def fetch():
+        return cli.fetch_cloudwatch_page(
+            "hyeokmin",
+            "ap-northeast-2",
+            "/haven/web",
+            start_ms,
+            end_ms,
+            next_token="previous-page-token",
+        )
+
+    if mode in {"cli_error", "invalid_json"}:
+        with pytest.raises(cli.ExecutionError) as caught:
+            fetch()
+
+        assert "synthetic-private-error" not in str(caught.value)
+    else:
+        page = fetch()
+        assert page["events"] == (
+            [event] if mode == "event" else []
+        )
+        assert page["next_token"] == (
+            "next-page-token"
+            if mode == "empty_next"
+            else None
+        )
+
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "success",
+        "empty_end",
+        "token_loop",
+        "page_limit",
+        "event_limit",
+        "conflicting_duplicate",
+    ],
+)
+def test_collect_cloudwatch_events(monkeypatch, mode):
+    start_ms = 1700000000000
+    end_ms = start_ms + 60000
+    tokens = []
+
+    first = {
+        "eventId": "event-1",
+        "logStreamName": "stream-a",
+        "timestamp": start_ms + 1000,
+        "message": '{"value": 1}',
+    }
+    second = {
+        "eventId": "event-2",
+        "logStreamName": "stream-a",
+        "timestamp": start_ms + 2000,
+        "message": '{"value": 2}',
+    }
+
+    def fake_page(
+        profile, region, log_group, start, end,
+        *, next_token=None,
+    ):
+        assert profile == "hyeokmin"
+        assert region == "ap-northeast-2"
+        assert log_group == "/haven/web"
+        assert (start, end) == (start_ms, end_ms)
+        tokens.append(next_token)
+
+        if mode == "empty_end":
+            return {"events": [], "next_token": None}
+
+        # 첫 페이지가 비어 있어도 다음 페이지로 진행해야 한다.
+        if next_token is None:
+            return {"events": [], "next_token": "token-1"}
+
+        if mode == "token_loop":
+            return {"events": [], "next_token": "token-1"}
+
+        if next_token == "token-1":
+            return {
+                "events": [dict(first)],
+                "next_token": "token-2",
+            }
+
+        assert next_token == "token-2"
+
+        duplicate = dict(first)
+        if mode == "conflicting_duplicate":
+            duplicate["message"] = '{"value": "changed"}'
+
+        return {
+            "events": [duplicate, dict(second)],
+            "next_token": None,
+        }
+
+    monkeypatch.setattr(
+        cli, "fetch_cloudwatch_page", fake_page
+    )
+
+    def collect():
+        return cli.collect_cloudwatch_events(
+            "hyeokmin",
+            "ap-northeast-2",
+            "/haven/web",
+            start_ms,
+            end_ms,
+            max_pages=2 if mode == "page_limit" else 5,
+            max_events=1 if mode == "event_limit" else 10,
+        )
+
+    errors = {
+        "token_loop": "토큰이 반복",
+        "page_limit": "페이지 수집 한도",
+        "event_limit": "이벤트 수집 한도",
+        "conflicting_duplicate": "내용이 충돌",
+    }
+
+    if mode in errors:
+        with pytest.raises(
+            cli.ExecutionError, match=errors[mode]
+        ):
+            collect()
+    else:
+        result = collect()
+        assert result["pagination_complete"] is True
+
+        if mode == "empty_end":
+            assert result["events"] == []
+            assert result["event_count"] == 0
+            assert result["pages_fetched"] == 1
+        else:
+            assert result["events"] == [first, second]
+            assert result["event_count"] == 2
+            assert result["pages_fetched"] == 3
+
+    expected_tokens = {
+        "empty_end": [None],
+        "token_loop": [None, "token-1"],
+        "page_limit": [None, "token-1"],
+    }.get(mode, [None, "token-1", "token-2"])
+
+    assert tokens == expected_tokens
+
+
+@pytest.mark.parametrize(
+    "started, ended",
+    [
+        (
+            "2023-11-14T22:13:20.123Z",
+            "2023-11-14T22:14:20.789Z",
+        ),
+        (
+            "2023-11-15T07:13:20.123+09:00",
+            "2023-11-15T07:14:20.789+09:00",
+        ),
+    ],
+)
+def test_cloudwatch_window_normalizes_timezone(started, ended):
+    state = {
+        "started_utc": started,
+        "ended_utc": ended,
+    }
+    original = dict(state)
+
+    actual = cli.cloudwatch_window_from_run(state)
+
+    assert actual == {
+        "start_ms": 1699999880123,
+        "end_ms": 1700000180790,
+        "padding_seconds": 120,
+    }
+    assert state == original
+
+
+@pytest.mark.parametrize(
+    "state, expected_error",
+    [
+        (
+            {
+                "started_utc": "2023-11-14T22:14:00Z",
+                "ended_utc": "2023-11-14T22:13:00Z",
+            },
+            "종료 시각",
+        ),
+        (
+            {
+                "started_utc": "2023-11-14T22:13:00",
+                "ended_utc": "2023-11-14T22:14:00Z",
+            },
+            "시간대",
+        ),
+        (
+            {
+                "started_utc": "2023-11-14T22:13:00Z",
+            },
+            "ended_utc",
+        ),
+        (
+            {
+                "started_utc": "not-a-time",
+                "ended_utc": "2023-11-14T22:14:00Z",
+            },
+            "ISO",
+        ),
+        (
+            {
+                "started_utc": "2023-11-14T22:00:00Z",
+                "ended_utc": "2023-11-14T23:00:00Z",
+            },
+            "1시간",
+        ),
+    ],
+)
+def test_cloudwatch_window_rejects_invalid_run_times(
+    state, expected_error
+):
+    with pytest.raises(cli.ConfigError, match=expected_error):
+        cli.cloudwatch_window_from_run(state)
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["success", "wrong_account", "app_failure"],
+)
+def test_collect_logs_command(tmp_path, monkeypatch, mode):
+    run_id = "11111111-2222-4333-8444-555555555555"
+    state = {
+        "source": "live_http_run",
+        "run_id": run_id,
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "started_utc": "2023-11-14T22:13:20.123Z",
+        "ended_utc": "2023-11-14T22:14:20.789Z",
+        "results": [{"case_id": "SYNTHETIC-01"}],
+    }
+
+    run_json = tmp_path / "results.json"
+    run_json.write_text(json.dumps(state), encoding="utf-8")
+    original_bytes = run_json.read_bytes()
+    output_dir = tmp_path / "logs"
+
+    monkeypatch.setattr(
+        cli,
+        "get_aws_identity",
+        lambda *args: {
+            "account_id": (
+                "999999999999"
+                if mode == "wrong_account"
+                else "123456789012"
+            ),
+        },
+    )
+
+    groups = []
+
+    def fake_collect(
+        profile, region, log_group, start_ms, end_ms
+    ):
+        assert profile == "hyeokmin"
+        assert region == "ap-northeast-2"
+        assert start_ms == 1699999880123
+        assert end_ms == 1700000180790
+        groups.append(log_group)
+
+        if mode == "app_failure" and log_group == "/haven/web":
+            raise cli.ExecutionError("synthetic collection failure")
+
+        events = []
+        if log_group == "aws-waf-logs-haven":
+            events = [{
+                "eventId": "synthetic-event",
+                "logStreamName": "synthetic-stream",
+                "timestamp": 1700000001123,
+                "message": '{"action": "ALLOW"}',
+            }]
+
+        return {
+            "events": events,
+            "event_count": len(events),
+            "pages_fetched": 1,
+            "pagination_complete": True,
+        }
+
+    monkeypatch.setattr(
+        cli, "collect_cloudwatch_events", fake_collect
+    )
+
+    result = cli.main([
+        "collect-logs",
+        "--run-json", str(run_json),
+        "--profile", "hyeokmin",
+        "--expected-account", "123456789012",
+        "--output-dir", str(output_dir),
+    ])
+
+    assert run_json.read_bytes() == original_bytes
+
+    if mode == "wrong_account":
+        assert result == 2
+        assert groups == []
+        assert not output_dir.exists()
+        return
+
+    assert groups == ["aws-waf-logs-haven", "/haven/web"]
+
+    manifest = cli.load_json(
+        output_dir / "collection_manifest.json"
+    )
+    assert manifest["run_id"] == run_id
+
+    waf_lines = (
+        output_dir / "waf_events.jsonl"
+    ).read_text(encoding="utf-8").splitlines()
+    assert len(waf_lines) == 1
+    assert json.loads(waf_lines[0])["eventId"] == "synthetic-event"
+
+    if mode == "app_failure":
+        assert result == 2
+        assert manifest["collection_complete"] is False
+        assert manifest["error_type"] == "ExecutionError"
+        assert len(manifest["groups"]) == 1
+        assert not (output_dir / "app_events.jsonl").exists()
+    else:
+        assert result == 0
+        assert manifest["collection_complete"] is True
+        assert manifest["error_type"] is None
+        assert len(manifest["groups"]) == 2
+        assert (output_dir / "app_events.jsonl").read_text(
+            encoding="utf-8"
+        ) == ""
+
+
+def test_select_cloudwatch_run_logs_preserves_evidence():
+    root = "1-6553f100-111111111111111111111111"
+    other_root = "1-6553f100-222222222222222222222222"
+
+    state = {
+        "results": [{"trace_id": f"Root={root}"}],
+    }
+
+    app_event = {
+        "trace_id": root,
+        "ts": "2023-11-14T22:13:20Z",
+        "status": 200,
+    }
+    conflicting_event = {
+        "trace_id": root,
+        "run_id": "different-run",
+        "ts": "2020-01-01T00:00:00Z",
+        "status": 403,
+    }
+    waf_event = {
+        "timestamp": 1700000000000,
+        "action": "ALLOW",
+        "httpRequest": {
+            "headers": [{
+                "name": "x-amzn-trace-id",
+                "value": f"Root={root}",
+            }],
+        },
+    }
+
+    raw_events = [
+        {"message": json.dumps(app_event)},
+        {"message": json.dumps(conflicting_event)},
+        {"message": json.dumps(waf_event)},
+        {"message": json.dumps({
+            "trace_id": other_root, "status": 200
+        })},
+        {"message": "plain nginx access log"},
+        {"message": "[]"},
+        {"message": '{"status": 200}'},
+    ]
+    original = json.dumps(raw_events)
+
+    result = cli.select_cloudwatch_run_logs(
+        raw_events, state
+    )
+
+    assert result["events"] == [
+        app_event,
+        conflicting_event,
+        waf_event,
+    ]
+    assert result["counts"] == {
+        "raw_events": 7,
+        "non_json": 1,
+        "non_object": 1,
+        "missing_trace": 1,
+        "other_trace": 1,
+        "selected": 3,
+    }
+    assert json.dumps(raw_events) == original
+
+
+@pytest.mark.parametrize("trace_id", [None, "", "invalid"])
+def test_select_cloudwatch_run_logs_rejects_invalid_trace(
+    trace_id,
+):
+    with pytest.raises(cli.ConfigError, match="Trace ID"):
+        cli.select_cloudwatch_run_logs(
+            [],
+            {"results": [{"trace_id": trace_id}]},
+        )
+
+
+def test_select_cloudwatch_run_logs_rejects_duplicate_run_trace():
+    trace_id = "Root=1-6553f100-111111111111111111111111"
+
+    with pytest.raises(cli.ConfigError, match="중복"):
+        cli.select_cloudwatch_run_logs(
+            [],
+            {
+                "results": [
+                    {"trace_id": trace_id},
+                    {"trace_id": trace_id},
+                ]
+            },
+        )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["success", "wrong_run", "incomplete", "wrong_count"],
+)
+def test_load_cloudwatch_collection(tmp_path, mode):
+    run_id = "11111111-2222-4333-8444-555555555555"
+
+    state = {
+        "source": "live_http_run",
+        "run_id": run_id,
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "started_utc": "2023-11-14T22:13:20.123Z",
+        "ended_utc": "2023-11-14T22:14:20.789Z",
+        "results": [{
+            "trace_id": (
+                "Root=1-6553f100-111111111111111111111111"
+            ),
+        }],
+    }
+
+    run_json = tmp_path / "results.json"
+    run_json.write_text(json.dumps(state), encoding="utf-8")
+
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+
+    event = {
+        "eventId": "synthetic-event",
+        "logStreamName": "synthetic-stream",
+        "timestamp": 1700000001123,
+        "message": '{"action": "ALLOW"}',
+    }
+
+    (logs_dir / "waf_events.jsonl").write_text(
+        json.dumps(event) + "\n",
+        encoding="utf-8",
+    )
+    (logs_dir / "app_events.jsonl").write_text(
+        "", encoding="utf-8"
+    )
+
+    manifest = {
+        "schema_version": 1,
+        "source": "cloudwatch_log_collection",
+        "run_id": (
+            "99999999-2222-4333-8444-555555555555"
+            if mode == "wrong_run"
+            else run_id
+        ),
+        "account_id": "123456789012",
+        "collection_complete": mode != "incomplete",
+        "error_type": None,
+        "window": cli.cloudwatch_window_from_run(state),
+        "groups": [
+            {
+                "log_group": "aws-waf-logs-haven",
+                "file": "waf_events.jsonl",
+                "event_count": 2 if mode == "wrong_count" else 1,
+                "pages_fetched": 1,
+                "pagination_complete": True,
+            },
+            {
+                "log_group": "/haven/web",
+                "file": "app_events.jsonl",
+                "event_count": 0,
+                "pages_fetched": 1,
+                "pagination_complete": True,
+            },
+        ],
+    }
+
+    (logs_dir / "collection_manifest.json").write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+
+    if mode == "success":
+        loaded = cli.load_cloudwatch_collection(
+            run_json, logs_dir
+        )
+        assert loaded["state"] == state
+        assert loaded["waf_events"] == [event]
+        assert loaded["app_events"] == []
+    else:
+        expected_error = {
+            "wrong_run": "run_id 불일치",
+            "incomplete": "완료되지 않은",
+            "wrong_count": "건수 불일치",
+        }[mode]
+
+        with pytest.raises(
+            cli.ConfigError, match=expected_error
+        ):
+            cli.load_cloudwatch_collection(
+                run_json, logs_dir
+            )
+
+
+@pytest.mark.parametrize(
+    "mode, expected_code, expected_verdict",
+    [
+        ("matched", 0, "PASS"),
+        ("app_missing", 3, "UNKNOWN"),
+        ("app_mismatch", 1, "FAIL"),
+        ("wrong_account", 2, None),
+    ],
+)
+def test_correlate_cloudwatch_command(
+    tmp_path, monkeypatch, mode,
+    expected_code, expected_verdict
+):
+    run_id = "11111111-2222-4333-8444-555555555555"
+    root = "1-6553f100-111111111111111111111111"
+    timestamp = "2023-11-14T22:13:20Z"
+
+    case = phase2_make_case(
+        "CW-TEST",
+        status=200,
+        expected_waf="ALLOW",
+        verification_mode="http_only",
+    )
+    row = cli.base_record(run_id, case)
+    row.update(
+        trace_id=f"Root={root}",
+        timestamp_utc=timestamp,
+        transport_status="OK",
+        request_attempted=True,
+        http_status=200,
+        http_expectation_match=True,
+    )
+
+    state = {
+        "schema_version": 1,
+        "source": "live_http_run",
+        "run_id": run_id,
+        "target_origin": cli.canonical_origin(
+            "https://orchestration-haven.cloud"
+        ),
+        "started_utc": timestamp,
+        "ended_utc": "2023-11-14T22:13:21Z",
+        "cleanup_complete": True,
+        "unexecuted_cases": 0,
+        "stopped_reason": None,
+        "results": [row],
+    }
+
+    run_json = tmp_path / "results.json"
+    run_json.write_text(json.dumps(state), encoding="utf-8")
+
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    output_dir = tmp_path / "correlation"
+
+    waf_event = {
+        "synthetic_fixture": True,
+        "timestamp": 1700000000000,
+        "action": "ALLOW",
+        "httpRequest": {
+            "headers": [{
+                "name": "x-amzn-trace-id",
+                "value": f"Root={root}",
+            }],
+        },
+    }
+    app_event = {
+        "synthetic_fixture": True,
+        "trace_id": root,
+        "run_id": run_id,
+        "ts": timestamp,
+        "status": 403 if mode == "app_mismatch" else 200,
+    }
+
+    groups = []
+    for group, filename, payloads in (
+        (
+            "aws-waf-logs-haven",
+            "waf_events.jsonl",
+            [waf_event],
+        ),
+        (
+            "/haven/web",
+            "app_events.jsonl",
+            [] if mode == "app_missing" else [app_event],
+        ),
+    ):
+        raw_events = [
+            {
+                "eventId": f"synthetic-{index}",
+                "logStreamName": "synthetic-stream",
+                "timestamp": 1700000000000,
+                "message": json.dumps(payload),
+            }
+            for index, payload in enumerate(payloads)
+        ]
+
+        (logs_dir / filename).write_text(
+            "".join(
+                json.dumps(event) + "\n"
+                for event in raw_events
+            ),
+            encoding="utf-8",
+        )
+
+        groups.append({
+            "log_group": group,
+            "file": filename,
+            "event_count": len(raw_events),
+            "pages_fetched": 1,
+            "pagination_complete": True,
+        })
+
+    manifest = {
+        "schema_version": 1,
+        "source": "cloudwatch_log_collection",
+        "run_id": run_id,
+        "account_id": "123456789012",
+        "collection_complete": True,
+        "error_type": None,
+        "window": cli.cloudwatch_window_from_run(state),
+        "groups": groups,
+    }
+    (logs_dir / "collection_manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    original_files = {
+        path: path.read_bytes()
+        for path in [run_json, *logs_dir.iterdir()]
+    }
+
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail(
+            "오프라인 상관분석에서 AWS CLI가 실행됐습니다"
+        ),
+    )
+
+    code = cli.main([
+        "correlate-cloudwatch",
+        "--run-json", str(run_json),
+        "--logs-dir", str(logs_dir),
+        "--expected-account",
+        "999999999999" if mode == "wrong_account"
+        else "123456789012",
+        "--output-dir", str(output_dir),
+    ])
+
+    assert code == expected_code
+    assert all(
+        path.read_bytes() == contents
+        for path, contents in original_files.items()
+    )
+
+    if mode == "wrong_account":
+        assert not output_dir.exists()
+        return
+
+    result = cli.load_json(
+        output_dir / "correlated" / "correlated_results.json"
+    )
+    assert result["results"][0]["verdict"] == expected_verdict
+
+    summary = cli.load_json(
+        output_dir / "selection_summary.json"
+    )
+    assert summary["waf"]["selected"] == 1
+    assert summary["app"]["selected"] == (
+        0 if mode == "app_missing" else 1
+    )

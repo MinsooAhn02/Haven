@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-log-smoke-001",
+  "suite_kind": "confirmation",
+  "cases": [
+    {
+      "case_id": "AWS-LOG-LOGIN-GET",
+      "category": "logging",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "verification_mode": "http_only",
+      "note": "익명 로그인 페이지 조회의 HTTP 응답과 WAF·앱 로그 연결 확인"
+    }
+  ]
+}

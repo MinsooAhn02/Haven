@@ -226,11 +226,11 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 
 - [x] **AWS 적용 확인:** IAM 사용자 `minsung` 권한 목록에 고객 관리형 정책 `Haven-Minsung-Delete-Policy` 연결됨(11/10 콘솔 캡처).
 - [x] **AWS JSON 저장 확인:** EC2 종료(`ec2:TerminateInstances`) 조건에 `Project=Haven`, `Owner=minsung`, `Name StringLike haven-test*` 적용(11/10 정책 JSON 조회 캡처). 이 조건이 없는 이전 13번 정책보다 범위를 좁힘.
-- [x] GitHub [13번 TerminateInstances 정책](JSON/13_Minsung_TerminateInstances_Policy.json)을 해당 Name 조건에 맞춰 갱신. [15번 SG 삭제 정책](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)은 `Project=Haven` 조건 유지. GitHub에서는 파일을 나눠 기록하지만 AWS 실제 정책 `Haven-Minsung-Delete-Policy`에는 두 작업이 한 정책에 포함됨.
-- [ ] **민성님 실제 검증 대기:** `haven-test*` 시험용 EC2 삭제 허용, `web-1`·`db-1` 삭제 거부(안전한 DryRun으로 확인), 시험용 SG `haven-sg-test` 삭제 권한 시험 결과 공유.
+- [x] GitHub [13번 EC2 삭제 정책](JSON/13_Minsung_TerminateInstances_Policy.json)에 `Name=haven-test*` 제한을 반영함. [15번 SG 삭제 정책](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)도 11/11에 `Project=Haven` **및** `Name=haven-sg-test` 조건으로 축소함. AWS 실제 고객 관리형 정책에는 두 작업이 함께 포함되어 있음([34번](JSON/34_Haven-Minsung-Delete-Policy.json)).
+- [ ] **민성님 EC2 삭제 권한 시험 대기:** `haven-test*` EC2 삭제 허용과 `web-1`·`db-1` 삭제 거부(DryRun) 근거 미확인. **SG 삭제 시험은 11/13 별도 완료:** `haven-sg-test` 삭제 허용 1건·운영/기본 SG 거부 4건([3회차 기록](1~4회차/3회차.md)).
 - [ ] 실제 시험용 EC2를 삭제할 때만 대상 Name·Instance ID 확인 후 해당 ID **하나만** 종료. `bash destroy.sh --delete` **사용 금지**.
-- [ ] 매일 21시 운영 종료는 별도 `bash night.sh`만 사용(EC2 중지 + NAT 삭제 + EIP 해제). 실제 실행 및 비용 결과는 민성님 확인.
-- **추가 주의:** 시험 전에는 정책 연결·JSON 저장과 실제 실행 성공을 구분한다. SG 삭제 정책은 `Project=Haven`이 붙은 운영 SG도 포함할 수 있어 대상 확인 필수.
+- [ ] 21시 운영 종료는 별도 `bash night.sh`를 사용(EC2 중지 + NAT 삭제 + EIP 해제). **민성님 11/10 21:02·11/11 21:14 실행 기록은 있으나**, 매일 운영 결과 및 최종 비용 확인까지 완료된 것은 아니므로 미완료 유지.
+- **추가 주의(최신):** 정책 연결·JSON 저장과 실제 실행 성공은 구분한다. SG 삭제 조건은 11/11 이후 `Project=Haven` **및** `Name=haven-sg-test`를 모두 요구하며 11/13 실환경 허용·거부 시험이 완료됨. 단, 다른 정책을 통한 우회 가능성은 별도 미검증.
 
 ## 2026-11-11 SG 삭제 IAM 정책 제한 — 실환경 적용 확인
 
@@ -238,9 +238,9 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] EC2 시험용 서버 영구 삭제 조건(`Project=Haven`, `Owner=minsung`, `Name=haven-test*`)은 유지.
 - [x] SG 삭제 허용(`ec2:DeleteSecurityGroup`)은 `Project=Haven` **및** `Name=haven-sg-test` **리소스 태그 둘 다 있는 대상**으로 좁힘. 기존 운영용 `haven-sg-web`, `haven-sg-db`, `haven-sg-alb` 이름만으로 허용하지 않음.
 - [x] GitHub [15번 SG 삭제 정책](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)에 새로운 태그 조건 반영. 이 파일은 15번 부분의 기록이며, 실제 AWS 고객 관리형 정책에는 EC2 종료 권한과 SG 삭제 권한이 **함께** 있음.
-- [x] **실행 시험 완료(11/13, 민성님 CLI 보고):** 시험용 `haven-sg-test` 삭제 허용 1건·운영 SG 및 default SG 삭제 거부 4건 확인. 시험용 `haven-sg-test`는 11/11 서울 리전 목록에 없었으며, 재생성은 확인되지 않음.
+- [x] **실행 시험 완료(11/13, 민성님 CLI 보고):** 시험용 `haven-sg-test`를 생성 후 `--dry-run` 허용 확인·실제 삭제 성공·NotFound 확인(허용 1건), 운영 SG 3개·default SG 삭제 `--dry-run` 거부 4건 확인. 11/11 기준 목록에 없던 시험용 SG를 11/13 새로 생성해 시험함.
 - [ ] **추가 안전 확인:** 다른 IAM 정책의 삭제 허용 및 SG 태그 수정 가능 범위를 점검해야 운영용 SG 삭제가 완전히 불가능하다고 결론 내릴 수 있음.
-- **주의:** 이 기록은 IAM **설정 저장 성공** 확인이며 실제 삭제 허용/거부 시험 완료로 간주하지 않음. 이미 삭제된 SG나 실제 AWS SG 자체는 수정하지 않음.
+- **주의:** 11/11 정책 편집은 **설정 저장 성공**이고, 11/13 민성님 별도 시험으로 **SG 삭제 허용·거부를 확인**함. EC2 영구 삭제 권한의 허용·거부 시험과는 구분함.
 
 ## 2026-11-11 오전 추가 기록 — Route 53 및 SES
 

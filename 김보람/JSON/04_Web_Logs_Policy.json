@@ -9,7 +9,7 @@
         "logs:CreateLogStream",
         "logs:PutLogEvents"
       ],
-      "Resource": "arn:aws:logs:ap-northeast-2:${AWS_ACCOUNT_ID}:log-group:/haven/web:log-stream:*"
+      "Resource": "arn:aws:logs:ap-northeast-2:${ACCOUNT_ID}:log-group:/haven/web:log-stream:*"
     }
   ]
 }

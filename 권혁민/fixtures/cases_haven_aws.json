@@ -1,0 +1,176 @@
+
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-cleanup-smoke-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "AWS-SETUP-A-POST",
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "critical": true,
+      "capture_post_id": true,
+      "note": "AWS 전용 시험 게시글 생성 및 ID 기록"
+    },
+    {
+      "case_id": "AWS-A-TXT-UPLOAD",
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "시험용 게시글에 TXT 첨부 업로드"
+    },
+    {
+      "case_id": "AWS-A-POST-READ",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A가 이번 실행에서 생성한 자신의 게시글 조회"
+    },
+    {
+      "case_id": "AWS-B-POST-DENIED",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받지 않은 B의 A 게시글 조회 거부"
+    },
+    {
+      "case_id": "AWS-C-POST-DENIED",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받지 않은 C의 A 게시글 조회 거부"
+    },
+    {
+      "case_id": "AWS-A-SHARE-B",
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "share_recipient_role": "member_b",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_grant.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "critical": true,
+      "note": "A의 시험 게시글을 B 역할로 로그인한 실제 계정에 공유"
+    },
+    {
+      "case_id": "AWS-B-SHARED-READ",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받은 B의 시험 게시글 조회 허용"
+    },
+    {
+      "case_id": "AWS-A-REVOKE-B",
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/{share_id}/revoke/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "share_revoke_role": "member_b",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "critical": true,
+      "note": "실제 B 계정의 공유 ID를 조회하여 A가 공유 해제"
+    },
+    {
+      "case_id": "AWS-B-REVOKED-DENIED",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유 해제 후 기존 B 세션의 게시글 접근 거부"
+    }
+  ],
+  "cleanup_cases": [
+    {
+      "case_id": "AWS-CLEANUP-A-POST",
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "AWS-SETUP-A-POST",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "AWS-SETUP-A-POST",
+      "note": "시험용 게시글과 연결된 첨부 정리"
+    }
+  ]
+}

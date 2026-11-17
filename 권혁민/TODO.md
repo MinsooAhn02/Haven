@@ -90,8 +90,8 @@ aws wafv2 get-web-acl --name haven-web-acl --scope REGIONAL --id ddd129cb-9894-4
 
 ```cmd
 python request_verify.py run --target https://orchestration-haven.cloud --allowlist fixtures/allowlist_aws.json --cases fixtures/cases_haven_aws.json --fixture-dir fixtures --output-dir output_aws_cleanup_03 --max-requests 100 --max-duration 300
-python request_verify.py collect-logs --run-json output_aws_cleanup_03/results.json --profile hyeokmin --region ap-northeast-2 --expected-account 777171525040 --output-dir output_aws_cleanup_logs_03
-python request_verify.py correlate-cloudwatch --run-json output_aws_cleanup_03/results.json --logs-dir output_aws_cleanup_logs_03 --expected-account 777171525040 --output-dir output_aws_cleanup_corr_03
+python request_verify.py collect-logs --run-json output_aws_cleanup_03/results.json --profile hyeokmin --region ap-northeast-2 --expected-account ${ACCOUNT_ID} --output-dir output_aws_cleanup_logs_03
+python request_verify.py correlate-cloudwatch --run-json output_aws_cleanup_03/results.json --logs-dir output_aws_cleanup_logs_03 --expected-account ${ACCOUNT_ID} --output-dir output_aws_cleanup_corr_03
 ```
 
 | 항목 | 결과 |

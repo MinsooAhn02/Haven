@@ -248,14 +248,14 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 민성님이 `route53:CreateHostedZone` 실행 시 **identity-based policy 미허용(AccessDenied)** 오류를 공유함.
 - [x] AWS IAM 사용자 `minsung` 권한 목록에서 **`Haven-Minsung-Route53-...` 인라인 정책 연결** 확인(11/11 사용자 제공 IAM 콘솔 캡처).
 - [x] 요청에 맞는 최소 생성 액션 `route53:CreateHostedZone`, `Resource: "*"` 정책 JSON을 AWS에 입력·저장하고 같은 내용을 [16번 JSON](JSON/16_Haven-Minsung-Route53-Create.json)에 기록.
-- [ ] **민성님 실제 재시험 대기:** Route 53 호스팅 영역 생성 성공/실패 결과와 중복 생성 여부 확인. DNS 레코드 관리, ACM 검증 등에 추가 IAM 권한이 필요하면 구체적인 거부 오류를 받아 별도 검토.
+- [x] **민성님 실제 생성 성공 확인(11/11 10:42):** Route 53 호스팅 영역 생성 완료, 네임서버 4개 확인([3회차 기록](1~4회차/3회차.md)). **중복 생성 여부 및 개별 Route 53 조회 API 재시험은 별도 미확인**(아래 조회 권한 점검 항목 참고).
 - **담당 구분:** 도메인·DNS·ALB 연결은 민성님, 계정 IAM·추가 비용 기록은 보람 담당. 기존 도메인과 DNS 설정을 보람이 직접 수정하지 않음.
 
 ### SES 발신 주소 확인 및 메일 시험
 - [x] 서울 리전 SES에서 테스트용 발신 이메일 자격 증명 **확인됨(Verified)** 상태 확인.
 - [x] **SES 테스트 메일 발송·수신 확인**(단독 시험). 서비스 앱 연동 시험은 별도 진행 예정.
-- [x] Haven 정식 발신 주소(프로젝트 도메인 사용 여부)·발송 방식의 앱 적용 입력을 요찬님과 확정하고, 그 주소에 맞춘 EC2 Role의 `ses:SendEmail` 최소 권한 설정. **정식 서비스 발신 주소는 미확정**.
-- [x] 11/12(목) 요찬님과 실제 Django 이메일 발송·수신/실패 동작 검증 (SES 샌드박스 제한 여부 확인 포함).
+- [x] Haven 정식 발신 주소 `noreply@orchestration-haven.cloud` 적용, Web 전용 역할 `haven-ec2-web-role`의 `ses:SendEmail` 최소 권한 설정. **11/13 실제 시험 메일 발송·수신 성공**(EXT-03, [PR #117](https://github.com/MinsooAhn02/Haven/pull/117)).
+- [x] **11/13 실제 Django 이메일 시험 완료:** EXT-03 SES 발송·수신 성공, EXT-04 미허용 주소에 `AccessDeniedException` 발생·접수 없음 확인. SES 샌드박스 상태 확인([요찬 4회차 기록](../신요찬/4회차_앱_검증기록.md)).
 
 ### 다음 점검
 - [ ] 민성님 SSM Session Manager 실제 접속 및 권한 거부 시험 결과 수신.

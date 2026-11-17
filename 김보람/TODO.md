@@ -382,6 +382,6 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - **병합됨:** #111, #113, #115, #118, #119, #121. 27번에서 `DescribeInstances`·`DescribeSubnets` 제거, 혁민 20번 `/haven/db` 읽기 추가, 계정 번호 변수화, DB 로그 수집량(30일 약 10 MB)이 main에 들어갔다.
 - **남은 것:**
   1. #121의 DB 로그 비용을 요금표 기준 금액으로 한 줄 적는다(지금은 용량과 "저장 부담은 낮다"만 있다).
-  2. `김보람/JSON/02·04·06·07·08`에 남은 `${AWS_ACCOUNT_ID}`를 `${ACCOUNT_ID}`로 통일한다.
+  2. **완료(11/17):** `김보람/JSON/02·04·06·07·08`의 계정 번호 변수 표기를 `${ACCOUNT_ID}`로 통일했다.
   3. 12번이 기대는 `ConfigureHavenInfrastructureInSeoul`(`Resource: *`)의 범위를 한 번 확인한다.
   4. 시험 메일이 스팸함으로 간 건(DKIM은 pass, 구민철 #117)에 대해 DMARC·SES 사용자 지정 MAIL FROM 설정 의견을 남긴다. 설정할지는 조장이 정한다.

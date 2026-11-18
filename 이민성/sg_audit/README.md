@@ -26,7 +26,7 @@
 
 ## fixture 목록
 
-채점기가 맞는 건 맞다고, 틀린 건 틀렸다고, 모르는 건 모른다고, 못 읽은 건 실패라고 판정하는지 확인하는 "도구를 시험하는 시험"이다. 종료 코드 0·1·2·3이 각각 한 번씩 나오도록 구성했다.
+채점기가 맞는 건 맞다고, 틀린 건 틀렸다고, 모르는 건 모른다고, 못 읽은 건 실패라고 판정하는지 확인하는 "도구를 시험하는 시험"이다. 처음 4개(AUD-01·02·08·09)는 종료 코드 0·1·2·3이 각각 한 번씩 나오도록 구성했고, `aud0*` 4개는 0.3.2(11/18)에 추가했다.
 
 | 파일 | 상황 | 확인하는 것 | 이게 없으면 놓치는 버그 | 기대 결과 | 명세 시험 |
 |---|---|---|---|---|---|
@@ -34,6 +34,10 @@
 | `fail_public_db.json` | DB 5432가 `0.0.0.0/0`에 열림 | 위반을 잡아내는가 | 뚫렸는데 PASS를 내는 미탐 | FAIL (1) | AUD-02 |
 | `unknown_role.json` | baseline에 없는 서버·SG가 있음 | 모르는 건 "모른다"고 하는가 | 근거 없이 PASS/FAIL로 단정 | UNKNOWN (3) | AUD-09 |
 | `error_access_denied.json` | 권한 오류로 SG 목록을 못 읽음 | 못 읽었을 때 실패라고 하는가 | 아무것도 못 읽고 "문제없음"으로 끝냄 | ERROR (2) | AUD-08 |
+| `aud03_range_ports.json` | 포트를 범위로 엶(`0-65535`, `5000-6000` 공개, Web SG에서 `5400-5500`, `8000-8100` 공개) | 범위 안에 숨은 SSH·DB 포트를 잡는가 | 22·5432를 "딱 그 번호"로만 찾아 범위 공개를 놓침 | FAIL (1) | AUD-03 |
+| `aud05_all_protocol.json` | 전체 프로토콜(`-1`) 공개·내부, 포트 없는 TCP 규칙 | 포트 칸이 없어도 죽지 않고 "전부 열림"으로 보는가 | 포트가 없어 비교를 건너뛰어 PASS, 또는 프로그램이 죽음 | FAIL (1) | AUD-05 |
+| `aud05_bad_ports.json` | 포트가 문자열(`"22"`)인 깨진 규칙 | 깨진 입력을 추측하지 않고 ERROR로 멈추는가 | Traceback으로 죽으며 종료 코드 1(FAIL처럼 보임) | ERROR (2) | AUD-05 |
+| `aud06_udp_icmp.json` | UDP 80(ALB에서), UDP 5432·ICMP 공개, UDP 3389 공개 | TCP 웹 허용과 구분하는가 | UDP 80을 웹 허용으로, UDP 5432·ICMP를 DB·SSH 공개로 잘못 봄 | FAIL (1) | AUD-06 |
 
 - `fail_public_db.json`은 정상 규칙(Web → DB 5432)을 그대로 두고 위험 규칙 하나만 추가했다. 실제 사고에서 흔한 모양(급하게 열고 안 닫음)이며 SG-01(공개 DB 포트) 판정을 시험한다.
 - 결과 없음은 PASS가 아니라 UNKNOWN이다. 수집 실패는 ERROR이며 PASS로 처리하지 않는다.
@@ -150,10 +154,10 @@
 
 | check_id | 조건 | 판정 |
 |---|---|---|
-| SG-01 | 들어오는 규칙의 출발지가 `0.0.0.0/0`·`::/0`이고 22(SSH)·3389(RDP)·5432(PostgreSQL) 포트를 포함 | FAIL |
+| SG-01 | 들어오는 규칙의 출발지가 `0.0.0.0/0`·`::/0`이고 TCP 22(SSH)·TCP/UDP 3389(RDP)·TCP 5432(PostgreSQL)를 포함(범위·포트 없음·전체 프로토콜 포함. UDP 5432·ICMP는 해당 안 됨, 0.3.2) | FAIL |
 | SG-02 | 전체 프로토콜(`-1`) 허용 | FAIL |
-| SG-03 | Web TCP 80의 출발지가 ALB SG가 아님 | FAIL |
-| SG-04 | DB TCP 5432의 출발지가 Web SG가 아님 | FAIL |
+| SG-03 | Web으로 들어오는 TCP 80 허용이 기준(ALB SG에서 TCP 80 하나)과 다름: 출발지가 다르거나 포트 범위가 넓음 | FAIL |
+| SG-04 | DB로 들어오는 TCP 5432 허용이 기준(Web SG에서 TCP 5432 하나)과 다름: 출발지가 다르거나 포트 범위가 넓음 | FAIL |
 | SG-05 | 그 외 baseline에 없는 규칙 / baseline 규칙이 실제로 없음 / 기대 SG 미연결 | FAIL |
 | SG-06 | baseline에 없는 자산(live: 기대 SG가 없는 ENI), baseline 자산의 수집 결과 없음, 연결되지 않은 SG, 역할을 모르는 SG 참조, SG 규칙 수집 결과 없음, 한 ENI에 여러 자산의 기대 SG(역할 미확정), ENI 수집 실패로 자산 접근 결과를 모름 | UNKNOWN |
 | SG-07 | (live `--vpc-id`만) VPC의 `default` SG에 규칙이 하나라도 있음. 비어 있으면 PASS. default SG는 SG-06 "연결되지 않은 SG"에서 뺀다 | FAIL |
@@ -285,7 +289,39 @@ python -B -m unittest discover -s 이민성/sg_audit -p "test_*.py" -v
 - 같은 `--output-dir`로 다시 실행하면 덮어쓰지 않고 ERROR(2)로 멈춘다.
 - 없는 파일을 지정하면 ERROR(2)로 멈춘다.
 
-미구현(다음 회차): `live` 모드(실제 AWS 읽기 전용 수집, 3회차 — 설계는 아래 "live 모드 설계" 절), AUD-03~07·10·11 추가 fixture.
+(11/13 당시 미구현이던 `live` 모드는 아래 "live 모드 설계·실행" 절에서 구현했다. AUD-03·05·06은 아래 0.3.2 절.)
+
+### 0.3.1 → 0.3.2: AUD-03·05·06 fixture와 프로토콜 구분 (11/18)
+
+명세 8.4의 AUD-03(범위 포트)·AUD-05(전체 프로토콜/누락 포트)·AUD-06(UDP/ICMP) fixture를 만들면서 판정 오류 3가지와 비정상 종료 1가지를 찾아 고쳤다.
+
+| 발견 | 고치기 전 | 고친 뒤 |
+|---|---|---|
+| UDP 5432 공개 | SG-01 "PostgreSQL(5432) 공개"(이유가 틀림. PostgreSQL은 TCP만 씀) | SG-05 허용표에 없는 규칙 |
+| ALB SG에서 UDP 80 | SG-03 "출발지가 ALB SG가 아님"(출발지는 ALB가 맞음) | SG-05 |
+| ICMP type 3 code 22 공개 | SG-01 "SSH(22) 공개"(ICMP의 FromPort/ToPort는 포트가 아니라 type/code) | SG-05 |
+| 포트가 문자열·불리언, 프로토콜 없음, 규칙이 객체가 아님 | Traceback으로 죽고 **종료 코드 1**(FAIL과 구별 안 됨) | ERROR(2), 결과 파일 안 만듦 |
+
+- `covers_port`가 프로토콜을 본다: 전체(`-1`)는 모두 포함. SSH 22·PostgreSQL 5432·Web 80은 TCP 규칙만, RDP 3389는 TCP·UDP 규칙만 해당. 같은 프로토콜인데 포트 칸이 없으면 전체로 본다.
+- 프로토콜 번호를 이름으로 맞춘다(`6`→tcp, `17`→udp, `1`→icmp, `58`→icmpv6).
+- `validate_permissions`: SG 규칙 모양(목록·객체·정수 포트·프로토콜 있음, TCP·UDP는 0~65535이고 시작 ≤ 끝)을 채점 전에 확인. ICMP는 FromPort=type·ToPort=code라 `8-0`(echo request)도 정상으로 둔다. fixture 모드의 `audit`도 예상 못 한 오류는 ERROR(2)로 끝낸다. (live 모드는 AWS 응답을 그대로 쓰므로 이 검사를 거치지 않는다.)
+- SG-03·SG-04 이유 문구를 "출발지 또는 포트 범위가 기준과 다름"으로 바꿈(Web SG에서 `5400-5500`처럼 출발지는 맞고 범위만 넓은 경우).
+- 바뀌지 않은 것: TCP 규칙, 범위 포트, 전체 프로토콜의 PASS/FAIL과 check_id(기존 fixture 4개 결과 그대로). 바뀐 것: UDP/ICMP 규칙의 check_id·이유, SG-03·04 이유 문구, 프로토콜 번호(`6` 등)를 이름과 같게 판정, 깨진 입력(프로토콜 없음 포함)은 판정 대신 ERROR(2).
+
+| 시험 ID | fixture | 결과 개수 | 판정 | 종료 코드 |
+|---|---|---|---|---|
+| AUD-03 | `aud03_range_ports.json` | PASS 10, FAIL 4 (SG-01 ×2, SG-04, SG-05) | FAIL | 1 |
+| AUD-05 | `aud05_all_protocol.json` | PASS 10, FAIL 3 (SG-01, SG-02, SG-04) | FAIL | 1 |
+| AUD-05 | `aud05_bad_ports.json` + 깨진 모양 10가지(시험 안에서 만듦: 문자열·불리언 포트, 프로토콜 없음·공백, 규칙·범위가 객체 아님, 규칙 목록 아님, 거꾸로 된 범위, 65535 초과) | 결과 파일 없음 | ERROR | 2 |
+| AUD-06 | `aud06_udp_icmp.json` | PASS 10, FAIL 5 (SG-01 RDP UDP, SG-05 ×4) | FAIL | 1 |
+
+새 시험(`test_network_audit.py`): `test_aud03_range_ports`, `test_aud05_all_protocol_and_missing_ports`, `test_aud05_malformed_rules_are_error_not_fail`, `test_aud06_udp_icmp_are_not_tcp`, `test_icmp_type_code_is_not_a_port_range`, `test_numeric_protocol_is_same_as_name`. 기대 FAIL 목록을 (check_id, 자산, 규칙)까지 정확히 비교하고, 정상 규칙 PASS 10개가 그대로인지도 본다.
+
+- 작업 환경(Linux, Python 3.13) 실행: 전체 66개 통과(`test_network_audit` 12개).
+- 뮤테이션 확인: `network_audit.py`만 0.3.1로 되돌리면 새 시험 3개 실패(UDP/ICMP 구분, 깨진 입력 ERROR, 프로토콜 번호). 범위 검사만 빼면 깨진 입력 시험이, ICMP를 범위 검사에 넣으면 ICMP 시험이 실패. AUD-03·05 판정은 0.3.1도 맞았고, 새 시험은 그 동작을 고정한다.
+- 2026-11-18 16:05 민성 PC(Windows, Git Bash) 실행: `python -B -m unittest discover -s 이민성/sg_audit -p "test_*.py" -v` → 66개 통과(OK, 5.646s).
+
+아직 없는 것: AUD-04(IPv6)·AUD-07(여러 API 페이지)·AUD-11(합집합)의 fixture. live 시험 L13·L9·L16이 가짜 AWS로 대신 확인한다. AUD-10(실제 설정 수동 대조)은 구민철 실행·대조(11/23).
 
 ## live 모드 설계·실행 (2026-11-13)
 

@@ -490,3 +490,66 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 |---|---|
 | HSTS(W004) 설정 위치·담당 정하기 | Django 설정(요찬) 또는 Nginx 헤더(서버). 요찬과 상의 → 4회차 적용, 적용 뒤 응답 헤더와 `check --deploy` 재실행 |
 | W008 예외를 앱 쪽 기록에도 남길지 | 요찬 앱계약·설정 문서와 맞추기 |
+
+## 민성's comment · 2026-11-18 오후 · HSTS 적용 배포(W004 조치)
+
+요찬 HSTS PR(`SECURE_HSTS_SECONDS=3600`, `DJANGO_HTTPS=1`일 때만, 하위 도메인·preload 끔) 병합 → 운영 배포 → 확인. 11/16 DEP-05의 W004 "미조치"를 이걸로 조치.
+
+| 시각 | 한 일 | 결과·근거 |
+|---|---|---|
+| 15:34 | PR 병합 뒤 PC에서 `git fetch` → main `f0428d7` | 바뀐 것: 앱 설정·시험·문서(서버 스크립트·requirements·migration 없음). 자동 시험 231개(Python 3.12·3.13) |
+| 15:3x | 배포 전 백업(db-1 `backup.sh`, `BACKUP_BUCKET`을 STS로 계정 조회해 지정) | 실행함. 시간도장은 그 자리에서 적지 못함(기록 누락). 16:51 db-1에서 S3 목록 조회는 `s3:ListBucket` 권한 없음으로 거부(백업 쓰기만 허용한 최소 권한, 정상) → 시간도장 미기록. 다음 배포부터 `OK backup …` 줄을 바로 적음 |
+| 15:3x | 배포 `f0428d75cd51bbed535a7cb71e75e31614a89cda` **2회** | ✅ 2회 모두 OK, `current` → `releases/f0428d7…` |
+| 15:37 | web-1 `healthz` | `ok` |
+| 15:37 | `curl -sI https://…/accounts/login/` | `strict-transport-security: max-age=3600` ✅ |
+| 15:37 | `curl -sI http://…/` | `301 Moved Permanently` (ALB 전환 그대로) ✅ |
+| 15:38 | web-1 SSM(root) `manage.py check --deploy` | 경고 3건(`3 issues, 0 silenced`): **W004 사라짐** ✅ |
+
+| 경고 | 처리 |
+|---|---|
+| security.W004 `SECURE_HSTS_SECONDS` | **조치 완료**(3600초 = 1시간). 문제 없으면 4회차 이후 늘릴지 요찬과 결정 |
+| security.W008 `SECURE_SSL_REDIRECT` | 예외 유지(11/16과 같음, ALB 80 → 443 301) |
+| security.W005 `SECURE_HSTS_INCLUDE_SUBDOMAINS` | 의도한 예외: 하위 도메인을 쓰지 않음, 켜면 되돌리기 어려움(앱계약 1.2.1) |
+| security.W021 `SECURE_HSTS_PRELOAD` | 의도한 예외: preload 목록은 빼는 데 몇 달 걸려 과제 기간에 맞지 않음(앱계약 1.2.1) |
+
+**다음:** 아래 오후 기록
+
+## 민성's comment · 2026-11-18 오후 2 · 로그인 실패 제한 2차 시험, SG 점검 0.3.2, Nginx 요청 ID 로그
+
+**로그인 실패 제한 운영 시험 2차 (요찬 안내, 요찬 PC·휴대폰 + 민성 web-1·db-1 조회)**
+
+| 시각 | 시험 | 결과 |
+|---|---|---|
+| 16:07 | 1장 계정 열거 + 가짜 X-Forwarded-For 6개 | ✅ 없는 아이디 400 ×5(789~804ms) → 429(76ms) |
+| 16:10~11 | 2장 분산 공격(PC 3 + 휴대폰 2) | ✅ 계정 키 하나에 n=5, 휴대폰 6번째 429 |
+| 16:14~20 | 3장 IP 키(web-1 manage.py shell, 읽기 전용 / db-1 SQL 같은 결과) | ✅ account 5·5, ip 8(Y-PC)·2(Y-PHONE). 가짜 XFF는 따로 세지 않고 실제 IP로 셈 |
+| 16:36~42 | 4장 IP 30번 | ✅ account n=5 ×6, Y-PC n=30, 31번째·맞는 비밀번호 429. 휴대폰은 맞는 비밀번호로 로그인 성공(안내문 ④는 틀린 비밀번호 400이었으나 성공으로 확인) |
+
+- IP 원문은 기록에 적지 않음. 결과 정리는 요찬 `신요찬/4회차_앱_검증기록.md`
+- `locktest_1116`은 최종 정리 때까지 유지(조장 결정, 요찬에게 전달)
+
+**SG 점검 도구 0.3.2 (AUD-03·05·06)**
+
+- fixture 4개·시험 6개 추가, UDP/ICMP를 TCP와 구분(UDP 5432·ICMP가 SG-01로, ALB에서 온 UDP 80이 SG-03으로 잘못 나오던 것 → SG-05), 깨진 규칙 모양은 Traceback·종료 코드 1 대신 ERROR(2)
+- 16:05 민성 PC(Windows) 시험 66개 통과. TCP 규칙 판정은 그대로라 11/13·11/16 실제 AWS 결과 영향 없음
+- 구민철에게 11/23 실행·대조는 0.3.2로 하도록 전달
+
+**인수인계 03 정정**
+
+- 백업 버킷 지정을 STS 조회 방식으로(`${ACCOUNT_ID}`를 그대로 붙여 넣으면 빈 값), 백업 시각 바로 기록 안내
+- 인스턴스 ID·내부 IP 가림
+
+**Nginx 요청 ID 로그 (#143, 구현 민성 · 재검증 혁민 · 기한 11/27)**
+
+| 시각 | 한 일 | 결과·근거 |
+|---|---|---|
+| 17:40 | #143 병합(리뷰 전 병합 → 병합 뒤 리뷰·재검증을 혁민에게 요청) | 접근 로그 형식 `haven`: combined 뒤에 `trace= rid= cid= run= client= rt=`, `nginx -t` 실패 시 이전 설정 복구. test-wsl.sh 시험 11개 추가(WSL 환경 없어 미실행) |
+| 17:42 | 배포 전 백업(db-1 `backup.sh`, 버킷 STS 조회) | ✅ 시간도장 `20261118T084244Z` |
+| 17:43~44 | 배포 `187090a669b184903101d93dafd0f67cba3c3095` **2회** | ✅ 2회 모두 `OK deployed`, `current` → `releases/187090a…` |
+| 17:45 | web-1 `web-setup.sh` 재실행(`site.conf` 값 그대로) | ✅ `OK web-setup`, `nginx -t` 통과, `grep -c haven_trace` = 2 |
+| 17:46 | `X-Haven-Request-ID: minsung-test-1` 요청 1건(PC → ALB → web-1) | ✅ Nginx `trace=1-6afd65d2-…` `rid=11b12b2d…` `cid=minsung-test-1` `client=`(PC 공인 IP, 가림). 앱 로그(journald)의 request_id·trace_id·client_request_id 세 값 모두 같음 |
+
+- 처음 두 번(17:2x·17:41) `web-setup.sh` 재실행은 배포 전이라 예전 스크립트가 돌아 바뀐 것 없음(`grep -c haven_trace` = 0). 배포 뒤 다시 실행해 적용
+- 남은 것: 혁민 병합 뒤 리뷰, WAF 로그에서 같은 trace(`1-6afd65d2-004c498b686b533b17a7907b`, 17:46 KST) 찾는 재검증
+
+**다음:** 21시 `night.sh` · 혁민 #143 재검증 · 4회차(WAF Block, 운영 관리자 계정, destroy.sh ALB·WAF 순서, 네트워크/SG 재시험·구성도·종료 대상, 최종 DB+첨부 복원)

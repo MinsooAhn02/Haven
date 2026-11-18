@@ -19,8 +19,12 @@ HTTPS_ON = dict(
     SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
     SESSION_COOKIE_SECURE=True,
     CSRF_COOKIE_SECURE=True,
+    SECURE_HSTS_SECONDS=3600,
 )
-HTTPS_OFF = dict(SECURE_PROXY_SSL_HEADER=None, SESSION_COOKIE_SECURE=False, CSRF_COOKIE_SECURE=False)
+HTTPS_OFF = dict(
+    SECURE_PROXY_SSL_HEADER=None, SESSION_COOKIE_SECURE=False, CSRF_COOKIE_SECURE=False, SECURE_HSTS_SECONDS=0
+)
+HSTS = "Strict-Transport-Security"
 APP_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -53,16 +57,30 @@ class SettingsFromEnvTests(SimpleTestCase):
             env["DJANGO_HTTPS"] = value
         code = (
             "import django;django.setup();from django.conf import settings as s;"
-            "print(s.SECURE_PROXY_SSL_HEADER, s.SESSION_COOKIE_SECURE, s.CSRF_COOKIE_SECURE, s.SECURE_SSL_REDIRECT)"
+            "print(s.SECURE_PROXY_SSL_HEADER, s.SESSION_COOKIE_SECURE, s.CSRF_COOKIE_SECURE, s.SECURE_SSL_REDIRECT,"
+            " s.SECURE_HSTS_SECONDS, s.SECURE_HSTS_INCLUDE_SUBDOMAINS, s.SECURE_HSTS_PRELOAD)"
         )
         env["DJANGO_SETTINGS_MODULE"] = "config.settings"
         return subprocess.run([sys.executable, "-c", code], cwd=APP_DIR, env=env, capture_output=True, text=True, timeout=60)
 
     def test_off_by_default_and_on_with_1(self):
         off = self.run_settings(None)
-        self.assertEqual(off.stdout.strip(), "None False False False", off.stderr[-500:])
+        self.assertEqual(off.stdout.strip(), "None False False False 0 False False", off.stderr[-500:])
         on = self.run_settings("1")
-        self.assertEqual(on.stdout.strip(), "('HTTP_X_FORWARDED_PROTO', 'https') True True False", on.stderr[-500:])
+        self.assertEqual(
+            on.stdout.strip(), "('HTTP_X_FORWARDED_PROTO', 'https') True True False 3600 False False", on.stderr[-500:]
+        )
+
+    def test_deploy_check_has_no_hsts_warning_when_on(self):
+        """운영 경고 점검(DEP-05): 켠 상태에서 W004(HSTS 없음)는 사라지고, 일부러 남긴 예외 셋은 그대로 나온다."""
+        env = {k: v for k, v in os.environ.items() if k != "DJANGO_HTTPS"}
+        env.update(DJANGO_HTTPS="1", DJANGO_SETTINGS_MODULE="config.settings")
+        res = subprocess.run([sys.executable, "manage.py", "check", "--deploy"], cwd=APP_DIR, env=env,
+                             capture_output=True, text=True, timeout=60)
+        out = res.stdout + res.stderr
+        self.assertNotIn("security.W004", out)
+        for kept in ("security.W008", "security.W005", "security.W021"):  # 앱계약.md 1.2.1 예외
+            self.assertIn(kept, out)
 
     def test_invalid_value_fails_to_start(self):
         bad = self.run_settings("yes")
@@ -126,6 +144,18 @@ class HttpsOnTests(HttpsBase):
         self.assertEqual(res.status_code, 200)
         self.assertFalse(res.wsgi_request.is_secure())
 
+    def test_hsts_only_on_https_responses(self):
+        """HSTS는 ALB를 거친 HTTPS 응답(오류 응답 포함)에만 붙고, 하위 도메인·preload는 넣지 않는다."""
+        for path in ("/accounts/login/", "/posts/999999/"):
+            res = alb_client().get(path, HTTP_X_FORWARDED_PROTO="https")
+            self.assertIn(res.status_code, (200, 302), path)
+            self.assertEqual(res.headers.get(HSTS), "max-age=3600", path)
+        self.assertEqual(alb_client().get("/no-such-page/", HTTP_X_FORWARDED_PROTO="https").headers.get(HSTS),
+                         "max-age=3600")
+        # ALB 상태 검사(HTTP, 헤더 없음)와 HTTP로 표시된 요청에는 붙지 않는다(브라우저도 HTTP 응답의 HSTS는 무시한다, RFC 6797).
+        self.assertNotIn(HSTS, Client().get("/healthz").headers)
+        self.assertNotIn(HSTS, Client().get("/accounts/login/", HTTP_X_FORWARDED_PROTO="http").headers)
+
 
 @override_settings(**HTTPS_OFF)  # 서버 환경변수와 관계없이 '끈 상태'를 시험한다
 class HttpsOffTests(HttpsBase):
@@ -137,3 +167,4 @@ class HttpsOffTests(HttpsBase):
         self.assertEqual(res.status_code, 302)
         self.assertEqual(cookie_attrs(res, "sessionid"), {"secure": False, "httponly": True, "samesite": "Lax"})
         self.assertEqual(cookie_attrs(page, "csrftoken")["secure"], False)
+        self.assertNotIn(HSTS, page.headers)  # 헤더 위조로 HSTS를 받아 로컬 HTTP가 막히는 일이 없다

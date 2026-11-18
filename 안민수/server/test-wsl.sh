@@ -83,6 +83,26 @@ from_app() { grep -qi '^x-request-id:' "$T/hdr"; }
 [ "$(post /posts/new/ 20000)" = 413 ] && ! from_app && ok "post 20000 bytes -> 413 from nginx (app not reached)" || bad "post 20000 bytes -> 413 from nginx"
 [ "$(post /posts/1/attachments/ 2200000)" = 413 ] && from_app && ok "upload 2.2MB -> 413 from app (logged)" || bad "upload 2.2MB -> 413 from app"
 [ "$(post /posts/1/attachments/ 4000000)" = 413 ] && ! from_app && ok "upload 4MB -> 413 from nginx" || bad "upload 4MB -> 413 from nginx"
+# 접근 로그 요청 식별자(11/18): trace·rid·cid·run·client. 앞부분은 combined 그대로
+TR=1-5759e988-bd862e3fe1be46a994272793
+idreq() { curl -s -o /dev/null -D "$T/hdr" -H "Host: haven.test" "$@" http://127.0.0.1/accounts/login/; sleep 0.3; tail -n 1 /var/log/nginx/access.log; }
+L=$(idreq -H "X-Amzn-Trace-Id: Self=1-abc;Root=$TR;Sampled=1" -H "X-Haven-Request-ID: cli-req.1" -H "X-Haven-Run-ID: run:42" -H "X-Forwarded-For: 203.0.113.9, 198.51.100.7")
+RID=$(grep -i '^x-request-id:' "$T/hdr" | tr -d '\r' | awk '{print $2}')
+check "access log keeps combined prefix" bash -c '[[ "$1" =~ ^[0-9.]+\ -\ -\ \[[^]]+\]\ \"GET\ /accounts/login/\ HTTP/1\.1\"\ 200\  ]]' _ "$L"
+check "access log trace= is the Root only" bash -c '[[ "$1" == *" trace=$2 "* ]]' _ "$L" "$TR"
+check "access log rid= equals response X-Request-ID" bash -c '[[ ${#2} == 32 && "$1" == *" rid=$2 "* ]]' _ "$L" "$RID"
+check "  ...and the app log has the same request_id and trace_id" bash -c 'journalctl -u haven --no-pager -n 200 | grep -F "\"request_id\":\"$1\"" | grep -qF "\"trace_id\":\"$2\""' _ "$RID" "$TR"
+check "access log cid=/run= keep valid client IDs" bash -c '[[ "$1" == *" cid=cli-req.1 run=run:42 "* ]]' _ "$L"
+check "access log client= is the last X-Forwarded-For entry (not the forged first one)" bash -c '[[ "$1" == *" client=198.51.100.7 rt="* && "$1" != *203.0.113.9* ]]' _ "$L"
+L=$(idreq -H "X-Amzn-Trace-Id: Root=1-zz" -H 'X-Haven-Request-ID: bad id"; DROP' -H "X-Haven-Run-ID: $(head -c 200 /dev/zero | tr '\0' a)" -H 'X-Forwarded-For: 1.2.3.4, "evil')
+check "bad trace/client IDs/XFF are logged as - (raw value not written)" bash -c '[[ "$1" == *" trace=- "* && "$1" == *" cid=- run=- client=- "* && "$1" != *DROP* && "$1" != *evil* ]]' _ "$L"
+L=$(idreq)
+check "no ID headers: trace=- cid=- run=- client=- (rid still set by app)" bash -c '[[ "$1" == *" trace=- rid="[0-9a-f]* && "$1" == *" cid=- run=- client=- "* ]]' _ "$L"
+post /posts/new/ 20000 >/dev/null; sleep 0.3
+check "nginx-only 413: rid=- (app not reached)" bash -c '[[ "$(tail -n 1 /var/log/nginx/access.log)" == *" 413 "*" rid=- "* ]]'
+cp -p /etc/nginx/sites-available/haven "$T/haven.good"
+expect_fail "web-setup with an nginx config that fails nginx -t" env "${WEB_ENV[@]}" NGINX_BREAK_FOR_TEST=1 bash "$D/web-setup.sh"
+check "  ...previous nginx config restored, nginx still serves" bash -c 'cmp -s /etc/nginx/sites-available/haven "$1" && nginx -t -q && [[ $(curl -s -o /dev/null -w "%{http_code}" -H "Host: haven.test" http://127.0.0.1/accounts/login/) == 200 ]]' _ "$T/haven.good"
 check "pypdf installed in venv" /srv/haven/venv/bin/python -c "import pypdf"
 check "cleanup timer enabled" [ "$(systemctl is-enabled haven-cleanup.timer)" = enabled ]
 expect_ok "cleanup service runs once (as haven, ReadWritePaths)" systemctl start haven-cleanup.service

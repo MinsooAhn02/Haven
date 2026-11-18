@@ -107,3 +107,29 @@ def test_local_edit_title_is_unchanged(monkeypatch):
         )
 
     assert not fields["title"].startswith("[HAVEN-AWS:")
+
+
+def test_share_recipient_must_log_in_before_share():
+    suite = load_suite()
+    suite["cases"] = [
+        c for c in suite["cases"] if c["case_id"] != "AWS-SEC-B-BEFORE-SHARE"
+    ]
+
+    with pytest.raises(rv.ConfigError, match="공유 수신자"):
+        rv.validate_suite(suite, FIXTURES)
+
+
+def test_revoke_needs_owner_and_recipient_logged_in():
+    suite = load_suite()
+    # SEC-28을 B의 첫 요청보다 앞으로 옮기면 B가 아직 로그인 전이다.
+    sec28 = find(suite, "SEC-28")
+    suite["cases"].remove(sec28)
+    share_index = next(
+        i for i, c in enumerate(suite["cases"])
+        if c["case_id"] == "AWS-SEC-B-BEFORE-SHARE"
+    )
+    sec28["auth_role"] = "member_c"
+    suite["cases"].insert(share_index, sec28)
+
+    with pytest.raises(rv.ConfigError):
+        rv.validate_suite(suite, FIXTURES)

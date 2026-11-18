@@ -172,6 +172,23 @@
       "note": "A 시험 게시글을 공격형 문자열로 수정(생성 표식 유지)"
     },
     {
+      "case_id": "AWS-SEC-B-BEFORE-SHARE",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "공유 전 B 조회 거부. B가 공유 전에 로그인하도록 하는 선행 요청도 겸함"
+    },
+    {
       "case_id": "AWS-SEC-SHARE-B",
       "phase": 2,
       "category": "sharing",

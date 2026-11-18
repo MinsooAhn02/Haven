@@ -287,6 +287,15 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                 raise ConfigError(
                     f"{cid}: share_recipient_role 설정 오류"
                 )
+
+            # 공유 시점에 수신자 계정명을 알려면 수신자가 먼저 로그인해 있어야 한다.
+            if not any(
+                previous.get("auth_role") == recipient_role
+                for previous in cases[:index]
+            ):
+                raise ConfigError(
+                    f"{cid}: 공유 수신자({recipient_role})의 요청이 먼저 필요합니다"
+                )
         if "critical" in item and type(item["critical"]) is not bool:
             raise ConfigError(f"{cid}: critical은 bool이어야 합니다")
 
@@ -351,6 +360,16 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
             ):
                 raise ConfigError(
                     f"{cid}: share_revoke_role 설정 오류"
+                )
+
+            # 공유 ID를 찾으려면 소유자와 수신자가 모두 로그인해 있어야 한다.
+            earlier_roles = {
+                previous.get("auth_role") for previous in cases[:index]
+            } | {item["auth_role"]}
+
+            if not {owner_role, revoke_role} <= earlier_roles:
+                raise ConfigError(
+                    f"{cid}: 공유 해제 전 소유자와 수신자의 요청이 먼저 필요합니다"
                 )
         if "after_case" in item and not _cleanup:
             raise ConfigError(f"{cid}: after_case는 cleanup_cases에서만 허용합니다")

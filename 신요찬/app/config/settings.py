@@ -76,8 +76,13 @@ CSRF_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
 # HTTP→HTTPS 전환은 ALB가 한다. 앱에서 SECURE_SSL_REDIRECT를 켜면 ALB 상태 검사(HTTP /healthz)가 301로 실패한다.
-# HSTS는 도메인 운영이 안정된 뒤 정한다(한 번 보내면 브라우저가 기간 동안 되돌리지 못함).
 SECURE_SSL_REDIRECT = False
+# HSTS (check --deploy security.W004, 조장 운영기록 11/17). HTTPS로 판정된 응답에만 붙는다(Django SecurityMiddleware).
+# 한 번 받은 브라우저는 그 기간 동안 HTTP로 되돌리지 못하므로 1시간으로 시작한다(앱계약.md 1.2.1).
+# 하위 도메인 포함(W005)과 preload(W021)는 켜지 않는다: 이 도메인의 다른 이름까지 묶거나 브라우저 목록에 영구 등록하지 않는다.
+SECURE_HSTS_SECONDS = 3600 if HAVEN_HTTPS else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
 
 INSTALLED_APPS = [
     # LogEntry(계정 상태 변경 이력)를 쓰기 위해 설치만 한다. 관리자 사이트 URL은 연결하지 않는다(config/urls.py).

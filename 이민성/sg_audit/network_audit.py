@@ -22,12 +22,15 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-TOOL_VERSION = "0.3.1"
+TOOL_VERSION = "0.3.2"
 
 # 인터넷 전체를 뜻하는 주소
 PUBLIC_CIDRS = {"0.0.0.0/0", "::/0"}
-# 인터넷에 열리면 안 되는 포트: SSH, RDP, PostgreSQL
-SENSITIVE_PORTS = {22: "SSH", 3389: "RDP", 5432: "PostgreSQL"}
+# 인터넷에 열리면 안 되는 포트와 그 서비스가 쓰는 프로토콜: SSH, RDP, PostgreSQL
+# (RDP는 TCP와 UDP 둘 다 쓴다. UDP 5432·ICMP는 PostgreSQL·SSH가 아니다: AUD-06)
+SENSITIVE_PORTS = {22: ("SSH", {"tcp"}), 3389: ("RDP", {"tcp", "udp"}), 5432: ("PostgreSQL", {"tcp"})}
+# AWS가 프로토콜을 번호로 줄 때 이름으로 바꾼다(6=tcp, 17=udp, 1=icmp, 58=icmpv6)
+PROTOCOL_NAMES = {"6": "tcp", "17": "udp", "1": "icmp", "58": "icmpv6"}
 
 EXIT_CODE = {"PASS": 0, "FAIL": 1, "ERROR": 2, "UNKNOWN": 3}
 
@@ -74,10 +77,48 @@ def validate_inputs(baseline, fixture):
         raise ValueError("baseline.allowed_rules 항목 형식이 잘못되었습니다")
     if any(not isinstance(item, dict) or not isinstance(item.get("GroupId"), str) for item in groups):
         raise ValueError("fixture.security_groups 항목 형식이 잘못되었습니다")
+    for item in groups:
+        validate_permissions(item)
     if any(not isinstance(item, dict) or not isinstance(item.get("asset_id"), str) or not isinstance(item.get("sg_ids", []), list) for item in attachments):
         raise ValueError("fixture.attachments 항목 형식이 잘못되었습니다")
     if any(not isinstance(item, dict) for item in errors):
         raise ValueError("fixture.errors 항목 형식이 잘못되었습니다")
+
+
+def validate_permissions(sg):
+    """SG 규칙 모양 확인(AUD-05). 틀린 모양을 추측해 PASS/FAIL로 바꾸지 않고 ERROR로 멈춘다.
+    포트는 정수(bool 제외)이거나 없어야 한다. 프로토콜은 반드시 있어야 한다."""
+    gid = sg["GroupId"]
+    for key in ("IpPermissions", "IpPermissionsEgress"):
+        perms = sg.get(key, [])
+        if not isinstance(perms, list):
+            raise ValueError(f"{gid}.{key}는 목록이어야 합니다")
+        for perm in perms:
+            if not isinstance(perm, dict):
+                raise ValueError(f"{gid}.{key} 항목 형식이 잘못되었습니다")
+            proto = perm.get("IpProtocol")
+            if isinstance(proto, bool) or not isinstance(proto, (str, int)) or str(proto).strip() == "":
+                raise ValueError(f"{gid}.{key}: IpProtocol이 없거나 형식이 잘못되었습니다")
+            for port_key in ("FromPort", "ToPort"):
+                port = perm.get(port_key)
+                if port is not None and (isinstance(port, bool) or not isinstance(port, int)):
+                    raise ValueError(f"{gid}.{key}: {port_key}는 정수여야 합니다({port!r})")
+            # TCP·UDP 포트는 0~65535이고 시작 ≤ 끝이어야 한다. ICMP는 FromPort=type, ToPort=code라서
+            # 8 → 0(echo request)처럼 시작이 더 클 수 있으므로 이 검사에서 뺀다.
+            start, end = perm.get("FromPort"), perm.get("ToPort")
+            if normalize_protocol(proto) in ("tcp", "udp") and start is not None and end is not None:
+                if not (0 <= start <= end <= 65535):
+                    raise ValueError(f"{gid}.{key}: 포트 범위가 잘못되었습니다({start}-{end})")
+            for list_key in ("IpRanges", "Ipv6Ranges", "UserIdGroupPairs", "PrefixListIds"):
+                entries = perm.get(list_key, [])
+                if not isinstance(entries, list) or any(not isinstance(e, dict) for e in entries):
+                    raise ValueError(f"{gid}.{key}.{list_key} 형식이 잘못되었습니다")
+
+
+def normalize_protocol(value):
+    """'TCP'·6·'6' → 'tcp'. 모르는 번호는 그대로 둔다(허용표와 안 맞아 FAIL이 된다)."""
+    text = str(value).strip().lower()
+    return PROTOCOL_NAMES.get(text, text)
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +130,7 @@ def flatten_rules(sg):
     rules = []
     for direction, key in (("ingress", "IpPermissions"), ("egress", "IpPermissionsEgress")):
         for perm in sg.get(key, []):
-            protocol = str(perm.get("IpProtocol", "")).lower()
+            protocol = normalize_protocol(perm.get("IpProtocol", ""))
             from_port = perm.get("FromPort")
             to_port = perm.get("ToPort")
             base = {"direction": direction, "protocol": protocol,
@@ -108,9 +149,16 @@ def flatten_rules(sg):
 # ---------------------------------------------------------------------------
 # 3. 판정
 # ---------------------------------------------------------------------------
-def covers_port(rule, port):
-    """규칙이 특정 포트를 포함하는지. 전체 프로토콜(-1)이나 포트가 없으면 포함으로 본다."""
-    if rule["protocol"] == "-1" or rule["from_port"] is None or rule["to_port"] is None:
+def covers_port(rule, port, protocols=("tcp",)):
+    """규칙이 그 프로토콜의 특정 포트를 포함하는지.
+    전체 프로토콜(-1)은 무엇이든 포함한다(AUD-05). 다른 프로토콜(UDP·ICMP 등)은 포함하지 않는다(AUD-06):
+    ICMP의 FromPort/ToPort는 포트가 아니라 type/code라서 범위로 비교하면 안 된다.
+    같은 프로토콜인데 포트가 없으면 전체로 보고, 범위면 그 안에 드는지 본다(AUD-03)."""
+    if rule["protocol"] == "-1":
+        return True
+    if rule["protocol"] not in protocols:
+        return False
+    if rule["from_port"] is None or rule["to_port"] is None:
         return True
     return rule["from_port"] <= port <= rule["to_port"]
 
@@ -134,15 +182,15 @@ def describe(rule):
 def classify_violation(rule, role):
     """허용표에 없는 규칙의 check_id와 이유를 정한다. 더 심각한 것부터 확인한다."""
     if rule["direction"] == "ingress" and rule["source_value"] in PUBLIC_CIDRS:
-        for port, name in SENSITIVE_PORTS.items():
-            if covers_port(rule, port):
+        for port, (name, protocols) in SENSITIVE_PORTS.items():
+            if covers_port(rule, port, protocols):
                 return "SG-01", f"인터넷 전체({rule['source_value']})에 {name}({port}) 포트가 열려 있음"
     if rule["protocol"] == "-1":
         return "SG-02", "전체 프로토콜(-1) 허용 규칙"
     if role == "web" and rule["direction"] == "ingress" and covers_port(rule, 80):
-        return "SG-03", "Web TCP 80의 출발지가 ALB SG가 아님"
+        return "SG-03", "Web TCP 80 허용이 기준(ALB SG에서 TCP 80 하나)과 다름(출발지 또는 포트 범위)"
     if role == "db" and rule["direction"] == "ingress" and covers_port(rule, 5432):
-        return "SG-04", "DB TCP 5432의 출발지가 Web SG가 아님"
+        return "SG-04", "DB TCP 5432 허용이 기준(Web SG에서 TCP 5432 하나)과 다름(출발지 또는 포트 범위)"
     return "SG-05", "baseline 허용표에 없는 규칙"
 
 
@@ -646,7 +694,11 @@ def run_fixture(args):
         print(f"[ERROR] {e}", file=sys.stderr)
         return EXIT_CODE["ERROR"]
 
-    findings = audit(baseline, fixture)
+    try:
+        findings = audit(baseline, fixture)
+    except Exception as e:  # 예상 못 한 입력 모양도 Traceback(종료 코드 1 = FAIL로 오해) 대신 ERROR로
+        print(f"[ERROR] 판정 중 예상하지 못한 오류: {type(e).__name__}", file=sys.stderr)
+        return EXIT_CODE["ERROR"]
     scope = {"vpc_id": fixture.get("vpc_id", ""), "fixture_id": fixture.get("fixture_id", "")}
     return finish("fixture", fixture, findings, out, started, scope)
 

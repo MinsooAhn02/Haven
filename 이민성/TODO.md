@@ -490,3 +490,26 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 |---|---|
 | HSTS(W004) 설정 위치·담당 정하기 | Django 설정(요찬) 또는 Nginx 헤더(서버). 요찬과 상의 → 4회차 적용, 적용 뒤 응답 헤더와 `check --deploy` 재실행 |
 | W008 예외를 앱 쪽 기록에도 남길지 | 요찬 앱계약·설정 문서와 맞추기 |
+
+## 민성's comment · 2026-11-18 오후 · HSTS 적용 배포(W004 조치)
+
+요찬 HSTS PR(`SECURE_HSTS_SECONDS=3600`, `DJANGO_HTTPS=1`일 때만, 하위 도메인·preload 끔) 병합 → 운영 배포 → 확인. 11/16 DEP-05의 W004 "미조치"를 이걸로 조치.
+
+| 시각 | 한 일 | 결과·근거 |
+|---|---|---|
+| 15:34 | PR 병합 뒤 PC에서 `git fetch` → main `f0428d7` | 바뀐 것: 앱 설정·시험·문서(서버 스크립트·requirements·migration 없음). 자동 시험 231개(Python 3.12·3.13) |
+| 15:3x | 배포 전 백업(db-1 `backup.sh`, `BACKUP_BUCKET`을 STS로 계정 조회해 지정) | 실행함. 시간도장은 그 자리에서 적지 못함(기록 누락). 16:51 db-1에서 S3 목록 조회는 `s3:ListBucket` 권한 없음으로 거부(백업 쓰기만 허용한 최소 권한, 정상) → 시간도장 미기록. 다음 배포부터 `OK backup …` 줄을 바로 적음 |
+| 15:3x | 배포 `f0428d75cd51bbed535a7cb71e75e31614a89cda` **2회** | ✅ 2회 모두 OK, `current` → `releases/f0428d7…` |
+| 15:37 | web-1 `healthz` | `ok` |
+| 15:37 | `curl -sI https://…/accounts/login/` | `strict-transport-security: max-age=3600` ✅ |
+| 15:37 | `curl -sI http://…/` | `301 Moved Permanently` (ALB 전환 그대로) ✅ |
+| 15:38 | web-1 SSM(root) `manage.py check --deploy` | 경고 3건(`3 issues, 0 silenced`): **W004 사라짐** ✅ |
+
+| 경고 | 처리 |
+|---|---|
+| security.W004 `SECURE_HSTS_SECONDS` | **조치 완료**(3600초 = 1시간). 문제 없으면 4회차 이후 늘릴지 요찬과 결정 |
+| security.W008 `SECURE_SSL_REDIRECT` | 예외 유지(11/16과 같음, ALB 80 → 443 301) |
+| security.W005 `SECURE_HSTS_INCLUDE_SUBDOMAINS` | 의도한 예외: 하위 도메인을 쓰지 않음, 켜면 되돌리기 어려움(앱계약 1.2.1) |
+| security.W021 `SECURE_HSTS_PRELOAD` | 의도한 예외: preload 목록은 빼는 데 몇 달 걸려 과제 기간에 맞지 않음(앱계약 1.2.1) |
+
+**다음:** 로그인 실패 제한 2차 시험 3장(db-1 IP 키 조회) · 21시 `night.sh`

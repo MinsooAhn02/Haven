@@ -50,28 +50,26 @@
 | 회차 | 상태 | 환경·실행 명령·기대/실제 결과 | PR·가림 증거 | 다음 담당자에게 전달할 것 |
 |---|---|---|---|---|
 | 1 | 완료 | 설계: `network/설계.md`(VPC·서브넷·라우팅·SG·출구/비용, 리전·D6는 김보람 권장, 팀장 승인 대기). SG CLI: Windows·Python 3.13.2, `sg_audit`에서 `python network_audit.py fixture --fixture fixtures\<이름>.json --baseline baseline.json --output-dir out\<이름>` 실행. 기대/실제 종료 코드 일치: pass 0(AUD-01), fail_public_db 1(AUD-02, SG-01), unknown_role 3(AUD-09, SG-06), error_access_denied 2(AUD-08). 덮어쓰기·없는 파일 시 ERROR(2) 확인 | PR 링크(https://github.com/MinsooAhn02/Haven/pull/2). 결과 요약 `sg_audit/README.md` 시험 결과. fixture는 가상 데이터라 가림 대상 없음. 리뷰 보완(팀장): 기대 자산 누락 UNKNOWN, 입력·출력 오류 ERROR(2), 부분 수집 결과 보존, unittest 5개 통과 | 김보람: 리전·D6 승인, 생성 자원·NAT 운영 기간(설계.md 5·6장). 권혁민: 기대 접근표(설계.md 4.3). 안민수: 메일 방식 회신 요청, EC2 OS(AMI) 후보 합의(이민성 제안). 미완료: live 모드·AUD-03~07·10·11(3회차 이후) |
-| 2 | 완료 (11/12 NET-06·06-b 통과, 세부 확인 일부 남음) | **11/09 준비(DRY_RUN만):** 환경: Windows Git Bash, aws-cli 2.39.6. 구축 스크립트 `infra/`(build·nat-up·nat-down·destroy) 작성. `bash -n` 6개 OK, `DRY_RUN=1 bash build.sh` → 1/8–8/8, nat-up 1/4–4/4 종료 0, nat-down·destroy(목록·--delete) 미리보기 종료 0. 거부 시험: 프로파일 빈 값 → VPC 생성 전 중단(1), DRY_RUN=2 → 중단(1), destroy --yes → 거절(1). SG 규칙 10줄 설계 4절과 양방향 대조 일치(`infra/SG수작업비교.md`). 연결 확인표 기대값 작성(`network/연결확인표.md`), 실제값은 구축 후.<br>**11/10 EC2 중지·시작(결정 4번):** `ec2-stop.sh`(web→db), `ec2-start.sh`(db→web, 공인 IP·SSM 확인), `night.sh`(ec2-stop + nat-down), `morning.sh`(nat-up + ec2-start, 평일 09~21시만). `DRY_RUN=1` 4개 종료 0. 가짜 aws 시험 `bash test/ec2-fake-test.sh` → **PASS 20 / FAIL 0**(일부러 실패: 서버 0대·2대·ID 불일치·중지 시간 초과·공인 IP·nat-up 실패·시간 밖 → 모두 멈춤(1)). 설명 `infra/EC2시작중지설명.md`, `infra/test/faketest설명.md`<br>**11/10 실제 구축 (팀 IAM 사용자 minsung, 서울):** `build.sh` 7단계에서 nat-up 확인이 Windows `\r` 때문에 오탐으로 멈춤 → `common.sh`에 `aws()` 래퍼(`tr -d '\r'`) 추가 → `nat-up.sh` RST-02 통과 → 남은 8단계만 `build-ec2.sh`(새로 작성, build.sh 8단계와 같음)로 EC2 2대 생성. 모양 확인: 서브넷 자동 공인 IP 끔, rt-private `0.0.0.0/0 → nat-`, SG 규칙 10줄 설계와 일치·전체 허용 outbound 없음, web-1·db-1 t3.small·공인 IP 없음·IMDSv2 필수·SSM 프로파일, gp3 20GB 암호화. 연결확인표 1차: SSM-01~04, NET-02-a/b/c, NET-04-c, OUT-01~04·06·07·09 ✅, OUT-08 ⚠️ 남은 위험, RST-02 ✅. 21:02 `night.sh` → RST-03 ✅(태그된 NAT·EIP 없음)<br>**11/11:** 09:02 `morning.sh` → 새 NAT, 사설 IP 그대로, SSM Online. `test-ec2.sh`(새로 작성)로 시험용 EC2 haven-test-net04 09:09 생성 → 09:23 삭제. **일부러 막힌 걸 확인한 시험:** 시험용 EC2 → db-1:5432, db-1:22, web-1:80 모두 timeout(exit=124) = NET-04·04-b·02-d ✅. 서버 준비(민수 스크립트, 민성 실행): db-setup·web-setup → 첫 배포 `deploy.sh f39e8e64` 중 GitHub SSH 22 timeout(sg-web outbound에 22 없음 = 설계대로 막힘, OUT-13) → 포트를 열지 않고 SSH-over-443으로 해결(민수 #48, OUT-14) → migrate 20건 OK·`haven_app` 점검 OK·healthz `ok` = NET-03 ✅. 재배포 `b068ba5f`(posts.0002_attachment migrate OK, healthz ok). OUT-12 apt 주소 web-1·db-1 모두 `http://` ✅<br>**11/12:** 11/11 21:14 `night.sh` → 09:03 `morning.sh` 뒤 NET-06·06-b ✅(haven·nginx·postgresql active, healthz ok 안·밖, `db ok`). web-1 CloudWatch Agent 설치(nginx access·error·앱 로그 → `/haven/web`, 앱 로그는 rsyslog로 `/var/log/haven/app.log` + logrotate 7일) → 내 PC에서 표시 요청 도착 확인 = OUT-10 web-1 ✅(db-1 미설정). 설치 절차를 `infra/server/cw-agent-setup.sh`로 정리, 가짜 시험 `test/cw-fake-test.sh`. 12:24 web-1 실제 실행에서 스크립트 버그 2개 발견(Agent 상태 확인이 파이프 141로 오판, 설정 원본이 적용 뒤 사라짐) → 수정, 가짜 시험 22개로 늘려 두 버그를 되살리면 FAIL 확인. 12:42 수정 판 web-1 2회 실행 OK(2회차 재시작 없음), CloudWatch 도착 1건씩·중복 없음<br>**남은 것:** NET-03-b, NET-05 정식, OUT-05·11, OUT-10 db-1, RST-01 | PR 링크([#27](…)), PR 링크((https://github.com/MinsooAhn02/Haven/pull/34)). 11/10~11 실행분 PR 작성 예정. 증거: `network/연결확인표.md`(계정 번호·인스턴스 ID·IP 가림). AWS 조회·스크립트 실행은 민성 Git Bash, 서버 안 시험은 SSM 세션(11/10 민수, 11/11 민성). | 안민수: web-1/db-1 사설 IP 전달 완료, 첫 배포·재배포 healthz 결과 전달, NET-06 결과 11/12 아침. 김보람: 3회차 ALB·ACM·Route 53 권한 요청(11/11). 노푸른: 브라우저 접속은 ALB 연결 뒤(현재 web-1 안에서만 응답) |
-| 3 | 진행 중 (ALB·HTTPS 완료. SG live 모드는 0.3.1까지 완료·실제 AWS PASS 11(11/16, #116, 구민철 짝 리뷰 통과). 남은 것: 구민철 실행·대조(11/23)) | 도메인 `orchestration-haven.cloud` 확정(11/11). Route 53 공개 호스팅 영역 1개, 네임서버 4개가 구글 DNS(8.8.8.8) 응답과 일치 확인. `infra/build-alb.sh` 작성(ACM DNS 검증 → 대상 그룹 /healthz → ALB → 443 TLS1.2+·80→301 → apex Alias → healthy·NET-01·01-b 확인). 가짜 시험 `test/alb-fake-test.sh` 39개(일부러 실패: ALB 중복·web-1 꺼짐·호스팅 영역 0/2개·기존 A 레코드·권한 없음·인증서 시간 초과/FAILED·unhealthy·302·가짜 도메인 리다이렉트). 시험이 실제로 버그를 잡는지 스크립트를 일부러 망가뜨려 확인(가드 3곳 제거 → 해당 시험 FAIL). 민성 Windows Git Bash 11:32: 가짜 시험 PASS 39 / FAIL 0, `DRY_RUN=1 bash build-alb.sh` 1/5~5/5 종료 0(실제 state ID로 명령만 출력). 권한: ELB·ACM 읽기부터 AccessDenied(11:1x) → 보람님 추가 → 11:36 1차 실행: 인증서 2초 만에 발급, 대상 그룹까지 만들고 ALB에서 `ec2:GetSecurityGroupsForVpc` 없음으로 멈춤 → 스크립트에 "이 스크립트가 만든 것(state 기록과 같은 ID)만 이어서 쓰기" 추가(가짜 시험 F1~F13) → 보람님 권한 추가 → 11:47 2차: 대상 그룹·인증서 재사용, ALB·리스너·도메인 연결, healthy, NET-01 OK, NET-01-b는 **Windows curl이 `/dev/null`을 몰라서** 확인 단계만 실패 → 고침(가짜 curl도 Windows처럼 바꿔 W1 시험 추가, 옛 코드로 되돌리면 13개 FAIL 확인) → 11:58 3차: 전부 재사용(새로 만든 것 없음), **NET-01 200 ok·인증서 OK, NET-01-b 301 → https, 실제 DNS 접속 OK**. 가짜 시험 최종 PASS 59 / FAIL 0(민성 Git Bash). 남은 것: live SG 읽기 수집·AUD 대조, WAF·ALB 접근 로그(설계 7절) | 증거: 연결확인표 NET-01·01-b, `~/alb-1111.log`(계정 번호·ARN 가려서 첨부). PR 작성 예정 | 노푸른: `https://orchestration-haven.cloud` 접속 가능(11/11 11:59~, 평일 09~21시, 밤에는 EC2가 꺼져 502/503). 안민수: ALB 켜 둠(11/11 결정), CSRF_TRUSTED_ORIGINS가 이 도메인인지 실제 로그인으로 확인 요청. 김보람: ALB 요금 시작(11:47~) 비용 확인 |
-| 4 | 진행 중 (WAF ALB 연결 11/13, OUT-10 db-1 로그 수집 11/16. 남은 것: Nginx 요청 ID 11/27, WAF Block, 네트워크/SG 재시험·구성도·종료 대상 정리) | 아래 11/13 낮·11/16 오전 코멘트 | #116(db-1 로그 수집) | — |
+| 2 | 완료 (11/12 NET-06·06-b 통과, 세부 확인 일부 남음) | **11/09 준비(DRY_RUN만):** 환경: Windows Git Bash, aws-cli 2.39.6. 구축 스크립트 `infra/`(build·nat-up·nat-down·destroy) 작성. `bash -n` 6개 OK, `DRY_RUN=1 bash build.sh` → 1/8–8/8, nat-up 1/4–4/4 종료 0, nat-down·destroy(목록·--delete) 미리보기 종료 0. 거부 시험: 프로파일 빈 값 → VPC 생성 전 중단(1), DRY_RUN=2 → 중단(1), destroy --yes → 거절(1). SG 규칙 10줄 설계 4절과 양방향 대조 일치(`infra/SG수작업비교.md`). 연결 확인표 기대값 작성(`network/연결확인표.md`), 실제값은 구축 후.<br>**11/10 EC2 중지·시작(결정 4번):** `ec2-stop.sh`(web→db), `ec2-start.sh`(db→web, 공인 IP·SSM 확인), `night.sh`(ec2-stop + nat-down), `morning.sh`(nat-up + ec2-start, 평일 09~21시만). `DRY_RUN=1` 4개 종료 0. 가짜 aws 시험 `bash test/ec2-fake-test.sh` → **PASS 20 / FAIL 0**(일부러 실패: 서버 0대·2대·ID 불일치·중지 시간 초과·공인 IP·nat-up 실패·시간 밖 → 모두 멈춤(1)). 설명 `infra/EC2시작중지설명.md`, `infra/test/faketest설명.md`<br>**11/10 실제 구축 (팀 IAM 사용자 minsung, 서울):** `build.sh` 7단계에서 nat-up 확인이 Windows `\r` 때문에 오탐으로 멈춤 → `common.sh`에 `aws()` 래퍼(`tr -d '\r'`) 추가 → `nat-up.sh` RST-02 통과 → 남은 8단계만 `build-ec2.sh`(새로 작성, build.sh 8단계와 같음)로 EC2 2대 생성. 모양 확인: 서브넷 자동 공인 IP 끔, rt-private `0.0.0.0/0 → nat-`, SG 규칙 10줄 설계와 일치·전체 허용 outbound 없음, web-1·db-1 t3.small·공인 IP 없음·IMDSv2 필수·SSM 프로파일, gp3 20GB 암호화. 연결확인표 1차: SSM-01~04, NET-02-a/b/c, NET-04-c, OUT-01~04·06·07·09 ✅, OUT-08 ⚠️ 남은 위험, RST-02 ✅. 21:02 `night.sh` → RST-03 ✅(태그된 NAT·EIP 없음)<br>**11/11:** 09:02 `morning.sh` → 새 NAT, 사설 IP 그대로, SSM Online. `test-ec2.sh`(새로 작성)로 시험용 EC2 haven-test-net04 09:09 생성 → 09:23 삭제. **일부러 막힌 걸 확인한 시험:** 시험용 EC2 → db-1:5432, db-1:22, web-1:80 모두 timeout(exit=124) = NET-04·04-b·02-d ✅. 서버 준비(민수 스크립트, 민성 실행): db-setup·web-setup → 첫 배포 `deploy.sh f39e8e64` 중 GitHub SSH 22 timeout(sg-web outbound에 22 없음 = 설계대로 막힘, OUT-13) → 포트를 열지 않고 SSH-over-443으로 해결(민수 #48, OUT-14) → migrate 20건 OK·`haven_app` 점검 OK·healthz `ok` = NET-03 ✅. 재배포 `b068ba5f`(posts.0002_attachment migrate OK, healthz ok). OUT-12 apt 주소 web-1·db-1 모두 `http://` ✅<br>**11/12:** 11/11 21:14 `night.sh` → 09:03 `morning.sh` 뒤 NET-06·06-b ✅(haven·nginx·postgresql active, healthz ok 안·밖, `db ok`). web-1 CloudWatch Agent 설치(nginx access·error·앱 로그 → `/haven/web`, 앱 로그는 rsyslog로 `/var/log/haven/app.log` + logrotate 7일) → 내 PC에서 표시 요청 도착 확인 = OUT-10 web-1 ✅(db-1 미설정). 설치 절차를 `infra/server/cw-agent-setup.sh`로 정리, 가짜 시험 `test/cw-fake-test.sh`(AI 보조 작성). 12:24 web-1 실제 실행에서 스크립트 버그 2개 발견(Agent 상태 확인이 파이프 141로 오판, 설정 원본이 적용 뒤 사라짐) → 수정, 가짜 시험 22개로 늘려 두 버그를 되살리면 FAIL 확인. 12:42 수정 판 web-1 2회 실행 OK(2회차 재시작 없음), CloudWatch 도착 1건씩·중복 없음<br>**남은 것:** NET-03-b, NET-05 정식, OUT-05·11, OUT-10 db-1, RST-01 | PR 링크([#27](…)), PR 링크((https://github.com/MinsooAhn02/Haven/pull/34)). 11/10~11 실행분 PR 작성 예정. 증거: `network/연결확인표.md`(계정 번호·인스턴스 ID·IP 가림). AWS 조회·스크립트 실행은 민성 Git Bash, 서버 안 시험은 SSM 세션(11/10 민수, 11/11 민성). 스크립트·문서는 AI 보조 작성, 실행은 직접 | 안민수: web-1/db-1 사설 IP 전달 완료, 첫 배포·재배포 healthz 결과 전달, NET-06 결과 11/12 아침. 김보람: 3회차 ALB·ACM·Route 53 권한 요청(11/11). 노푸른: 브라우저 접속은 ALB 연결 뒤(현재 web-1 안에서만 응답) |
+| 3 | 진행 중 (ALB·HTTPS 완료. SG 실제 수집은 11/12 결정으로 live 모드 구현=민성, 실행·대조=구민철) | 도메인 `orchestration-haven.cloud` 확정(11/11). Route 53 공개 호스팅 영역 1개, 네임서버 4개가 구글 DNS(8.8.8.8) 응답과 일치 확인. `infra/build-alb.sh` 작성(ACM DNS 검증 → 대상 그룹 /healthz → ALB → 443 TLS1.2+·80→301 → apex Alias → healthy·NET-01·01-b 확인). 가짜 시험 `test/alb-fake-test.sh` 39개(일부러 실패: ALB 중복·web-1 꺼짐·호스팅 영역 0/2개·기존 A 레코드·권한 없음·인증서 시간 초과/FAILED·unhealthy·302·가짜 도메인 리다이렉트). 시험이 실제로 버그를 잡는지 스크립트를 일부러 망가뜨려 확인(가드 3곳 제거 → 해당 시험 FAIL). 민성 Windows Git Bash 11:32: 가짜 시험 PASS 39 / FAIL 0, `DRY_RUN=1 bash build-alb.sh` 1/5~5/5 종료 0(실제 state ID로 명령만 출력). 권한: ELB·ACM 읽기부터 AccessDenied(11:1x) → 보람님 추가 → 11:36 1차 실행: 인증서 2초 만에 발급, 대상 그룹까지 만들고 ALB에서 `ec2:GetSecurityGroupsForVpc` 없음으로 멈춤 → 스크립트에 "이 스크립트가 만든 것(state 기록과 같은 ID)만 이어서 쓰기" 추가(가짜 시험 F1~F13) → 보람님 권한 추가 → 11:47 2차: 대상 그룹·인증서 재사용, ALB·리스너·도메인 연결, healthy, NET-01 OK, NET-01-b는 **Windows curl이 `/dev/null`을 몰라서** 확인 단계만 실패 → 고침(가짜 curl도 Windows처럼 바꿔 W1 시험 추가, 옛 코드로 되돌리면 13개 FAIL 확인) → 11:58 3차: 전부 재사용(새로 만든 것 없음), **NET-01 200 ok·인증서 OK, NET-01-b 301 → https, 실제 DNS 접속 OK**. 가짜 시험 최종 PASS 59 / FAIL 0(민성 Git Bash). 남은 것: live SG 읽기 수집·AUD 대조, WAF·ALB 접근 로그(설계 7절) | 증거: 연결확인표 NET-01·01-b, `~/alb-1111.log`(계정 번호·ARN 가려서 첨부). PR 작성 예정 | 노푸른: `https://orchestration-haven.cloud` 접속 가능(11/11 11:59~, 평일 09~21시, 밤에는 EC2가 꺼져 502/503). 안민수: ALB 켜 둠(11/11 결정), CSRF_TRUSTED_ORIGINS가 이 도메인인지 실제 로그인으로 확인 요청. 김보람: ALB 요금 시작(11:47~) 비용 확인 |
+| 4 | 미착수 | 미확인 | — | — |
 
-## 지금 할 일 (11/16 12:10 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
+## 지금 할 일 (11/13 13:00 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
 
 | 할 일 | 상태·선행 |
 |---|---|
 | ~PR #76 로그 수집(OUT-10)·NET-06 기록~ | ✅ 11/12 #76 병합, 최종 판 web-1 실행(14:44)·CloudWatch 도착 확인 |
 | ~#64 서버 쪽 PR (boto3, MAIL_FROM → 메일 환경변수) → 같은 커밋 2번 배포~ | ✅ 11/12 #78 병합(요찬 리뷰), `5bccce1` 2회 배포 + web-setup.sh 재실행 → `HAVEN_MAIL_BACKEND=ses` 등 3줄 (앱계약 E5·E6) |
 | ~web-1 역할 교체 (보람 #84, `haven-ec2-web-role`)~ | ✅ 11/13 12:23 교체, 12:33까지 기능 확인(SES 빼고 전부). 아래 11/13 낮 코멘트 |
-| ~시험 메일 EXT-03(도착)·EXT-04(실패 표시)~ | ✅ 11/13 오후 둘 다 통과(요찬 안내서, 실행·판정 민성·수신 확인 보람·기록 요찬). 아래 11/13 오후 코멘트 |
-| ~SG 점검 도구 live 모드 → 명세 5.1 맞춤(0.3.0) → 증거 묶음 → PR~ | ✅ 11/13 #109 병합(0.3.0·증거 묶음, 실제 AWS PASS 11). 남은 것: 구민철에게 새 실행 방법 전달(조장 직접) · 짝 리뷰(구민철·보람) |
+| 시험 메일 EXT-03(도착)·EXT-04(실패 표시) | **다음 주로 이관**(11/13 요찬 조퇴). 11/13 12:54 첫 시도 `AccessDeniedException` → 보람 SES 권한 수정이 먼저(아래 11/13 낮 코멘트). 서버 실행 민성, 판단 요찬, 수신 확인 보람 |
+| SG 점검 도구 live 모드 구현·시험·병합 → VPC ID·실행 방법을 구민철에게 전달 | 명세 5.1, boto3. 선행: 보람 읽기 권한 |
 | ~백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번)~ | ✅ 11/13 10:03 백업 `20261113T010301Z` → 격리 복원 DB 줄 수 일치·업로드 7개 sha256 일치 (아래 11/13 코멘트) |
 | ~15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부)~ | ✅ 11/13 11:38~11:42 허용 1·거부 4 (아래 11/13 코멘트). 보람 기록 반영은 보람에게 전달 |
 | ALB·WAF 밤 처리 결정 → destroy.sh 정리 순서 | #57 약 $4.55/주 |
-| WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤. 연결 상태 조회 권한(`GetWebACLForResource`)은 ✅ 11/16 12:15 확인: `get-web-acl-for-resource` → `haven-web-acl`(ALB에 연결 유지) |
+| WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤. 연결 상태 조회 권한(`GetWebACLForResource`) 범위 조정은 보람에게 요청 |
 | 가상 운영 관리자 계정 생성(make_operator.py) | 4회차 APP-07·09 시험 직전에만, 끝나면 바로 비활성화 |
 | ~로그인 실패 제한 수치 결정~ | ✅ 11/12 결정: 15분·계정 5번·IP 30번(#75). 구현은 요찬(4회차) → 혁민 점검 → 배포. 실제 IP는 X-Forwarded-For 뒤에서 두 번째(nginx가 ALB IP를 붙임) |
-| ~OUT-10 db-1 PostgreSQL 로그 수집~ | ✅ 11/16 11:04 db-1 실행(`cw-agent-setup-db.sh`), 11:08 `/haven/db` 도착, 11:13 앱 접속 기록(IP·TLS) 확인, 12:04 1시간 로그 양 +176줄 / 약 28KB. PR #116 병합(main `f60e1c6`). 남은 것: 병합 뒤 짝 리뷰(보람: 권한·보존·비용, 혁민: 기록 범위·조회) |
-| 로그인 실패 제한 운영 시험 2차(요찬 안내: 계정 열거·분산 공격·IP 키) | **11/17 진행 예정.** 민성은 3장(6번 직후 db-1에서 `accounts_loginfailure` IP 키 조회, 읽기 전용). 미리 db-1 SSM 세션 열어 둠 |
-| Nginx 요청 ID 로그(`log_format`) | **구현 민성 · 재검증 혁민 · 기한 11/27** (11/13 16:46 조장 확정) |
+| OUT-10 db-1 범위 결정 (PostgreSQL 로그 수집 여부) | 미정 |
 | 조장 일: PR 확인·병합 → 7개 브랜치 동기화 → 현황판·운영기록 → 공지 | 매일 |
 | 21시 `night.sh` · 09시 `morning.sh` | 매일 (밤 작업 전 AWS 로그인 새로) |
 
@@ -311,182 +309,13 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - SES 계정은 샌드박스(`ProductionAccessEnabled=false`, `SendingEnabled=true`, 12:43 민성 `sesv2 get-account`).
 - 원인 추정: 28번 `Haven-EC2-Web-SES-Send`의 Resource가 `identity/orchestration-haven.cloud`(보내는 도메인) 하나뿐. 샌드박스에서는 받는 주소 identity도 권한 검사 대상이라 거부된 것으로 보인다. 또는 28번이 새 역할에 안 붙어 있을 가능성. → 보람에게 확인·수정 요청.
 - 실패 표시 자체는 명령 설계대로였다(종료 코드 1, 오류 종류만, "접수" 없음, 주소 원문 없음). 다만 권한 문제로 난 실패라 EXT-04 판정은 권한 수정 뒤 다시(요찬 판단).
-- 처음엔 다음 주로 이관했으나(요찬 조퇴), 보람이 14:1x에 권한을 고치고 요찬이 안내서를 남겨 같은 날 오후에 다시 했다(아래 11/13 오후 코멘트).
+- **다음 주로 이관**(요찬 조퇴). 순서: 보람 권한 수정 → EXT-03(SES 등록 주소, 도착은 보람 확인) → EXT-04(인증 안 된 주소 → `MessageRejected` 기대). 기록에는 받는 주소를 "SES 등록 주소"로만 쓴다.
 
 **다음 (11/13 오후)**
 
 | 할 일 | 메모 |
 |---|---|
-| ~시험 메일 EXT-03·04~ | ✅ 14:25·14:28 실행, 둘 다 통과 |
-| SG 점검 도구 live 모드 | ✅ 11/13 오후 baseline 수정·설계·구현·실제 AWS PASS까지 끝냄(아래 11/13 오후 2 코멘트). PR·구민철 전달 끝. 17시 명세 5.1 맞춤(0.3.0) 진행 중 → 11/13 저녁 코멘트 |
+| 시험 메일 EXT-03·04 | **다음 주.** 보람 SES 권한 수정 먼저 |
+| SG 점검 도구 live 모드 | 오후 시작(설계부터). 명세 5.1, boto3. 구민철 실행은 3회차 |
 | 보람에게 | 15번 SG 시험 결과 전달, WAF 조회 권한 범위, SES 발신 권한(받는 주소 identity), PR #94 리뷰·병합(db-1 재시험 결과 코멘트) |
 | 21:00 `night.sh` | ALB 유지(WAF Count 관찰) |
-
-## 민성's comment · 2026-11-13 오후 · 시험 메일 EXT-03·EXT-04
-
-요찬 안내서(시험 메일 실제 확인 EXT-03·EXT-04) 기준. 실행 이민성(web-1 SSM root), 수신 확인 김보람, 기록 신요찬. 앞서 보람이 28번 `Haven-EC2-Web-SES-Send` Resource에 받는 주소 identity를 추가(14:1x 완료 연락).
-
-- 배포 commit `a7bfcd6` · boto3 `1.43.120` · SES 리전 `ap-northeast-2` · sandbox: 예(`ProductionAccessEnabled=false`, 12:43 확인) → EXT-04는 A 방법
-- 발신 `noreply@orchestration-haven.cloud` · 수신: SES 등록 주소(주소는 적지 않음). `send_test` 함수로 주소를 숨겨 입력
-
-| 시험 | 실행 시각(UTC) | 명령 출력 요약 | exit | 실제 결과 | 판정 |
-|---|---|---|---|---|---|
-| EXT-03 성공 | 2026-11-13T05:25:48Z | `SES 접수 message_id=… to=k***@… run_id=b4a1003f…` | 0 | 14:25(KST) 도착(보람 확인). 제목 `[Haven] 시험 메일`, 보낸 사람 `noreply@orchestration-haven.cloud`, 본문 보낸 시각 `05:25:48Z`·실행 ID가 run_id와 일치 | ✅ 통과 |
-| EXT-04 실패 (A, `nobody@example.invalid`) | 2026-11-13T05:28:13Z | `메일을 보내지 못했습니다 (오류: AccessDeniedException, 실행 ID: fe121556…)` | 1 | "SES 접수" 없음 | ✅ 통과 |
-
-- run_id: EXT-03 `b4a1003f94d241e7bbaf6b5240f5fa68` / EXT-04 `fe12155658dd46c191996ff0507b1834`
-- EXT-04 코드가 `MessageRejected`가 아니라 `AccessDeniedException`: 28번 정책 Resource가 SES 등록 주소로만 좁혀져 있어 SES 전에 IAM이 먼저 거부. 안내서 기준 "실패로 표시됐으면 통과, 코드만 기록".
-- 출력에 받는 주소 원문 없음(가려진 형태만).
-- 특이사항: 12:54 첫 시도는 주소를 명령 줄에 직접 넣어 web-1 root 명령 기록(bash history)에 주소가 남았다 → 14:2x 해당 1줄 삭제(`history -d` + `history -w`, 파일에서 0건 확인, 개인정보 보호). 이후는 주소를 화면·기록에 남기지 않는 `send_test` 사용.
-- SSM 세션 로그 확인: CloudWatch에는 세션 로그 그룹 없음(14:38 민성 `describe-log-groups`, `/haven/web`·`aws-waf-logs-haven`만). S3는 민성 권한 없음(`ssm:GetDocument` 거부) → 보람 확인(14:4x): 콘솔 Session Manager 기본 설정에서 S3 로깅 비활성, `SSM-SessionManagerRunShell` 문서는 CLI 조회 시 `InvalidDocument`(설정 문서가 없음 = 기본값, 세션 로그 저장 안 함). 12:54 당시 설정·과거 로그는 확정 못 함(CloudTrail에서 이 문서의 생성·삭제 이력을 보면 확정 가능). 지울 로그가 확인되지 않아 삭제 조치는 하지 않음.
-
-## 민성's comment · 2026-11-13 오후 2 · SG 점검 도구 live 모드
-
-자세한 기록은 `sg_audit/README.md` "live 모드 설계·실행". 계정 번호·VPC·SG ID는 적지 않는다.
-
-| 시각 | 한 일 | 결과·근거 |
-|---|---|---|
-| 14:45~15:20 | baseline 누락 수정: web·db egress TCP 80 → `0.0.0.0/0`(설계 4.2, 11/09 apt 추가분, 구민철 발견). fixture 3개·시험·README·코드설명 함께 수정 | ✅ 시험 6개 통과(15:20 민성 PC). 예전 baseline으로 되돌리면 시험 3개 실패 → 시험이 누락을 잡음 |
-| 15:24 | live 설계 확정: 27번 권한 안에서만 수집(VPC → SG → web-1·db-1 → ALB ENI), SG는 이름(`expected_sg_names`)으로 찾고 실제 ID는 파일에 안 씀, default SG는 b안(규칙 있으면 SG-07 FAIL), 실패 시험 L1~L15 | ✅ README 설계 절. ALB ENI 2개·둘 다 `haven-sg-alb` 실제 확인(15:29) |
-| 15:30~15:36 | `network_audit.py` 0.2.0 live 구현, `test_live.py` 21개(가짜 AWS, boto3 없이) | ✅ 일부러 코드를 망가뜨린 12가지 경우를 시험이 모두 잡음 |
-| 15:38 | 민성 PC 전체 시험 | ✅ 27개 통과 |
-| 15:41~15:45 | boto3 설치: `pip install --user "boto3[crt]==1.43.120"`(`aws login` 때문에 `[crt]` 필요) → live 실행 | COMPLETE, PASS 10, FAIL 2(SG-07 default SG 기본 규칙), 종료 코드 1. 우리 SG 3개는 설계와 일치 |
-| 15:48 | default SG 사용처 확인(읽기 전용) | ENI 0, EC2 0(중지 포함), 다른 SG 참조 없음 → 비워도 영향 없음 |
-| 16:14~16:15 | 보람이 default SG 하나에 한정한 규칙 삭제 권한 추가 → 규칙 2개 삭제 → 비어 있음 확인 | ✅ `[[], []]` |
-| 16:15 | live 다시 실행 | ✅ **COMPLETE, PASS 11, FAIL 0, UNKNOWN 0, ERROR 0, 종료 코드 0** |
-
-**다음**
-
-| 할 일 | 메모 |
-|---|---|
-| sg_audit PR → 리뷰·병합 | baseline·live 구현·시험·README·코드설명 |
-| 구민철에게 전달 | `python -m pip install --user "boto3[crt]==1.43.120"` → `python network_audit.py live --baseline baseline.json --output-dir out/live-<시각>`. 27번 권한이면 충분 |
-| 보람에게 알림 | default SG 규칙 2개 삭제 완료(16:15), 권한 기록 반영 |
-| 증거 폴더(명세 9장) | `evidence/<run-id>/`·ID 가림. 3회차 증거 제출 전 |
-
-## 민성's comment · 2026-11-13 저녁 · 808465d 배포와 SG 도구 명세 5.1 맞춤
-
-| 시각 | 한 일 | 결과·근거 |
-|---|---|---|
-| 17:06 | 배포 전 백업(db-1 `backup.sh`) | ✅ 시간도장 `20261113T080630Z` |
-| 17:0x | 배포 `808465decd87ecceca00d369bb39d32387bab779` (#88 로그인 실패 제한, 요찬 구현). 앱만 바뀜(`안민수/server`·requirements 변경 없음), 새 migration `accounts.0001_initial` | ✅ `Applying accounts.0001_initial... OK`, healthz 200 |
-| 17시 | SG 점검 도구 live 0.2.0이 명세 5.1과 어긋난 점 확인: `--profile`·`--vpc-id`/`--sg-id` 없음, STS 계정 확인 없음, 이름·태그로 자산 추정, SG 지정 시 합집합 없음, 연결 정보 없을 때 처리 없음, 증거 폴더(9장) 없음 | 조장 결정: 지금 고침. AWS 설정은 그대로라 다시 만들 것 없음(수집 부분·명령 형식만) |
-| 17:28 | `network_audit.py` 0.3.0 + `make_evidence.py`(증거 묶음) PC에 넣음 | 작업 환경 시험 50개 통과(fixture 6·live 30·증거 14), 일부러 망가뜨린 17가지를 시험이 모두 잡음 |
-| 17:29 | 민성 PC 전체 시험 | ❌ 10개 실패: 증거 묶음이 commit 번호를 읽을 때 Windows 기본 인코딩(cp949)으로 git 출력을 풀다가 한글 경로에서 깨짐(stdout 없음). 판정 코드와 무관 |
-| 17:30 | git 출력을 UTF-8로 읽게 수정, 못 읽으면 commit `unknown` + 알려진 누락에 기록. 시험 2개 추가 → 민성 PC 다시 시험 | ✅ 52개 통과(OK, 3.578s) |
-| 17:31 | `baseline.live.json` 만듦(`baseline.json` 복사 → SG ID 3개를 실제 ID로, Git 제외 확인). SG 3개가 같은 VPC인지 확인 | ✅ `sg-fixture` 0개, 실제 ID 3개, `git status`에 안 나옴 |
-| 17:31 | **live 0.3.0 실제 실행** `--region ap-northeast-2 --profile default --vpc-id <VPC>` | ✅ 시작 줄 `대상 계정: 앞4자리********` 출력, **COMPLETE, PASS 11, FAIL 0, UNKNOWN 0, ERROR 0, 종료 코드 0**. 이름·태그 없이 SG ID로 alb·web-1·db-1을 모두 찾음, baseline에 없는 ENI 없음 |
-| 17:3x | 코드 커밋 `30f40e4` | ✅ |
-| 17:33 | 증거 묶음 1차 `make_evidence.py --results-dir out/live-20261113-1731 --before out/live-20261113-1545` | 만들어짐(종료 코드 0, `commit_dirty: false`, 실제 ID 42개 가림, 전후 비교 SG-07 FAIL 2 → PASS). ❌ 확인 검사에서 `manifest.json`·`results.json`에 계정 앞 4자리가 남음 |
-| 17:38 | 증거 묶음은 계정 번호를 앞 4자리도 남기지 않고 `account-masked`로, 남으면 묶음을 막음. 비교표 `None-None` → `전체`. 시험 2개 추가 | 작업 환경 54개 통과, 고친 곳을 되돌리면 시험이 실패함 확인 |
-| 17:4x | 커밋·푸시 `ecfc3a2` (가림 수정 코드·TODO·**17:33 1차 증거 묶음**) | ❌ 증거 폴더는 묶음을 다시 만들기 전에 커밋돼 `manifest.json`·`results.json`에 계정 앞 4자리가 남음(리뷰 지적, `git grep`으로 확인). 이전 커밋 이력의 앞 4자리는 강제 푸시 금지 규칙에 따라 지우지 않고 다음 커밋으로 덮음 |
-| 17:49 | 민성 PC 전체 시험 | ✅ 54개 통과(OK, 3.938s) |
-| 17:50 | 1차 묶음 폴더 지우고 같은 실행 결과(`live-20261113-1731`, 전: `live-20261113-1545`)로 다시 만듦 | ✅ 종료 코드 0. 6개 파일 모두 `sg-0`·`vpc-0`·계정 앞 4자리 0개, `account_id` = `account-masked`, `commit` = `ecfc3a2`, `commit_dirty: true`(README 한 줄 미커밋, 알려진 누락에 기록됨) |
-
-**0.3.0에서 바뀐 것** (자세한 내용은 `sg_audit/README.md` "0.2.0 → 0.3.0")
-- 명령: `live --region <리전> --profile <프로필> (--vpc-id <VPC> | --sg-id <SG> ...) --baseline baseline.live.json --output-dir <새 폴더>`. `--project`·`--alb-name` 없어짐.
-- 시작할 때 STS로 대상 계정 확인 → `대상 계정: 1234********  리전·범위` 출력.
-- 서버는 이름·태그가 아니라 baseline의 실제 SG ID(`expected_sg_ids`)가 붙은 ENI로 찾는다. 실제 ID는 `baseline.live.json`(Git 제외)에만 적는다. `DescribeInstances` 안 씀.
-- `--sg-id`는 같은 서버의 다른 SG까지 합집합으로 본다. 한 ENI에 여러 서버 SG·모르는 ENI는 UNKNOWN. ENI 조회 실패는 SG 규칙 결과만 남기고 서버는 UNKNOWN.
-- 증거 묶음 `evidence/<run-id>/`: manifest·가림 설정·가린 결과(JSON·CSV)·가림 로그·전후 비교. 원래 값 대응표는 `out/`에만.
-
-**다음**
-
-| 할 일 | 메모 |
-|---|---|
-| ~민성 PC 시험~ | ✅ 17:30 52개 |
-| ~`baseline.live.json` 만들기~ | ✅ 17:31 |
-| ~실제 AWS 0.3.0 실행 (`--vpc-id`)~ | ✅ 17:31 PASS 11 |
-| ~민성 PC 시험 54개 → 커밋(증거 가림 수정)~ | ✅ 17:49 54개, `ecfc3a2` |
-| ~증거 묶음 다시 만들기 → 확인~ | ✅ 17:50 |
-| 다시 만든 증거 묶음·README(통합 담당 조장으로 정정)·TODO 커밋 → 푸시 | PR은 다음 주 |
-| PR → 병합 → 구민철 전달 | 명령이 바뀜: `--profile`, VPC ID, `baseline.live.json`(SG ID 3개) 만드는 법. 필요 권한은 줄어듦(`DescribeInstances` 불필요) |
-
-## 민성's comment · 2026-11-13 밤 · #109 병합과 짝 리뷰·배포 일정
-
-- **병합됨:** #108을 닫고 #109(SG 점검 도구 0.3.0, 증거 묶음). 조장 검토로 증거 묶음의 계정 앞 4자리를 다시 가렸다.
-- **짝 리뷰(병합 뒤):** 구민철(자산 매핑·UNKNOWN 구분·3회차 실행), 보람(권한·가림 범위·`sts:GetCallerIdentity`). 구민철에게 새 실행 방법은 조장이 직접 전달.
-- **다음:** 11/16(월) 배포(로그인 실패 제한 #88, migration `accounts/0001`) 뒤 AWS 시험, Nginx 로그 형식 PR(구현 민성·재검증 혁민·11/27), 시험 메일 EXT-03·04 기록 PR(#99 재작성) — 올리면 현황판을 맞춘다.
-
-## 민성's comment · 2026-11-16 아침 · 배포 370b22e
-
-| 시각 | 한 일 | 결과·근거 |
-|---|---|---|
-| 09:0x | `morning.sh` (EC2 켜기·NAT 만들기) | ✅ (처음엔 저장소 맨 위에서 실행해 파일을 못 찾음 → `이민성/infra/morning.sh`로 실행) |
-| 09:07 | main 확인: `370b22e`(#110). `808465d` 이후 바뀐 19개 파일은 개인 폴더·문서뿐(앱·`안민수/server`·requirements 변경 없음) | → `370b22e` 배포로 결정(앱 내용은 11/13 `808465d`와 같음) |
-| 09:08 | 배포 전 백업(db-1 `backup.sh`, `BACKUP_BUCKET`을 STS로 계정 조회해 지정) | ✅ 시간도장 `20261116T000844Z`, 14 tables |
-| 09:09~09:10 | 배포 `370b22ea8dba323cbb63ff0990477f7be34041d9` **2회** | ✅ 2회 모두 `No migrations to apply.`·`OK deployed`, `current` → `releases/370b22e…`, healthz 200 |
-
-**다음:** 로그인 실패 제한 실제 AWS 시험(#88, 계정 5번·15분 / IP 30번 / 실제 IP 기록) · 구민철 SG 실행 방법 전달 · 21시 `night.sh`
-
-## 민성's comment · 2026-11-16 오전 · SG 점검 0.3.1(구민철 리뷰)과 db-1 로그 수집(OUT-10)
-
-| 시각 | 한 일 | 결과·근거 |
-|---|---|---|
-| 09:2x | 로그인 실패 제한 실제 시험 담당 결정 | 구민철 수행(1~3번: 5번 실패 잠김·잠긴 동안 막힘·15분 뒤 풀림), 4번(web-1 로그에 실제 IP)은 구민철 1~3번 끝난 뒤 민성 확인. 잠겨도 되는 시험용 계정을 쓰도록 안내 |
-| 09:2x | 구민철에게 SG 점검 0.3.0 실행 방법 전달 | `--profile`·VPC ID·`baseline.live.json`, 증거는 `구민철/sg_evidence`(`--evidence-root`) |
-| 09:36 | db-1 05번 권한 확인: `describe-log-streams /haven/db` | ✅ `ResourceNotFoundException`(권한 있음, 그룹만 없음) |
-| 09:37 | db-1 상태 조사(읽기 전용) | PostgreSQL 16.15, 로그 `/var/log/postgresql/postgresql-16-main.log`(stderr), `log_connections`·`log_disconnections` off, prefix에 접속 IP 없음, Agent 없음, 디스크 16G 여유 |
-| 09:43 | `/haven/db` 로그 그룹 생성(민성 PC) | ✅ 보존 30일 (`/haven/web`도 30일). 태그 조회는 권한 없음 |
-| 09:55 | 구민철 #109 짝 리뷰: 질문 1(분리 ENI도 서버로 봄)·제안 3건 | 4건 모두 타당 → 0.3.1로 반영하기로 함 |
-| 10:06 | VPC ENI 상태 확인(읽기 전용) | ENI 5개(ALB 2·EC2 2·NAT Gateway 1(SG 없음)) 모두 `in-use` → 11/13 PASS 11은 0.3.1 기준으로도 유효 |
-| 10:13 | 0.3.1 + db-1 스크립트 PC에 넣고 시험 | ✅ SG 60개 OK, db-1 가짜 시험 29개, web-1 가짜 시험 23개 |
-| 10:28 | SG 점검 0.3.1 실제 AWS(`--vpc-id`) | ✅ **COMPLETE, PASS 11, 종료 코드 0**, 판정 근거 10줄에 ENI ID |
-| 10:29~10:38 | 코드 커밋 `9eaf0ea`(10:29)·푸시 → 증거 묶음 `evidence/547ab001-…`(10:31) → 증거 커밋 | ✅ `tool_version` 0.3.1, `commit_dirty: false`, 11/13과 전후 비교(판정 변화 없음), sg·vpc·eni ID·계정 0개 |
-| 10:49~11:02 | db-1에 스크립트 옮김(base64 한 줄) | ✅ 10280바이트, sha256 `a5bdbf8f…e49b` OK (첫 시도는 붙여넣기 빠져 해시 FAILED → 아무것도 안 바뀜) |
-| 11:03 | 바꾸기 전 상태 | `postgresql.auto.conf` 백업(`/root/setup/postgresql.auto.conf.bak-…`), 로그 197줄 / 30,670바이트 |
-| 11:04 | **`cw-agent-setup-db.sh` 실행** | ✅ `OK` 한 번에 통과. Agent 1.300074 설치, 설정 3개 off→on / off→on / prefix `%m [%p] %q%u@%d from %h `(reload, 재시작 없음), 표시 접속 `cws-1794794667` 기록 |
-| 11:08 | 민성 PC `filter-log-events /haven/db` | ✅ `i-…/postgresql` → **OUT-10 db-1 통과** |
-| 11:10 | 설정 값 확인·사이트 | ✅ `on`·`on`·prefix 일치, healthz 200 |
-| 11:13 | 사이트에서 일부러 로그인 실패 1회 → db-1 로그 | ✅ `haven_app@haven from 10.x.x.x … connection authorized … SSL enabled (TLSv1.3)`. healthz·첫 화면(302)·로그인 화면(200)은 DB를 쓰지 않음 → ALB 상태 확인은 DB 로그를 늘리지 않음 |
-
-| 11:1x | PR #116(0.3.1 + db-1 스크립트) 병합, 병합 뒤 짝 리뷰 요청 | main `f60e1c6`. 리뷰를 병합 전에 받지 못해 "병합 뒤 짝 리뷰"로 처리(#109와 같은 방식), 고칠 점은 새 PR |
-| 11:33~11:44 | 로그인 실패 제한 시험(#114, 구민철) 4번: 실제 IP로 세는지 | ✅ 아래 표 |
-| 11:46 | 구민철 #116 짝 리뷰 | ✅ 리뷰 4건 의도대로 반영, 명령 옵션 0.3.0과 같음, 구민철 PC main `f60e1c6` 60개 OK. 추가 수정 없음 |
-| 12:04 | db-1 PostgreSQL 로그 양(설정 변경 뒤 약 1시간) | 197줄 / 30,670 B → **373줄 / 59,101 B (+176줄, 약 28KB)**, 접속 기록 39건. 로그인 시험·확인 명령 포함이라 평소보다 많음. 넉넉히 잡아 하루 12시간 가동 약 0.3MB/일 → 30일 약 10MB. PR #116 댓글로 보람·혁민에게 전달 |
-| 12:15 | WAF 연결 조회(민성 PC, 읽기 전용): `aws wafv2 get-web-acl-for-resource` | ✅ `haven-web-acl` → 조회 권한 생김(11/13엔 없었음), 11/13 연결이 그대로 유지됨 |
-
-되돌리기(재시작 없음): `ALTER SYSTEM RESET log_connections / log_disconnections / log_line_prefix` + `select pg_reload_conf()`
-
-**로그인 실패 제한 시험(#114, 구민철 1~3번 · 민성 4번) 결과** (UTC, KST = +9)
-
-| # | 시험 | 결과 | 근거 |
-|---|---|---|---|
-| 1 | 같은 아이디 5번 실패 → 잠김 | ✅ | 00:40·02:28·02:35 세 묶음 모두 400 × 5 → 429 (nginx 접근 로그, 앱 로그 `login_failure` → `login_limited`) |
-| 2 | 잠긴 동안 막힘 | ✅ | 429 연속(00:41:06~00:43:16) |
-| 3 | 15분 뒤 풀림 | ✅ | 마지막 실패 00:41:03 → 00:58:19 로그인 성공(302) |
-| 4 | 실제 접속 IP로 셈 | ✅ | DB `accounts_loginfailure`의 IP 키(HMAC): 구민철 10건 같은 키, 다른 네트워크(휴대폰 LTE, 02:43:54) 다른 키. 코드(`신요찬/app/accounts/login_limit.py`)는 X-Forwarded-For 끝에서 두 번째 사용 |
-| 참고 | 02:35 묶음의 400 6번 | 정상 | 02:35:31 요청은 실패 기록에 없음(실패로 세지 않은 요청), 세어진 실패 5번 뒤 잠김. 02:28과 02:35는 서로 다른 계정 |
-
-- 아이디·IP 원문은 저장하지 않음(SECRET_KEY HMAC만). 15분 지난 실패 기록은 다음 실패 때 지워짐
-- 앱 로그·nginx 로그에는 실제 IP가 없음(nginx는 ALB IP) → **11/27 Nginx 요청 ID 작업 때 X-Forwarded-For도 남기는 것 검토**
-
-**다음**
-
-| 할 일 | 메모 |
-|---|---|
-| ~1시간 로그 양~ | ✅ 12:04 +176줄 / 약 28KB, PR #116 댓글 |
-| ~PR #116 병합·구민철 짝 리뷰~ | ✅ 병합 `f60e1c6`, 구민철 통과(11:46) |
-| #116 병합 뒤 짝 리뷰: 보람(권한·보존·비용)·혁민(기록 범위·`/haven/db` 조회) | 고칠 점 나오면 새 PR |
-| 11/17 로그인 실패 제한 운영 시험 2차(요찬 안내) | 민성 3장: 6번 직후 db-1에서 IP 키 조회(account 1줄 n=5, ip 3줄 n=2·2·1) |
-| 구민철 3회차(11/23) | 0.3.1로 실행 |
-
-## 민성's comment · 2026-11-16 오후 · 운영 경고 점검(DEP-05, `check --deploy`)
-
-결과서 작성 중 DEP-05(구현명세 181줄: 배포 전 `check --deploy` 경고를 조치하거나 근거·만료가 있는 예외로 기록) 실행 기록이 없음을 확인했다. `deploy.sh`는 migrate와 앱 계정 읽기만 확인하고 `check --deploy`는 돌리지 않는다.
-
-| 시각 | 한 일 | 결과 |
-|---|---|---|
-| 15:08 | web-1 SSM 세션(root)에서 `manage.py check --deploy` (운영 `370b22e`, `/etc/haven/haven.env` 읽기, 설정 변경 없음) | 경고 2건(`2 issues, 0 silenced`). DEBUG·SECRET_KEY·쿠키 Secure·ALLOWED_HOSTS 등 나머지는 경고 없음 |
-
-| 경고 | 처리 |
-|---|---|
-| security.W008 `SECURE_SSL_REDIRECT` 미설정 | **예외**: ALB 80 리스너가 HTTP를 443으로 301 전환(연결확인표 NET-01-b). ALB → web-1은 설계상 HTTP라 Django에서 켜면 상태 검사·내부 요청까지 전환된다. 재검토: ALB 80 전환이 없어지거나 구조가 바뀔 때 |
-| security.W004 `SECURE_HSTS_SECONDS` 미설정 | **미조치**: 잘못 켜면 브라우저가 기억해 되돌리기 어렵다. 짧은 기간(예: 1시간)부터 켜고 확인한 뒤 늘린다. 하위 도메인 포함·preload는 쓰지 않는다 |
-
-**다음**
-
-| 할 일 | 메모 |
-|---|---|
-| HSTS(W004) 설정 위치·담당 정하기 | Django 설정(요찬) 또는 Nginx 헤더(서버). 요찬과 상의 → 4회차 적용, 적용 뒤 응답 헤더와 `check --deploy` 재실행 |
-| W008 예외를 앱 쪽 기록에도 남길지 | 요찬 앱계약·설정 문서와 맞추기 |

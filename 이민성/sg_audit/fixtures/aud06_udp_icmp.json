@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "fixture_id": "aud06_udp_icmp",
+  "description": "AUD-06 UDP/ICMP: TCP 웹 허용과 구분. 기대: FAIL, 종료 코드 1",
+  "account_id": "FIXTURE-000000000000",
+  "region": "fixture-region-1",
+  "vpc_id": "vpc-fixture",
+  "security_groups": [
+    {
+      "GroupId": "sg-fixture-alb",
+      "GroupName": "sg-alb",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 443,
+          "ToPort": 443,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "icmp",
+          "FromPort": -1,
+          "ToPort": -1,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "UserIdGroupPairs": [
+            {
+              "GroupId": "sg-fixture-web"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "GroupId": "sg-fixture-web",
+      "GroupName": "sg-web",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "UserIdGroupPairs": [
+            {
+              "GroupId": "sg-fixture-alb"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "udp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "UserIdGroupPairs": [
+            {
+              "GroupId": "sg-fixture-alb"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "icmp",
+          "FromPort": 3,
+          "ToPort": 22,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "udp",
+          "FromPort": 3389,
+          "ToPort": 3389,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 5432,
+          "ToPort": 5432,
+          "UserIdGroupPairs": [
+            {
+              "GroupId": "sg-fixture-db"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 443,
+          "ToPort": 443,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "GroupId": "sg-fixture-db",
+      "GroupName": "sg-db",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 5432,
+          "ToPort": 5432,
+          "UserIdGroupPairs": [
+            {
+              "GroupId": "sg-fixture-web"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "udp",
+          "FromPort": 5432,
+          "ToPort": 5432,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 443,
+          "ToPort": 443,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "asset_id": "alb",
+      "sg_ids": [
+        "sg-fixture-alb"
+      ]
+    },
+    {
+      "asset_id": "web-1",
+      "sg_ids": [
+        "sg-fixture-web"
+      ]
+    },
+    {
+      "asset_id": "db-1",
+      "sg_ids": [
+        "sg-fixture-db"
+      ]
+    }
+  ],
+  "errors": []
+}

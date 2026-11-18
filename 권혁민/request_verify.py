@@ -251,7 +251,8 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
         if post_ref is not None:
             allowed_post_path = (
                 item["method"] == "GET"
-                and item["path"] == "/posts/{post_id}/"
+                # 삭제 GET은 확인 화면만 보여 주는 읽기 요청이다.
+                and item["path"] in {"/posts/{post_id}/", "/posts/{post_id}/delete/"}
             ) or (
                 item["method"] == "POST"
                 and re.fullmatch(
@@ -318,15 +319,27 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                 f"{cid}: 공유 ID 경로에는 공유 대상 참조가 필요합니다"
             )
 
+        lookup_role = item.get("share_lookup_role")
+
+        if lookup_role is not None and (
+            "share_revoke_role" not in item
+            or not isinstance(lookup_role, str)
+            or lookup_role not in {"member_a", "member_b", "member_c"}
+            or lookup_role == item.get("share_revoke_role")
+        ):
+            raise ConfigError(f"{cid}: share_lookup_role 설정 오류")
+
         if "share_revoke_role" in item:
             revoke_role = item["share_revoke_role"]
+            # 공유 ID를 조회할 소유자 역할. 없으면 요청자 본인이 소유자다.
+            owner_role = lookup_role or item["auth_role"]
 
             if (
                 not isinstance(revoke_role, str)
                 or revoke_role not in {
                     "member_a", "member_b", "member_c"
                 }
-                or revoke_role == item["auth_role"]
+                or revoke_role == owner_role
                 or item["method"] != "POST"
                 or item["path"] != (
                     "/posts/{post_id}/shares/{share_id}/revoke/"
@@ -438,9 +451,11 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                         f"{case['case_id']}: 게시글 생성 선행조건 오류"
                     )
 
+                # 소유자가 아닌 계정의 변경 요청은 거부(404)를 확인하는 시험으로만 허용한다.
                 if (
                     case["method"] != "GET"
                     and source["auth_role"] != case["auth_role"]
+                    and case["expected_app"].get("http_status") != 404
                 ):
                     raise ConfigError(
                         f"{case['case_id']}: 게시글 생성 선행조건 오류"
@@ -498,10 +513,23 @@ def validate_aws_cleanup_suite(suite: dict) -> None:
                 )
             continue
 
+        # 비로그인 로그인 시도는 데이터를 바꾸지 않는다(로그인 실패 기록만 남는다).
+        if case["auth_role"] == "anonymous" and case["path"] == "/accounts/login/":
+            continue
+
+        # 소유자가 아닌 계정의 삭제 시도는 거부(404)를 확인하는 시험으로만 허용한다.
+        ref = case.get("post_reference")
+        is_delete_denial = (
+            case["path"] == "/posts/{post_id}/delete/"
+            and ref in creators
+            and case["auth_role"] != creators[ref]["auth_role"]
+            and case["expected_app"].get("http_status") == 404
+        )
+
         # 기존 글의 변경이나 시험 계정 상태 변경을 차단한다.
-        if (
+        if not is_delete_denial and (
             case["path"] not in allowed_mutations
-            or case.get("post_reference") not in creators
+            or ref not in creators
         ):
             raise ConfigError(
                 f"{cid}: AWS에서는 시험 중 생성한 게시글만 변경 가능"
@@ -1803,6 +1831,29 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
 
         fields["title"] = new_title
 
+    # AWS에서 시험 게시글을 수정할 때도 생성 표식을 제목 앞에 유지한다.
+    # 표식이 사라지면 정리 단계가 이 게시글을 찾지 못한다.
+    if (
+        target == canonical_origin("https://orchestration-haven.cloud")
+        and case.get("post_reference")
+        and re.fullmatch(r"/posts/[1-9]\d*/edit/", case["path"])
+        and "title" in fields
+    ):
+        marker = aws_post_marker(run_id, case["post_reference"])
+        title = fields["title"]
+
+        if not isinstance(title, str):
+            raise ConfigError("AWS 시험 게시글 수정 제목 형식 오류")
+
+        new_title = f"{marker} {title}"
+
+        if len(new_title) > 200:
+            raise ConfigError(
+                "AWS 시험용 게시글 제목이 200자를 초과합니다"
+            )
+
+        fields["title"] = new_title
+
     csrf = csrf_for_post(s, target, budget, prep_events, max_response_bytes,
                          payload.get("csrf_mode", "valid"), run_id)
     if csrf:
@@ -2850,7 +2901,7 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
 
                     share_id = resolve_created_share_id(
                         resolved_post_id,
-                        role,
+                        case.get("share_lookup_role", role),
                         case["share_revoke_role"],
                         sessions,
                         prepped,

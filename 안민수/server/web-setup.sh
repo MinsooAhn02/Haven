@@ -115,12 +115,45 @@ systemctl enable --now haven-cleanup.timer >/dev/null
 
 # 본문 한도(앱계약 E3): 정확한 한도는 앱이 건다(글 8,192 / 첨부 업로드 2,162,688바이트 → 413 + 요청 로그).
 # Nginx는 그보다 조금 크게 잡아 경계값 요청은 앱까지 보내고(혁민 APP-11 시험·로그 대조), 훨씬 큰 요청만 앱 앞에서 끊는다.
-cat > /etc/nginx/sites-available/haven <<EOF
+#
+# 접근 로그 요청 식별자(조장 결정 11/13, 혁민 방안): WAF·ALB ↔ Nginx ↔ 앱 로그를 같은 요청으로 잇는다.
+#   trace=  X-Amzn-Trace-Id의 Root(ALB가 붙임, WAF 로그의 같은 값과 대조)
+#   rid=    앱이 돌려주는 X-Request-ID(앱 로그 request_id와 같음). Nginx가 직접 끊은 요청(큰 413·static)은 -
+#   cid=/run= X-Haven-Request-ID / X-Haven-Run-ID(혁민 CLI). 클라이언트가 마음대로 넣는 값이라 앱과 같은 형식만 남기고 나머지는 -
+#   client= X-Forwarded-For의 마지막 값 = ALB가 본 실제 접속 IP(앞 값들은 클라이언트가 위조할 수 있어 남기지 않음)
+# 앞부분은 기본 combined 형식 그대로라 기존 조회(CloudWatch /haven/web nginx-access)는 그대로 읽힌다.
+# 헤더 값의 따옴표·제어 문자는 Nginx가 \xHH로 바꿔 쓰므로 줄 바꿈 등으로 로그를 위조할 수 없다.
+NGX=/etc/nginx/sites-available/haven
+NGX_NEW=$(mktemp)
+cat > "$NGX_NEW" <<'EOF'
+map $http_x_amzn_trace_id $haven_trace {
+    "~*(?:^|;)\s*Root=(?<haven_root>1-[0-9a-f]{8}-[0-9a-f]{24})\s*(?:;|$)" $haven_root;
+    default "-";
+}
+map $http_x_haven_request_id $haven_cid {
+    "~^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" $http_x_haven_request_id;
+    default "-";
+}
+map $http_x_haven_run_id $haven_run {
+    "~^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" $http_x_haven_run_id;
+    default "-";
+}
+map $http_x_forwarded_for $haven_client {
+    "~(?:^|,)\s*(?<haven_xff_last>[0-9A-Fa-f.:]{2,45})\s*$" $haven_xff_last;
+    default "-";
+}
+log_format haven '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent '
+                 '"$http_referer" "$http_user_agent" '
+                 'trace=$haven_trace rid=$upstream_http_x_request_id cid=$haven_cid run=$haven_run '
+                 'client=$haven_client rt=$request_time';
+EOF
+cat >> "$NGX_NEW" <<EOF
 server {
     listen 80 default_server;
     server_name _;
     server_tokens off;
     client_max_body_size 16k;
+    access_log /var/log/nginx/access.log haven;
 
     location /static/ { alias $H/current/$STATIC_SUBDIR/; }
 
@@ -145,9 +178,19 @@ server {
     }
 }
 EOF
-ln -sfn /etc/nginx/sites-available/haven /etc/nginx/sites-enabled/haven
+# test-wsl.sh 전용: 일부러 깨진 설정을 넣어 아래 되돌리기를 시험한다(운영에서는 쓰지 않음).
+[[ ${NGINX_BREAK_FOR_TEST:-} == 1 ]] && echo 'haven_broken_directive_for_test on;' >> "$NGX_NEW"
+# 새 설정이 nginx -t를 통과할 때만 바꾼다. 실패하면 이전 파일로 되돌려, 다음 reload·재부팅 때 Nginx가 못 뜨는 일을 막는다.
+[[ -f $NGX ]] && cp -p "$NGX" "$NGX.prev"
+install -m 644 "$NGX_NEW" "$NGX"; rm -f "$NGX_NEW"
+ln -sfn "$NGX" /etc/nginx/sites-enabled/haven
 rm -f /etc/nginx/sites-enabled/default
-nginx -t -q || die "nginx config test failed"
+if ! nginx -t -q; then
+  if [[ -f $NGX.prev ]]; then mv -f "$NGX.prev" "$NGX"; die "nginx config test failed (previous config restored, nginx not reloaded)"; fi
+  rm -f "$NGX" /etc/nginx/sites-enabled/haven   # 처음 설치였으면 깨진 새 파일을 남기지 않는다
+  die "nginx config test failed"
+fi
+rm -f "$NGX.prev"
 systemctl enable --now nginx >/dev/null
 systemctl reload nginx
 

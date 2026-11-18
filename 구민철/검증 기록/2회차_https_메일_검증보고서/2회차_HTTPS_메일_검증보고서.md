@@ -65,6 +65,7 @@ TODO 4장(2회차) "HTTPS·메일 독립 확인: 브라우저에서 HTTPS 접속
 
 - `settings.py` 설정(`SESSION_COOKIE_SECURE`·`CSRF_COOKIE_SECURE`·`*_HTTPONLY = True`·`*_SAMESITE = "Lax"`·`SESSION_EXPIRE_AT_BROWSER_CLOSE = True`)과 권혁민 11/11 기록(두 쿠키 모두 Secure·HttpOnly·SameSite=Lax)과 같다.
 - HSTS(`Strict-Transport-Security`)는 보내지 않는다. `settings.py`에 "도메인 운영이 안정된 뒤 정한다"고 적힌 의도된 보류이며 결함으로 보지 않는다.
+- HSTS(`Strict-Transport-Security`)는 11/16 시험 때는 보내지 않았다(`settings.py`에 "도메인 운영이 안정된 뒤 정한다"고 적힌 의도된 보류). 11/18 요찬 #137(`check --deploy` W004 대응) 배포 뒤 다시 확인했다(5장 아래 "11/18 재확인").
 
 ![쿠키 속성 (값은 가림)](img/c1-03_cookies_masked.png)
 
@@ -101,3 +102,19 @@ TODO 4장(2회차) "HTTPS·메일 독립 확인: 브라우저에서 HTTPS 접속
 | 메일 스팸함 도착 | DKIM은 통과했지만 스팸함으로 분류됐다. 새 도메인의 발송 평판 부족, DMARC 레코드 부재, SPF가 amazonses.com 기준으로만 통과하는 경우 등이 흔한 원인이나 확인하지 않았다. 메일 원본의 `spf=`·`dmarc=` 결과를 받으면 원인을 좁힐 수 있다. DMARC 레코드·SES 사용자 지정 MAIL FROM 도메인은 DNS·SES 담당(이민성·김보람)이 정할 개선 후보로 남긴다 |
 | 301의 `Location` 헤더 | 흐름(301 → HTTPS 페이지)으로 확인했고, 301 요청의 Headers(`Request URL: http://…`, `Location: https://…`) 캡처는 남기지 않았다 |
 | HSTS | 의도된 보류(`settings.py` 79행). 적용 여부는 운영 안정 뒤 결정 |
+| HSTS | 11/16 보류 → 11/18 #137 배포 후 `max-age=3600` 적용 확인 (`includeSubDomains`·`preload` 없음) |
+
+### 11/18 재확인: HSTS 적용
+
+| 항목 | 내용 |
+|---|---|
+| 시각 | 2026-11-18 16:01 KST (응답 `Date: Wed, 18 Nov 2026 07:01:09 GMT`) |
+| 요청 | `GET https://orchestration-haven.cloud/accounts/login/` → 200 (로그인 전) |
+| 기대 (요찬 #137) | `DJANGO_HTTPS=1`일 때 `Strict-Transport-Security: max-age=3600`, 하위 도메인·preload 끔 |
+| 실제 | `Strict-Transport-Security: max-age=3600`, `includeSubDomains`·`preload` 없음 |
+| 그 밖의 헤더 | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`, `Set-Cookie` HttpOnly·SameSite=Lax·Secure — 11/16과 같음 |
+
+- 1시간(3600초)으로 짧게 시작해 잘못 설정해도 되돌리기 쉽다.
+- HSTS를 받은 브라우저는 그 시간 동안 `http://`를 서버에 묻지 않고 `https://`로 바꾼다. 그래서 같은 브라우저로 H2를 다시 하면 서버의 301 대신 브라우저 내부 전환(307)이 보일 수 있다.
+
+![11/18 HSTS 응답 헤더 (csrftoken 값 가림)](img/hsts_1118_masked.png)

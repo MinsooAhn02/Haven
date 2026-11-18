@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "fixture_id": "aud03_range_ports",
+  "description": "AUD-03 범위 포트: 범위 안에 숨은 관리/DB 포트를 잡는가. 기대: FAIL, 종료 코드 1",
+  "account_id": "FIXTURE-000000000000",
+  "region": "fixture-region-1",
+  "vpc_id": "vpc-fixture",
+  "security_groups": [
+    {
+      "GroupId": "sg-fixture-alb",
+      "GroupName": "sg-alb",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 443,
+          "ToPort": 443,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 8000,
+          "ToPort": 8100,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "UserIdGroupPairs": [
+            {
+              "GroupId": "sg-fixture-web"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "GroupId": "sg-fixture-web",
+      "GroupName": "sg-web",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "UserIdGroupPairs": [
+            {
+              "GroupId": "sg-fixture-alb"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 0,
+          "ToPort": 65535,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 5432,
+          "ToPort": 5432,
+          "UserIdGroupPairs": [
+            {
+              "GroupId": "sg-fixture-db"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 443,
+          "ToPort": 443,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "GroupId": "sg-fixture-db",
+      "GroupName": "sg-db",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 5432,
+          "ToPort": 5432,
+          "UserIdGroupPairs": [
+            {
+              "GroupId": "sg-fixture-web"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 5000,
+          "ToPort": 6000,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 5400,
+          "ToPort": 5500,
+          "UserIdGroupPairs": [
+            {
+              "GroupId": "sg-fixture-web"
+            }
+          ]
+        }
+      ],
+      "IpPermissionsEgress": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 443,
+          "ToPort": 443,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 80,
+          "ToPort": 80,
+          "IpRanges": [
+            {
+              "CidrIp": "0.0.0.0/0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "asset_id": "alb",
+      "sg_ids": [
+        "sg-fixture-alb"
+      ]
+    },
+    {
+      "asset_id": "web-1",
+      "sg_ids": [
+        "sg-fixture-web"
+      ]
+    },
+    {
+      "asset_id": "db-1",
+      "sg_ids": [
+        "sg-fixture-db"
+      ]
+    }
+  ],
+  "errors": []
+}

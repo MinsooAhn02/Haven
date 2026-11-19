@@ -20,7 +20,7 @@ EVENT = {
 
 def test_gunicorn_message_selected_without_changing_evidence():
     raw = {
-        "logStreamName": "i-WEB1-MASKED/app",
+        "logStreamName": "i-0123456789abcdef0/app",
         "message": PREFIX + json.dumps(EVENT),
     }
     state = {"results": [{"trace_id": "Root=" + ROOT}]}

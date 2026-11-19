@@ -1,0 +1,350 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-session-attach-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "AWS-SA-SETUP-P1",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "critical": true,
+      "note": "A 시험 게시글 P1 생성"
+    },
+    {
+      "case_id": "AWS-SA-SETUP-P2",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "critical": true,
+      "note": "A 시험 게시글 P2 생성(SEC-29 교차 공유용)"
+    },
+    {
+      "case_id": "SEC-18-B-FIXATION-PROBE",
+      "phase": 3,
+      "category": "session",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "session_fixation_probe": true,
+      "note": "SEC-18·22: B 로그인 전에 가짜 sessionid를 심고, 로그인 뒤 세션이 교체됐는지와 Secure·HttpOnly·SameSite를 확인(값은 기록하지 않음). 공유 전이라 404"
+    },
+    {
+      "case_id": "SEC-18-C-FIXATION-PROBE",
+      "phase": 3,
+      "category": "session",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P2",
+      "session_fixation_probe": true,
+      "note": "SEC-18·22: C도 같은 방식으로 확인. 공유 전이라 404"
+    },
+    {
+      "case_id": "AWS-SA-SHARE-P1-B",
+      "phase": 3,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_grant.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "share_recipient_role": "member_b",
+      "critical": true,
+      "note": "A가 P1을 B에게 공유"
+    },
+    {
+      "case_id": "AWS-SA-SHARE-P2-C",
+      "phase": 3,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_grant.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P2",
+      "share_recipient_role": "member_c",
+      "critical": true,
+      "note": "A가 P2를 C에게 공유"
+    },
+    {
+      "case_id": "SEC-30-41-A-UPLOAD",
+      "phase": 3,
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_download_check.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "capture_attachment_id": true,
+      "critical": true,
+      "note": "A가 P1에 TXT 첨부 업로드. 업로드 전후 화면을 비교해 새 첨부 ID를 확정. 줄바꿈 없는 한 줄 파일이라 Windows·Linux 체크아웃에서 해시가 같음"
+    },
+    {
+      "case_id": "SEC-41-A-DOWNLOAD",
+      "phase": 3,
+      "category": "upload",
+      "method": "GET",
+      "path": "/posts/{post_id}/attachments/{attachment_id}/download/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200,
+        "body_bytes": 48,
+        "sha256": "fd1aaad1652eb2722d9b3c477bb2d37970520923c8a4d31406bf259a2efbe4a2",
+        "headers_contain": {
+          "Content-Disposition": "attachment",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-store"
+        }
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "attachment_reference": "SEC-30-41-A-UPLOAD",
+      "note": "SEC-41: 소유자 다운로드. attachment·nosniff·no-store 헤더와 파일 크기·SHA-256 일치"
+    },
+    {
+      "case_id": "SEC-41-B-DOWNLOAD",
+      "phase": 3,
+      "category": "upload",
+      "method": "GET",
+      "path": "/posts/{post_id}/attachments/{attachment_id}/download/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200,
+        "body_bytes": 48,
+        "sha256": "fd1aaad1652eb2722d9b3c477bb2d37970520923c8a4d31406bf259a2efbe4a2",
+        "headers_contain": {
+          "Content-Disposition": "attachment",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-store"
+        }
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "attachment_reference": "SEC-30-41-A-UPLOAD",
+      "note": "SEC-41: 공유받은 B 다운로드. 같은 헤더·해시"
+    },
+    {
+      "case_id": "SEC-30-C-DOWNLOAD-DENIED",
+      "phase": 3,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/attachments/{attachment_id}/download/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "attachment_reference": "SEC-30-41-A-UPLOAD",
+      "note": "SEC-30: P1을 공유받지 않은 C가 첨부 ID로 직접 다운로드 → 404"
+    },
+    {
+      "case_id": "SEC-29-CROSS-SHARE-ID",
+      "phase": 3,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "share_post_reference": "AWS-SA-SETUP-P2",
+      "share_revoke_role": "member_c",
+      "note": "SEC-29: P1 해제 경로에 P2→C 공유 ID를 넣음 → 404, 두 공유 모두 유지"
+    },
+    {
+      "case_id": "SEC-29-C-P2-STILL",
+      "phase": 3,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P2",
+      "note": "SEC-29: 잘못된 해제 뒤에도 C는 P2를 읽을 수 있음"
+    },
+    {
+      "case_id": "SEC-29-B-P1-STILL",
+      "phase": 3,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "note": "SEC-29: 잘못된 해제 뒤에도 B는 P1을 읽을 수 있음"
+    },
+    {
+      "case_id": "AWS-SA-REVOKE-P1-B",
+      "phase": 3,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "share_revoke_role": "member_b",
+      "note": "A가 P1의 B 공유 해제"
+    },
+    {
+      "case_id": "SEC-30-B-DOWNLOAD-AFTER-REVOKE",
+      "phase": 3,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/attachments/{attachment_id}/download/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "attachment_reference": "SEC-30-41-A-UPLOAD",
+      "note": "SEC-30·49: 해제된 B가 같은 첨부 다운로드 주소로 접근 → 404"
+    },
+    {
+      "case_id": "SEC-19-C-LOGOUT-REUSE",
+      "phase": 3,
+      "category": "session",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SA-SETUP-P2",
+      "logout_then_reuse": true,
+      "note": "SEC-19: C가 로그아웃한 뒤 로그아웃 전 세션 쿠키로 P2(공유받은 글) 요청 → 로그인 화면으로 이동"
+    }
+  ],
+  "cleanup_cases": [
+    {
+      "case_id": "AWS-SA-CLEANUP-AWS-SA-SETUP-P1",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "AWS-SA-SETUP-P1",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "AWS-SA-SETUP-P1",
+      "note": "이번 실행에서 생성한 시험 게시글·공유·첨부 정리"
+    },
+    {
+      "case_id": "AWS-SA-CLEANUP-AWS-SA-SETUP-P2",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "AWS-SA-SETUP-P2",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "AWS-SA-SETUP-P2",
+      "note": "이번 실행에서 생성한 시험 게시글·공유·첨부 정리"
+    }
+  ]
+}

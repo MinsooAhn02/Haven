@@ -40,6 +40,10 @@ TEST_REQUEST_HEADERS = frozenset({
     "User-Agent", "Host", "Referer", "X-Api-Version",
     "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto",
 })
+# 세션 고정 시험(SEC-18)에서 로그인 전에 심는 가짜 세션 값. 실제 세션 키가 될 수 없는 형식이다.
+FIXATION_SESSION_VALUE = "haven-sec18-fixation-probe"
+MEMBER_ROLES = frozenset({"member_a", "member_b", "member_c"})
+ATTACHMENT_DOWNLOAD_PATH = "/posts/{post_id}/attachments/{attachment_id}/download/"
 MAX_RESPONSE = 2 * 1024 * 1024
 RESULT_FIELDS = [
     "run_id", "request_id", "trace_id", "case_id", "parent_case_id", "payload_id", "timestamp_utc", "elapsed_ms",
@@ -258,7 +262,7 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
             allowed_post_path = (
                 item["method"] == "GET"
                 # 삭제 GET은 확인 화면만 보여 주는 읽기 요청이다.
-                and item["path"] in {"/posts/{post_id}/", "/posts/{post_id}/delete/"}
+                and item["path"] in {"/posts/{post_id}/", "/posts/{post_id}/delete/", ATTACHMENT_DOWNLOAD_PATH}
             ) or (
                 item["method"] == "POST"
                 and re.fullmatch(
@@ -302,6 +306,67 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                 raise ConfigError(
                     f"{cid}: 공유 수신자({recipient_role})의 요청이 먼저 필요합니다"
                 )
+        earlier = cases[:index]
+
+        # SEC-30·41: 업로드한 첨부의 실제 ID를 화면에서 찾아 다운로드 시험에 쓴다.
+        if "capture_attachment_id" in item:
+            if (
+                item["capture_attachment_id"] is not True
+                or item["method"] != "POST"
+                or item["path"] != "/posts/{post_id}/attachments/"
+                or post_ref is None
+                or _cleanup
+            ):
+                raise ConfigError(f"{cid}: capture_attachment_id 설정 오류")
+
+        attachment_ref = item.get("attachment_reference")
+        if attachment_ref is not None:
+            source = next(
+                (p for p in earlier if p.get("case_id") == attachment_ref and p.get("capture_attachment_id")),
+                None,
+            )
+            if (
+                source is None
+                or item["method"] != "GET"
+                or item["path"] != ATTACHMENT_DOWNLOAD_PATH
+                or post_ref != source.get("post_reference")
+            ):
+                raise ConfigError(f"{cid}: attachment_reference 설정 오류")
+        elif "{attachment_id}" in item["path"]:
+            raise ConfigError(f"{cid}: 첨부 ID 경로에는 attachment_reference가 필요합니다")
+
+        # SEC-29: 다른 시험 게시글의 공유 ID를 이 게시글 해제 경로에 섞는다.
+        share_post_ref = item.get("share_post_reference")
+        if share_post_ref is not None and (
+            "share_revoke_role" not in item
+            or share_post_ref == post_ref
+            or not any(p.get("case_id") == share_post_ref and p.get("capture_post_id") for p in earlier)
+        ):
+            raise ConfigError(f"{cid}: share_post_reference 설정 오류")
+
+        # SEC-18·22: 이 역할의 첫 로그인 전에 가짜 세션을 심고, 로그인 뒤 교체·쿠키 속성을 확인한다.
+        if "session_fixation_probe" in item and (
+            item["session_fixation_probe"] is not True
+            or item["auth_role"] not in MEMBER_ROLES
+            or any(p.get("auth_role") == item["auth_role"] for p in earlier)
+            or _cleanup
+        ):
+            raise ConfigError(f"{cid}: session_fixation_probe는 회원 역할의 첫 케이스에만 쓸 수 있습니다")
+
+        # SEC-19: 로그아웃한 뒤 이전 세션 쿠키로 요청한다. 이 역할의 마지막 요청이어야 한다.
+        if "logout_then_reuse" in item:
+            later_roles = {p.get("auth_role") for p in cases[index + 1:]}
+            later_roles |= {p.get("auth_role") for p in suite.get("cleanup_cases", [])}
+            if (
+                item["logout_then_reuse"] is not True
+                or item["method"] != "GET"
+                or item["auth_role"] not in MEMBER_ROLES
+                or not any(p.get("auth_role") == item["auth_role"] for p in earlier)
+                or item["auth_role"] in later_roles
+                or _cleanup
+            ):
+                raise ConfigError(f"{cid}: logout_then_reuse 설정 오류")
+
         if "critical" in item and type(item["critical"]) is not bool:
             raise ConfigError(f"{cid}: critical은 bool이어야 합니다")
 
@@ -1762,6 +1827,46 @@ def csrf_for_post(s: requests.Session, target: str, budget: RequestBudget,
     return csrf
 
 
+def list_attachment_ids(s, post_id, target, budget, run_id, prep_events, max_response_bytes):
+    """소유자 게시글 화면의 다운로드 링크에서 첨부 ID 목록을 읽는다."""
+    rid = str(uuid.uuid4())
+    detail, html = bounded_send(
+        s, "GET", target, f"/posts/{post_id}/", budget, rid,
+        headers={RUN_ID_HEADER: run_id}, trace_id=new_trace_id(),
+        max_response_bytes=min(max_response_bytes, 65536), capture_html=True,
+    )
+    prep_events.append({"request_id": rid, "stage": "attachment_list", "http_status": detail["status"]})
+    if detail["status"] != 200 or html is None:
+        raise ExecutionError("첨부 목록 화면을 읽지 못했습니다")
+    pattern = rf'href="/posts/{post_id}/attachments/([1-9][0-9]{{0,18}})/download/"'
+    return {int(m) for m in re.findall(pattern, html.decode("utf-8", errors="replace"))}
+
+
+def session_cookie_report(s: requests.Session, target: str) -> dict:
+    """세션 쿠키 값은 기록하지 않고 교체 여부와 보안 속성만 남긴다(SEC-18·22)."""
+    host = urlsplit(target).hostname
+    cookies = [c for c in s.cookies if c.name == "sessionid" and c.domain.lstrip(".") == host]
+    if len(cookies) != 1:
+        return {"cookie_count": len(cookies), "rotated": False}
+    cookie = cookies[0]
+    return {
+        "cookie_count": 1,
+        "rotated": cookie.value != FIXATION_SESSION_VALUE,
+        "secure": bool(cookie.secure),
+        "httponly": cookie.has_nonstandard_attr("HttpOnly"),
+        "samesite": cookie.get_nonstandard_attr("SameSite"),
+    }
+
+
+def session_report_ok(report: dict) -> bool:
+    return (
+        report.get("rotated") is True
+        and report.get("secure") is True
+        and report.get("httponly") is True
+        and str(report.get("samesite", "")).lower() in {"lax", "strict"}
+    )
+
+
 def bind_share_recipient(case, fields, sessions, prepped):
     """공유 대상 역할을 로그인에 성공한 실제 계정명으로 변환한다."""
     role = case.get("share_recipient_role")
@@ -2828,6 +2933,7 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
     records = []
     attempted = set()
     created_post_ids = {}
+    created_attachment_ids = {}
     failed = False
     
     cleanup_done = False
@@ -2926,6 +3032,12 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
 
                 sess = sessions[session_key]
 
+                if case.get("session_fixation_probe") and not prepped.get(role):
+                    sess.cookies.set_cookie(requests.cookies.create_cookie(
+                        "sessionid", FIXATION_SESSION_VALUE,
+                        domain=urlsplit(target).hostname, path="/",
+                    ))
+
                 if role != "anonymous" and not prepped.get(role):
                     prep_login(
                         sess,
@@ -2937,6 +3049,9 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                         args.max_response_bytes
                     )
                     prepped[role] = True
+
+                    if case.get("session_fixation_probe"):
+                        record["session_check"] = session_cookie_report(sess, target)
 
                 if case.get("checkpoint_before") == "deactivate_member_b":
                     baseline_ok = any(
@@ -2975,7 +3090,7 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
 
                 if "share_revoke_role" in case:
                     resolved_post_id = created_post_ids.get(
-                        case["post_reference"]
+                        case.get("share_post_reference", case["post_reference"])
                     )
 
                     share_id = resolve_created_share_id(
@@ -3002,6 +3117,42 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                                                 run_id, prep_events, args.max_response_bytes)
                     case["path"] = case["path"].replace("{share_id}", str(share_id))
                     record["path"] = safe_path_log(case["path"])
+
+                if "attachment_reference" in case:
+                    attachment_id = created_attachment_ids.get(case["attachment_reference"])
+                    if attachment_id is None:
+                        raise ExecutionError(f"{case['case_id']}: 선행 첨부 ID를 찾을 수 없습니다")
+                    case["path"] = case["path"].replace("{attachment_id}", str(attachment_id))
+                    record["path"] = safe_path_log(case["path"])
+
+                attachments_before = None
+                if case.get("capture_attachment_id"):
+                    attachments_before = list_attachment_ids(
+                        sess, created_post_ids[case["post_reference"]], target, budget,
+                        run_id, prep_events, args.max_response_bytes,
+                    )
+
+                if case.get("logout_then_reuse"):
+                    # 로그아웃 전 쿠키를 메모리에만 복사해 두고, 로그아웃 뒤 그 쿠키로 요청한다.
+                    old_cookies = requests.cookies.RequestsCookieJar()
+                    old_cookies.update(sess.cookies)
+                    csrf = csrf_for_post(sess, target, budget, prep_events,
+                                         args.max_response_bytes, "valid", run_id)
+                    rid = str(uuid.uuid4())
+                    logout_detail, _ = bounded_send(
+                        sess, "POST", target, "/accounts/logout/", budget, rid,
+                        fields={"csrfmiddlewaretoken": csrf},
+                        headers={"Origin": serialize_origin_header(target), "X-CSRFToken": csrf,
+                                 RUN_ID_HEADER: run_id},
+                        max_response_bytes=min(args.max_response_bytes, 65536),
+                    )
+                    prep_events.append({"request_id": rid, "stage": "logout", "http_status": logout_detail["status"]})
+                    if logout_detail["status"] != 302:
+                        raise ExecutionError("로그아웃 준비 실패")
+                    prepped[role] = False
+                    sess = new_session()
+                    sess.cookies.update(old_cookies)
+                    record["logout_before_request"] = True
 
                 # 인가/CSRF 준비와 HTTP 전송을 분리해 run()의 흐름을 단순하게 유지한다.
                 fields, headers, file_info = prepare_case_request(
@@ -3051,6 +3202,21 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                               response_summary={"request_body_bytes": detail["request_body_bytes"], "body_bytes": detail["body_bytes"], "sha256": detail["sha256"],
                                                 "headers": detail["headers"]}, transport_status="OK", request_attempted=True,
                               http_expectation_match=check_http_expected(detail, case["expected_app"], target_origin=target))
+
+                # SEC-18·22: 세션이 교체되지 않았거나 보안 속성이 빠지면 기대값 불일치로 기록한다.
+                if "session_check" in record and not session_report_ok(record["session_check"]):
+                    record["http_expectation_match"] = False
+
+                if case.get("capture_attachment_id") and record["http_expectation_match"]:
+                    attachments_after = list_attachment_ids(
+                        sess, created_post_ids[case["post_reference"]], target, budget,
+                        run_id, prep_events, args.max_response_bytes,
+                    )
+                    new_ids = attachments_after - attachments_before
+                    if len(new_ids) != 1:
+                        raise ExecutionError("새 첨부 ID를 하나로 확정하지 못했습니다")
+                    created_attachment_ids[case["case_id"]] = new_ids.pop()
+                    record["created_attachment_id"] = created_attachment_ids[case["case_id"]]
 
                 if case.get("capture_post_id"):
                     if not check_http_expected(

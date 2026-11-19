@@ -556,6 +556,14 @@ def validate_aws_cleanup_suite(suite: dict) -> None:
         if case["auth_role"] == "anonymous" and case["path"] == "/accounts/login/":
             continue
 
+        # 비로그인 가입 시도는 폼 오류(400)를 기대할 때만 허용한다(계정이 만들어지지 않는다).
+        if (
+            case["auth_role"] == "anonymous"
+            and case["path"] == "/accounts/signup/"
+            and case["expected_app"].get("http_status") == 400
+        ):
+            continue
+
         # 소유자가 아닌 계정의 삭제 시도는 거부(404)를 확인하는 시험으로만 허용한다.
         ref = case.get("post_reference")
         is_delete_denial = (

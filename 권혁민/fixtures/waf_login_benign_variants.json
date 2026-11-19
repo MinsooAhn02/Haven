@@ -1,0 +1,84 @@
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "hong.gildong.sec58",
+          "password": "P@ssw0rd!2026"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "kim01.sec58@example.com",
+          "password": "it's-my-pass-2026"
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "lee_minsu_sec58",
+          "password": "a-b--c-2026"
+        }
+      }
+    },
+    {
+      "id": "P04",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "park-sec58",
+          "password": "Select2026!"
+        }
+      }
+    },
+    {
+      "id": "P05",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "choi.sec58",
+          "password": "1=1abc"
+        }
+      }
+    },
+    {
+      "id": "P06",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "jung_sec58",
+          "password": "Union#Station9"
+        }
+      }
+    },
+    {
+      "id": "P07",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "kang.sec58",
+          "password": "drop_the_beat!7"
+        }
+      }
+    },
+    {
+      "id": "P08",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "yoon-sec58",
+          "password": "'quote'start1"
+        }
+      }
+    }
+  ]
+}

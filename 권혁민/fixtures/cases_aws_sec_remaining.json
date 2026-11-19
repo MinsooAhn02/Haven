@@ -1,0 +1,318 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-sec-remaining-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "AWS-REM-SETUP-A-POST",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "critical": true,
+      "note": "A 시험 게시글 생성(공유·업로드 시험용)"
+    },
+    {
+      "case_id": "SEC-26-A-CREATE-OWNER-FIELDS",
+      "phase": 3,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_owner_field_tamper.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "note": "SEC-26: 소유자·상태 필드(owner, author_id, status 등)를 넣어 글 생성. 앱은 무시하고 A 소유로 저장해야 함"
+    },
+    {
+      "case_id": "SEC-26-A-READ-OWN",
+      "phase": 3,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "SEC-26-A-CREATE-OWNER-FIELDS",
+      "note": "SEC-26: 필드 삽입 글이 A 소유·ACTIVE로 남았는지(status=DELETED 무시)"
+    },
+    {
+      "case_id": "SEC-26-B-READ-DENIED",
+      "phase": 3,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "SEC-26-A-CREATE-OWNER-FIELDS",
+      "note": "SEC-26: 삽입한 값으로 B가 소유자가 되지 않음"
+    },
+    {
+      "case_id": "SEC-26-C-READ-DENIED",
+      "phase": 3,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "SEC-26-A-CREATE-OWNER-FIELDS",
+      "note": "SEC-26: 삽입한 값으로 C가 소유자가 되지 않음"
+    },
+    {
+      "case_id": "SEC-26-B-EDIT-OWNER-FIELDS",
+      "phase": 3,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "auth_role": "member_b",
+      "input_reference": "sec_owner_field_tamper.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-REM-SETUP-A-POST",
+      "note": "SEC-26: B가 소유자 필드를 넣어 A 글 수정 시도 → 404"
+    },
+    {
+      "case_id": "AWS-REM-SHARE-B",
+      "phase": 3,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_grant.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-REM-SETUP-A-POST",
+      "share_recipient_role": "member_b",
+      "critical": true,
+      "note": "A 시험 게시글을 B에게 공유"
+    },
+    {
+      "case_id": "SEC-47-DUPLICATE-SHARE",
+      "phase": 3,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_grant.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-REM-SETUP-A-POST",
+      "share_recipient_role": "member_b",
+      "note": "SEC-47: 같은 B에게 다시 공유. 중복 공유 행이 생기면 뒤 공유 ID 조회가 실패함"
+    },
+    {
+      "case_id": "SEC-47-B-READ-SHARED",
+      "phase": 3,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-REM-SETUP-A-POST",
+      "note": "SEC-47: 공유는 그대로 유효"
+    },
+    {
+      "case_id": "SEC-49-A-REVOKE",
+      "phase": 3,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-REM-SETUP-A-POST",
+      "share_revoke_role": "member_b",
+      "note": "SEC-49: A가 B 공유 해제(공유 ID는 A 화면에서 조회, 1건이어야 함)"
+    },
+    {
+      "case_id": "SEC-49-B-AFTER-REVOKE",
+      "phase": 3,
+      "category": "sharing",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-REM-SETUP-A-POST",
+      "note": "SEC-49: 해제 직후 B가 같은 URL로 접근 → 404"
+    },
+    {
+      "case_id": "SEC-58-LOGIN-BENIGN",
+      "phase": 3,
+      "category": "waf_fp",
+      "method": "POST",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": "waf_login_benign_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 8,
+      "verification_mode": "manual_required",
+      "note": "SEC-58: 로그인 정상 입력 8종(따옴표·하이픈·SQL 단어가 섞인 흔한 비밀번호, 없는 아이디). WAF 규칙 매칭 없어야 함. 로그인 실패 8회"
+    },
+    {
+      "case_id": "SEC-58-SIGNUP-BENIGN",
+      "phase": 3,
+      "category": "waf_fp",
+      "method": "POST",
+      "path": "/accounts/signup/",
+      "auth_role": "anonymous",
+      "input_reference": "waf_signup_benign_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "SEC-58: 가입 정상 입력 3종. 비밀번호 확인을 일부러 다르게 해 계정을 만들지 않음. WAF 규칙 매칭 없어야 함"
+    },
+    {
+      "case_id": "SEC-52-NOT-FOUND",
+      "phase": 3,
+      "category": "info_leak",
+      "method": "GET",
+      "path": "/haven-sec52-not-found/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "SEC-52: 없는 주소. 응답에 DEBUG 화면·스택 트레이스 없음(응답 크기·헤더로 확인)"
+    },
+    {
+      "case_id": "SEC-52-BAD-POST-ID",
+      "phase": 3,
+      "category": "info_leak",
+      "method": "GET",
+      "path": "/posts/sec52-not-a-number/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "SEC-52: 숫자가 아닌 게시글 ID. 500·DEBUG 화면 없이 404"
+    },
+    {
+      "case_id": "SEC-60-UPLOAD-BODY-OFFSET",
+      "phase": 3,
+      "category": "waf_boundary",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "waf_upload_body_offset_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 2,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-REM-SETUP-A-POST",
+      "note": "SEC-60: 같은 XSS 문자열을 TXT 내용 앞(P01)과 8KB 뒤(P02)에 둠. WAF가 P01만 매칭하면 '본문 8KB 뒤 미검사' 확인"
+    }
+  ],
+  "cleanup_cases": [
+    {
+      "case_id": "AWS-REM-CLEANUP-AWS-REM-SETUP-A-POST",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "AWS-REM-SETUP-A-POST",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "AWS-REM-SETUP-A-POST",
+      "note": "이번 실행에서 생성한 시험 게시글과 첨부 정리"
+    },
+    {
+      "case_id": "AWS-REM-CLEANUP-SEC-26-A-CREATE-OWNER-FIELDS",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "SEC-26-A-CREATE-OWNER-FIELDS",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "SEC-26-A-CREATE-OWNER-FIELDS",
+      "note": "이번 실행에서 생성한 시험 게시글과 첨부 정리"
+    }
+  ]
+}

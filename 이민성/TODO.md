@@ -67,7 +67,7 @@
 | ~15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부)~ | ✅ 11/13 11:38~11:42 허용 1·거부 4 (아래 11/13 코멘트). 보람 기록 반영은 보람에게 전달 |
 | ALB·WAF 밤 처리 결정 → destroy.sh 정리 순서 | #57 약 $4.55/주 |
 | WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤. 연결 상태 조회 권한(`GetWebACLForResource`)은 ✅ 11/16 12:15 확인: `get-web-acl-for-resource` → `haven-web-acl`(ALB에 연결 유지) |
-| 가상 운영 관리자 계정 생성(make_operator.py) | 4회차 APP-07·09 시험 직전에만, 끝나면 바로 비활성화 |
+| ~가상 운영 관리자 계정 생성(make_operator.py)~ | ✅ 11/19 생성·APP-07·09 통과 → `operator` 삭제(요찬 요청), 사람별 `op_` 3개 생성 |
 | ~로그인 실패 제한 수치 결정~ | ✅ 11/12 결정: 15분·계정 5번·IP 30번(#75). 구현은 요찬(4회차) → 혁민 점검 → 배포. 실제 IP는 X-Forwarded-For 뒤에서 두 번째(nginx가 ALB IP를 붙임) |
 | ~OUT-10 db-1 PostgreSQL 로그 수집~ | ✅ 11/16 11:04 db-1 실행(`cw-agent-setup-db.sh`), 11:08 `/haven/db` 도착, 11:13 앱 접속 기록(IP·TLS) 확인, 12:04 1시간 로그 양 +176줄 / 약 28KB. PR #116 병합(main `f60e1c6`). 남은 것: 병합 뒤 짝 리뷰(보람: 권한·보존·비용, 혁민: 기록 범위·조회) |
 | 로그인 실패 제한 운영 시험 2차(요찬 안내: 계정 열거·분산 공격·IP 키) | **11/17 진행 예정.** 민성은 3장(6번 직후 db-1에서 `accounts_loginfailure` IP 키 조회, 읽기 전용). 미리 db-1 SSM 세션 열어 둠 |
@@ -575,12 +575,28 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 | 09:4x | APP-09(운영 관리자) | ✅ `/admin/accounts/` 일반 회원만(operator 없음, 이메일·비밀번호 칸 없음) · 상태 변경 뒤 비활성 계정(test4) 로그인 거부 · `/admin/account-events/` 시각·수행 관리자·대상·전후 · 남의 글 `/posts/42/` 404 · `/admin/auth/user/`·`/admin/auth/user/1/password/` 404 |
 | 10:0x~10:12 | APP-07(일반 회원 test1) | ✅ `/admin/accounts/`·`/admin/account-events/` 403 · 상태 변경 직접 POST(`/admin/accounts/27/status/`, CSRF 토큰 정상) 403 권한 거부, 대상 상태 그대로, 이력 새 줄 없음 |
 
-- 시험 중 상태를 바꾼 시험 회원 `test4`~`test12`(비활성)는 원래대로 다시 활성화했는지 확인 필요(다른 사람 시험 계정)
+- 시험 중 상태를 바꾼 시험 회원 `test4`~`test12`(비활성)는 원래대로 다시 활성화했는지 확인 필요(다른 사람 시험 계정) → 정리(조장 결정, 운영기록 11/19): `test10`만 다시 활성화, 나머지는 미사용 계정이라 비활성 유지
 - 캡처는 구민철 대조용. 실제 팀원 아이디는 공유 때 가림. 비밀번호는 기록·전달하지 않음
 
 **결정 (11/19): 운영 관리자 계정을 사람별로**
 
 - 공용 `operator` 대신 `op_minsung`·`op_pureun`·`op_minchul`·`op_yochan`처럼 1인 1계정. 이력에 누가 바꿨는지가 아이디로 남기 때문. 운영 관리자끼리는 서로 상태를 못 바꿔서 여러 개여도 됨
 - 권한은 전용 2개만, staff·superuser 아님. 사람마다 다른 무작위 비밀번호를 1:1 DM으로만(받으면 DM 삭제, git·채널·PR 금지). 11/12의 "비밀번호 비전달"을 이 방식으로 바꿈
-- `operator`(id=30)는 **삭제하지 않고 비활성화**. 삭제하면 오늘 APP-09 이력(LogEntry)도 같이 지워짐. 최종 정리 때도 운영 관리자 계정은 모두 비활성화
+- ~~`operator`(id=30)는 삭제하지 않고 비활성화~~ → 오후에 **삭제**(요찬 요청, 증거 캡처를 남긴 뒤). 삭제로 APP-09 이력(LogEntry)도 같이 지워져 캡처로만 남음. 최종 정리 때 사람별 `op_` 계정은 삭제 대신 비활성화
 - 상태 변경 시험 대상은 정해 둔 시험 회원만(예: `locktest_1116`), 시험 뒤 다시 활성화
+
+## 민성's comment · 2026-11-19 오후 · 네트워크 재시험·CI-02·운영 관리자 정리·저장소 기록 정리
+
+| 시각 | 한 일 | 결과·근거 |
+|---|---|---|
+| 오전~12:5x | 저장소 기록 정리: 비공개 mirror 백업(bundle 검증·복원 시험) → 새 mirror에서 `git filter-repo --replace-text`(바꾸기 목록은 저장소 밖) → 남은 값 0건 확인 → force push(팀 결정, 이번 한 번만) | ✅ 브랜치 8개 GitHub = 정리본 일치. 가린 값: 계정 번호·인스턴스 ID·공인/내부 IP·호스팅 영역 ID·WAF ACL ID·인증서 ID. 팀 새 clone 공지, 민수 퍼블릭 전환. 조장은 `Haven-new`에서 작업(옛 폴더 이름 변경이 막힘, 옛 폴더 push 막음) |
+| 13:xx | 배포 커밋 대응 확인 | 운영 `187090a`(옛) = 새 `3e5a2d8`. main `3f8927a`까지 실행 코드 변경 없음(문서 2개·시험 1개) → 재배포 안 함 |
+| 14:0x~14:2x | CI-02 의존성 점검: web-1 `pip freeze --all`(Python 3.12.3, 17개) → PC `pip-audit -r freeze.txt --no-deps --disable-pip` | ✅ 앱 실행 패키지 16개 취약점 0건. `pip 24.0`만 6건(PYSEC-2026-1795·1796·2875·2876·196·3721) → 업그레이드 안 함(pip는 앱 의존성이 아닌 설치 도구, 운영기록 11/19 결정). 구민철에게 전달 |
+| 14:27 | OUT-05 rt-private 경로 | ✅ S3 prefix list → Gateway Endpoint `active` |
+| 14:27 | NET-03-b web-1 → db-1 `postgres` 계정 | ✅ `pg_hba.conf` 거부(SSL·비SSL), timeout 아님 |
+| 14:28 | OUT-11 db-1 → 백업 버킷 | ✅ `db-backups/` 성공, `other/`·목록 `AccessDenied`. 다른 버킷은 정책 문서(보람 JSON 06·32)로 근거. 시험 파일 1개 남김(삭제 권한 없음, 복원 영향 없음) |
+| 14:36 | NET-05 일반 계정 `minchul` SSM | ✅ `ssm:StartSession` 거부, 세션 안 열림 |
+| 오후 | 운영 관리자 계정 | ✅ `operator` 삭제(요찬 요청), `op_minsung`·`op_pureun`·`op_yochan` 생성(`op_minchul`은 만들지 않음) |
+
+- 네 시험 결과는 `network/연결확인표.md`에 반영. 캡처의 계정 번호·인스턴스 ID·IP는 가림
+- 남은 4회차(조장): RST-01(오늘 21시), WAF Block(혁민이 Count 유지를 원해 판단 뒤), SG 재시험·최종 구성도·종료 대상 목록, 최종 DB+첨부 복원, `destroy.sh` 보완

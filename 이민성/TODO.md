@@ -553,3 +553,34 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - 남은 것: 혁민 병합 뒤 리뷰, WAF 로그에서 같은 trace(`1-6afd65d2-004c498b686b533b17a7907b`, 17:46 KST) 찾는 재검증
 
 **다음:** 21시 `night.sh` · 혁민 #143 재검증 · 4회차(WAF Block, 운영 관리자 계정, destroy.sh ALB·WAF 순서, 네트워크/SG 재시험·구성도·종료 대상, 최종 DB+첨부 복원)
+
+## 민성's comment · 2026-11-19 아침 · 업무 추가(RST-01)·결정
+
+**업무 추가 (조장 11/19)**
+
+| 항목 | 내용 | 언제 |
+|---|---|---|
+| RST-01 NAT 없을 때 | 비용 계획대로 NAT를 지우는 밤에 확인한다(시험하려고 따로 지우지 않음). 21시에 `night.sh` 대신 ① 서버에서 NAT 삭제 2분 뒤 업데이트·S3 시도를 남기는 일회성 작업 예약 → ② `nat-down.sh` → ③ PC에서 SSM 연결 상태(Offline 기대)·rt-private의 S3 경로(유지 기대) 확인 → ④ 예약 작업이 끝난 뒤 `ec2-stop.sh`. 다음 날 아침 서버 기록 파일로 업데이트 실패·S3 성공 확인. 결과는 `network/연결확인표.md` E와 이 파일에 | 11/19 21시 |
+
+**결정**
+
+- ASVS 매핑(명세 8.5)은 구민철 담당(조장 11/19)
+- 11/18 21시 `night.sh` 미실행은 운영기록 11/18 "운영 누락"에 기록. 실제 금액은 Billing에서 확인 예정
+
+## 민성's comment · 2026-11-19 오전 · 운영 관리자 계정 생성과 APP-07·09
+
+| 시각 | 한 일 | 결과·근거 |
+|---|---|---|
+| 09:3x | web-1 root에서 요찬 `make_operator.py` 실행(문서의 sha256 `807b4457…6587` 일치 확인) | ✅ `operator` id=30, `active=True staff=False superuser=False groups=0`, 권한 `manage_account_status`·`view_account_status_events` 2개 |
+| 09:4x | APP-09(운영 관리자) | ✅ `/admin/accounts/` 일반 회원만(operator 없음, 이메일·비밀번호 칸 없음) · 상태 변경 뒤 비활성 계정(test4) 로그인 거부 · `/admin/account-events/` 시각·수행 관리자·대상·전후 · 남의 글 `/posts/42/` 404 · `/admin/auth/user/`·`/admin/auth/user/1/password/` 404 |
+| 10:0x~10:12 | APP-07(일반 회원 test1) | ✅ `/admin/accounts/`·`/admin/account-events/` 403 · 상태 변경 직접 POST(`/admin/accounts/27/status/`, CSRF 토큰 정상) 403 권한 거부, 대상 상태 그대로, 이력 새 줄 없음 |
+
+- 시험 중 상태를 바꾼 시험 회원 `test4`~`test12`(비활성)는 원래대로 다시 활성화했는지 확인 필요(다른 사람 시험 계정)
+- 캡처는 구민철 대조용. 실제 팀원 아이디는 공유 때 가림. 비밀번호는 기록·전달하지 않음
+
+**결정 (11/19): 운영 관리자 계정을 사람별로**
+
+- 공용 `operator` 대신 `op_minsung`·`op_pureun`·`op_minchul`·`op_yochan`처럼 1인 1계정. 이력에 누가 바꿨는지가 아이디로 남기 때문. 운영 관리자끼리는 서로 상태를 못 바꿔서 여러 개여도 됨
+- 권한은 전용 2개만, staff·superuser 아님. 사람마다 다른 무작위 비밀번호를 1:1 DM으로만(받으면 DM 삭제, git·채널·PR 금지). 11/12의 "비밀번호 비전달"을 이 방식으로 바꿈
+- `operator`(id=30)는 **삭제하지 않고 비활성화**. 삭제하면 오늘 APP-09 이력(LogEntry)도 같이 지워짐. 최종 정리 때도 운영 관리자 계정은 모두 비활성화
+- 상태 변경 시험 대상은 정해 둔 시험 회원만(예: `locktest_1116`), 시험 뒤 다시 활성화

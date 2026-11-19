@@ -1,0 +1,526 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-sec-phase2-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "AWS-SEC-SETUP-A-POST",
+      "phase": 2,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "critical": true,
+      "note": "AWS 보안 회귀용 A 시험 게시글 생성(로컬 P1 대체)"
+    },
+    {
+      "case_id": "SEC-01",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": "sec_login_sql_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 8,
+      "verification_mode": "manual_required",
+      "note": "로그인 username SQLi 8종. 인증 우회·DB 오류·세션 생성 여부 확인(IP 축 실패 8회, 한도 30회 미만)"
+    },
+    {
+      "case_id": "SEC-03",
+      "phase": 2,
+      "category": "injection",
+      "method": "GET",
+      "path": "/posts/1%20OR%201%3D1/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "경로 ID 자리 SQLi 문자열. 실제 게시글 번호를 쓰지 않음"
+    },
+    {
+      "case_id": "SEC-04",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/",
+      "auth_role": "member_a",
+      "input_reference": "sec_login_sql_username.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "공유 대상 username SQLi 문자열 거부"
+    },
+    {
+      "case_id": "SEC-05",
+      "phase": 2,
+      "category": "injection",
+      "method": "GET",
+      "path": "/posts/?page=%27%20OR%201%3D1%20--",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "목록 page 파라미터 SQLi 문자열"
+    },
+    {
+      "case_id": "SEC-06",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_body_attack_mix.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "note": "본문 SQL 형태 문자열 저장(실행되지 않아야 함)"
+    },
+    {
+      "case_id": "SEC-07",
+      "phase": 2,
+      "category": "injection",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_body_attack_mix.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "note": "본문 템플릿 형태 문자열 저장(평가되지 않아야 함)"
+    },
+    {
+      "case_id": "SEC-09",
+      "phase": 2,
+      "category": "xss",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_stored_xss.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "note": "제목 저장형 XSS 문자열(화면에서 이스케이프 확인)"
+    },
+    {
+      "case_id": "SEC-10",
+      "phase": 2,
+      "category": "xss",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "sec_body_attack_mix.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "note": "본문 XSS 형태 문자열 저장(화면에서 이스케이프 확인)"
+    },
+    {
+      "case_id": "SEC-11-PREP",
+      "phase": 2,
+      "category": "xss",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "auth_role": "member_a",
+      "input_reference": "sec_body_attack_mix.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "A 시험 게시글을 공격형 문자열로 수정(생성 표식 유지)"
+    },
+    {
+      "case_id": "AWS-SEC-B-BEFORE-SHARE",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "공유 전 B 조회 거부. B가 공유 전에 로그인하도록 하는 선행 요청도 겸함"
+    },
+    {
+      "case_id": "AWS-SEC-SHARE-B",
+      "phase": 2,
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_grant.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "share_recipient_role": "member_b",
+      "critical": true,
+      "note": "B 접근 시험을 위해 A 시험 게시글을 B에게 공유(로컬 사전 상태 대체)"
+    },
+    {
+      "case_id": "SEC-11",
+      "phase": 2,
+      "category": "xss",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "공유받은 B 화면에서 공격형 문자열 이스케이프 확인"
+    },
+    {
+      "case_id": "SEC-23",
+      "phase": 2,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "공유받지 않은 C 조회 거부"
+    },
+    {
+      "case_id": "SEC-24",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "auth_role": "member_b",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "공유받은 B의 수정 거부"
+    },
+    {
+      "case_id": "SEC-25",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "공유받은 B의 삭제 거부"
+    },
+    {
+      "case_id": "SEC-27",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "공유받은 B의 재공유 거부"
+    },
+    {
+      "case_id": "SEC-28",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/{share_id}/revoke/",
+      "auth_role": "member_b",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "share_revoke_role": "member_b",
+      "share_lookup_role": "member_a",
+      "note": "B가 자기 공유를 해제하려는 요청 거부(공유 ID는 A 화면에서 조회)"
+    },
+    {
+      "case_id": "SEC-42",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "auth_role": "member_a",
+      "input_reference": "post_without_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "CSRF 토큰 없는 수정 거부"
+    },
+    {
+      "case_id": "SEC-43",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "auth_role": "member_a",
+      "input_reference": "post_invalid_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "잘못된 CSRF 토큰 수정 거부"
+    },
+    {
+      "case_id": "SEC-44",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "auth_role": "member_a",
+      "input_reference": "sec_foreign_origin.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "다른 출처 Origin 요청 거부(AWS에서는 새 글 대신 시험 게시글 수정으로 확인)"
+    },
+    {
+      "case_id": "SEC-45-DELETE-GET",
+      "phase": 2,
+      "category": "csrf",
+      "method": "GET",
+      "path": "/posts/{post_id}/delete/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "GET 삭제는 확인 화면만 표시하고 삭제하지 않음"
+    },
+    {
+      "case_id": "SEC-45-LOGOUT-GET",
+      "phase": 2,
+      "category": "csrf",
+      "method": "GET",
+      "path": "/accounts/logout/",
+      "auth_role": "member_a",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 405
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "GET 로그아웃 거부"
+    },
+    {
+      "case_id": "SEC-46",
+      "phase": 2,
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/{share_id}/revoke/",
+      "auth_role": "member_a",
+      "input_reference": "post_without_csrf.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "share_revoke_role": "member_b",
+      "note": "CSRF 토큰 없는 공유 해제 거부"
+    },
+    {
+      "case_id": "SEC-48",
+      "phase": 2,
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/",
+      "auth_role": "member_a",
+      "input_reference": "sec_share_operator.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "note": "운영자 계정(operator)으로 공유 거부"
+    }
+  ],
+  "cleanup_cases": [
+    {
+      "case_id": "AWS-SEC-CLEANUP-AWS-SEC-SETUP-A-POST",
+      "phase": 2,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "AWS-SEC-SETUP-A-POST",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "AWS-SEC-SETUP-A-POST",
+      "note": "이번 실행에서 생성한 시험 게시글과 공유 정리"
+    },
+    {
+      "case_id": "AWS-SEC-CLEANUP-SEC-06",
+      "phase": 2,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "SEC-06",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "SEC-06",
+      "note": "이번 실행에서 생성한 시험 게시글과 공유 정리"
+    },
+    {
+      "case_id": "AWS-SEC-CLEANUP-SEC-07",
+      "phase": 2,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "SEC-07",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "SEC-07",
+      "note": "이번 실행에서 생성한 시험 게시글과 공유 정리"
+    },
+    {
+      "case_id": "AWS-SEC-CLEANUP-SEC-09",
+      "phase": 2,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "SEC-09",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "SEC-09",
+      "note": "이번 실행에서 생성한 시험 게시글과 공유 정리"
+    },
+    {
+      "case_id": "AWS-SEC-CLEANUP-SEC-10",
+      "phase": 2,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "SEC-10",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "SEC-10",
+      "note": "이번 실행에서 생성한 시험 게시글과 공유 정리"
+    }
+  ]
+}

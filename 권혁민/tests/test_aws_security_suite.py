@@ -133,3 +133,20 @@ def test_revoke_needs_owner_and_recipient_logged_in():
 
     with pytest.raises(rv.ConfigError):
         rv.validate_suite(suite, FIXTURES)
+
+
+def test_cleanup_reserve_covers_shares_and_every_post():
+    suite = rv.expand_suite_variants(load_suite(), FIXTURES)
+
+    reserve = rv.aws_cleanup_reserve(
+        suite["cases"], suite["cleanup_cases"]
+    )
+
+    # 11/19 실제 실행: 게시글 5개 정리 + 남은 공유 1개 = 23건 필요(예약 20건에서 부족)
+    assert reserve >= 5 * 4 + 1 * 3
+    assert reserve == 28
+
+
+def test_cleanup_reserve_keeps_minimum_for_small_suite():
+    assert rv.aws_cleanup_reserve([], [{"case_id": "X"}]) == 9
+    assert rv.aws_cleanup_reserve([], []) == 8

@@ -36,8 +36,8 @@
 - [x] IAM 권한 검증 (CloudWatch·EC2·WAF 조회, SSM 접속 거부)
 - [x] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석 — 시험 요청 Count 동작 확인(11/13 수동, 11/17 요청 CLI 재시험 4건 PASS), 누적 Count 로그 분석(11/18, 아래 "누적 Count 로그 분석"): 첨부 업로드의 `SizeRestrictions_BODY` 오탐 확인. 로그인 `SQLi_BODY` 8건·User-Agent 없는 요청의 출처는 팀 확인 필요
 - [x] WAF·Nginx·Django 로그 상관분석 — WAF↔Django는 Trace Root 기준 자동 연결(11/16). Nginx는 #143 적용 뒤 재검증 완료(11/19, 요청 40건 WAF·Nginx·앱 모두 1건씩 연결, 아래 "Nginx 요청 식별자 재검증")
-- [ ] AWS 환경에서 보안 fixture 재실행 — 부분 완료: 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, 11/16), 2회차 보안 회귀 25건(`cases_aws_security_phase2.json`, 11/19, HTTP 32/32 일치·로그 32/32 MATCHED). 공유 경계·업로드 등 나머지 로컬 fixture는 AWS 변환 전
-- [ ] Count 결과를 바탕으로 Block 전환 대상 선정
+- [ ] AWS 환경에서 보안 fixture 재실행 — 부분 완료: 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, 11/16), 2회차 보안 회귀 25건(`cases_aws_security_phase2.json`, 11/19, HTTP 32/32·로그 32/32 MATCHED), 3회차 업로드 20건(`cases_aws_upload.json`, 11/19, HTTP 38/38·로그 38/38 MATCHED). 공유 경계 등 나머지와 용량 시험·관리자 시험은 AWS 변환 전. 실행 결과는 로컬 `권혁민/output/` 아래 보관
+- [ ] Count 결과를 바탕으로 Block 전환 대상 선정 — 근거 확보: 누적 Count 로그(11/18), 보안 회귀·업로드·WAF 오탐·미탐 검증(11/19, `시험결과/2026-11-19_AWS_01~03.md`). 판단 문서 작성 중
 - [ ] Block 적용 전후 정상 기능 및 차단 결과 비교
 - [ ] 발견 문제의 수정 후 재시험과 정상 회귀를 확인한다.
 - [ ] 최종 시험 결과 보고서 작성 및 PR 제출
@@ -175,6 +175,14 @@ python request_verify.py correlate-cloudwatch --run-json output_aws_cleanup_03/r
 
 - #143 리뷰 의견(PR 댓글): Trace Root 대소문자 처리가 Nginx와 앱이 다름, Root가 2개인 헤더를 앱은 null·Nginx는 첫 값으로 기록, Trace는 클라이언트가 정할 수 있어 `rid`·시각과 함께 대조해야 함, `client=`는 접속 IP라 공유 시 가림, `test-wsl.sh` 새 시험 11개는 미실행
 - 조장 시험 요청 단건(11/18 17:46, trace `1-6afd65d2-…`)의 WAF 확인은 위 40건 재검증으로 대신했다.
+
+#### 3회차 업로드 시험 AWS 실행 (2026-11-19)
+
+- 결과 보고서: `시험결과/2026-11-19_AWS_02.md` — 20건(실행 38건) HTTP 38/38 일치, 로그 38/38 MATCHED, 정리 2건 완료. **정확히 2 MiB 정상 업로드가 `SizeRestrictions_BODY`에 걸려 누적 로그의 오탐을 재현**(Block 시 정상 업로드 차단). WAF가 탐지한 업로드 공격은 파일명 `../` 1종(`GenericLFI_BODY`), 위험한 형식 11종은 WAF 미탐·앱이 모두 거부.
+
+#### WAF 오탐·미탐 검증 (2026-11-19)
+
+- 결과 보고서: `시험결과/2026-11-19_AWS_03.md` — 19건(실행 35건) HTTP 35/35 일치, 로그 34/35 MATCHED(경로 조작 1건은 WAF·Nginx·앱 로그가 없어 ALB 거부로 보임), 정리 완료. **정상 글 9종(SQL·HTML 설명, 경로, 코드, 6.8KB 한국어 포함) 오탐 0**, 공격 변형 20/21 탐지(XSS 인코딩·대소문자·이중 인코딩, password SQLi, 재표시 XSS, 파일명 XSS), `.env`·LFI·SSRF 탐지. **주석형 SQL(`admin'--`) 미탐**(로그인 P04와 같은 형태, 앱이 거부).
 
 ## 인계·완료 기준
 

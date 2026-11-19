@@ -493,6 +493,20 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                     )
 
 
+def aws_cleanup_reserve(cases: list, cleanup_cases: list) -> int:
+    """AWS 정리에 필요한 요청 수를 실행 전에 넉넉히 계산한다.
+
+    게시글 1개 정리: 공유 목록 조회 1 + 삭제 CSRF 1 + 삭제 1 + 삭제 확인 1 = 4
+    남은 공유 1개당: 해제 CSRF 1 + 해제 1 + 공유 목록 재조회 1 = 3
+    여유분 5 (마커로 게시글 ID를 다시 찾는 경우 등)
+    """
+    share_steps = sum(
+        1 for case in cases if "share_recipient_role" in case
+    )
+
+    return max(8, len(cleanup_cases) * 4 + share_steps * 3 + 5)
+
+
 def validate_aws_cleanup_suite(suite: dict) -> None:
     """AWS 공유 환경에서 안전하게 정리 가능한 케이스만 허용한다."""
     cases = suite["cases"]
@@ -2727,7 +2741,7 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
     )
 
     cleanup_reserve = (
-        max(8, len(cleanup_cases) * 3 + 5)
+        aws_cleanup_reserve(suite["cases"], cleanup_cases)
         if aws_mode and cleanup_cases
         else 0
     )

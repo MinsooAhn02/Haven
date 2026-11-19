@@ -1,0 +1,24 @@
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "<script>alert('haven-waf-test')</script>",
+          "password": "dummy-only-not-real"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "\"><img src=x onerror=alert('haven-waf-test')>",
+          "password": "dummy-only-not-real"
+        }
+      }
+    }
+  ]
+}

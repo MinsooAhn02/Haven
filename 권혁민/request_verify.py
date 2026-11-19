@@ -34,6 +34,11 @@ METHODS = {"GET", "POST"}
 WAF_EXPECT = {"ALLOW", "BLOCK", "COUNT", "NOT_APPLICABLE"}
 REQ_ID_HEADER = "X-Haven-Request-ID"
 RUN_ID_HEADER = "X-Haven-Run-ID"
+# 헤더 시험에서 바꿀 수 있는 요청 헤더. 추적·실행 식별 헤더와 쿠키·인증 헤더는 넣지 않는다.
+TEST_REQUEST_HEADERS = frozenset({
+    "User-Agent", "Host", "Referer", "X-Api-Version",
+    "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto",
+})
 MAX_RESPONSE = 2 * 1024 * 1024
 RESULT_FIELDS = [
     "run_id", "request_id", "trace_id", "case_id", "parent_case_id", "payload_id", "timestamp_utc", "elapsed_ms",
@@ -298,6 +303,28 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                 )
         if "critical" in item and type(item["critical"]) is not bool:
             raise ConfigError(f"{cid}: critical은 bool이어야 합니다")
+
+        # 헤더 시험(SEC-08·55, WAF 헤더 규칙): 비로그인 GET에서 허용한 헤더만 바꾼다.
+        if "request_headers" in item:
+            request_headers = item["request_headers"]
+            if (
+                not isinstance(request_headers, dict)
+                or not request_headers
+                or item["method"] != "GET"
+                or item["auth_role"] != "anonymous"
+                or not set(request_headers) <= TEST_REQUEST_HEADERS
+                or any(
+                    not (name == "User-Agent" and value is None)
+                    and not (
+                        isinstance(value, str)
+                        and 0 < len(value) <= 256
+                        and value.isascii()
+                        and not re.search(r"[\x00-\x1f\x7f]", value)
+                    )
+                    for name, value in request_headers.items()
+                )
+            ):
+                raise ConfigError(f"{cid}: request_headers 설정 오류")
 
         if "cleanup_before" in item:
             if type(item["cleanup_before"]) is not bool or _cleanup:
@@ -1844,6 +1871,8 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
     """
     headers = {RUN_ID_HEADER: run_id}
     if case["method"] == "GET":
+        # 검증된 시험 헤더만 덧붙인다. 값이 None이면 해당 헤더를 보내지 않는다(User-Agent 전용).
+        headers.update(case.get("request_headers", {}))
         return None, headers, None
 
     # 다중 페이로드로 확장된 케이스는 선택된 payload를 사용한다.

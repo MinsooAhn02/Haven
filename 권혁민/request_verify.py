@@ -470,11 +470,17 @@ def validate_suite(suite: object, fixtures: Path, *, _cleanup=False):
                         f"{case['case_id']}: 게시글 생성 선행조건 오류"
                     )
 
-                # 소유자가 아닌 계정의 변경 요청은 거부(404)를 확인하는 시험으로만 허용한다.
+                # 소유자가 아닌 계정의 변경 요청은 거부를 확인하는 시험으로만 허용한다.
+                # 로그인 계정은 404, 비로그인은 로그인 화면으로 보내는 302가 거부 결과다.
+                expected_status = case["expected_app"].get("http_status")
+                is_denial = expected_status == 404 or (
+                    case["auth_role"] == "anonymous" and expected_status == 302
+                )
+
                 if (
                     case["method"] != "GET"
                     and source["auth_role"] != case["auth_role"]
-                    and case["expected_app"].get("http_status") != 404
+                    and not is_denial
                 ):
                     raise ConfigError(
                         f"{case['case_id']}: 게시글 생성 선행조건 오류"

@@ -1,0 +1,388 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-upload-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "AWS-UP-SETUP-P1",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "critical": true,
+      "note": "업로드 시험용 A 게시글 P1 생성(로컬 P1 대체)"
+    },
+    {
+      "case_id": "AWS-UP-SETUP-P2",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "critical": true,
+      "note": "업로드 시험용 A 게시글 P2 생성(로컬 P2 대체)"
+    },
+    {
+      "case_id": "AWS-UP-B-BEFORE-SHARE",
+      "phase": 3,
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-UP-SETUP-P1",
+      "note": "공유 전 B 조회 거부. B가 공유 전에 로그인하도록 하는 선행 요청도 겸함"
+    },
+    {
+      "case_id": "UP-06-A-GRANT-B",
+      "category": "sharing",
+      "method": "POST",
+      "path": "/posts/{post_id}/shares/",
+      "auth_role": "member_a",
+      "input_reference": "basic_share_grant.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "사전 조건: A가 P1을 B에게 공유. B의 읽기 전용 접근 시험에 사용",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1",
+      "share_recipient_role": "member_b",
+      "critical": true
+    },
+    {
+      "case_id": "UP-06-B-READ-ALLOWED",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_b",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공유받은 B가 P1을 읽을 수 있는지 사전 확인",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-01-A-TXT-UPLOAD",
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A의 정상 TXT 업로드. DB ACTIVE, 파일 내용·sha256 별도 검증",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-01-04-A-VALID-EXTRA",
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_valid_extra.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 2,
+      "verification_mode": "manual_required",
+      "note": "A의 정상 PDF 및 정확히 2 MiB TXT 업로드. 이 케이스 완료 후 P1의 첨부 수는 3개",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-05-P1-FOURTH-DENIED",
+      "category": "upload_quota",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1에서 3개를 업로드한 후 4번째 첨부는 400이어야 함",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-04-OVER-2MIB",
+      "category": "upload_size",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_oversize.json",
+      "expected_app": {
+        "http_status": 413
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "파일 실크기 2,097,153바이트: 게시글 첨부 수가 가득 찬 상태여도 파일 크기 검사로 413",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-01-A-P2-TXT-UPLOAD",
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "A 소유의 두번째 글 P2에도 정상 TXT 업로드 가능",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P2"
+    },
+    {
+      "case_id": "UP-02-INVALID-FORMATS",
+      "category": "upload_validation",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_invalid_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 11,
+      "verification_mode": "manual_required",
+      "note": "미지원 확장자·MIME 위장·손상 PDF·UTF-8 오류·NUL·빈 파일·암호화 PDF 거부",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-03-INVALID-FILENAMES",
+      "category": "upload_validation",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_filename_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 6,
+      "verification_mode": "manual_required",
+      "note": "경로 구분자·상위 경로·이중 점·공백·방향 제어문자 포함 원본 이름 거부",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-02-NO-FILE",
+      "category": "upload_validation",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "multipart 첨부 필드가 없는 POST는 400, DB 변경 없음",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-06-B-UPLOAD-DENIED",
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_b",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "B는 P1 읽기 공유를 받았더라도 첨부 업로드 불가",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-06-C-UPLOAD-DENIED",
+      "category": "authorization",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_c",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1 미공유 C의 첨부 업로드 거부",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-06-C-READ-DENIED",
+      "category": "authorization",
+      "method": "GET",
+      "path": "/posts/{post_id}/",
+      "auth_role": "member_c",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "P1 미공유 C는 글 상세 조회도 404",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-13-CSRF-INVALID",
+      "category": "csrf",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "basic_upload_csrf_variants.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "CSRF 누락·오류 및 다른 Origin 업로드 거부",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-13-ANON-VALID-CSRF",
+      "category": "authentication",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "anonymous",
+      "input_reference": "basic_upload_txt.json",
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "CSRF 유효해도 비로그인 업로드는 로그인으로 리다이렉트",
+      "phase": 3,
+      "post_reference": "AWS-UP-SETUP-P1"
+    },
+    {
+      "case_id": "UP-09-DIRECT-MEDIA",
+      "category": "file_access",
+      "method": "GET",
+      "path": "/media/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공개 media 경로와 디렉터리 목록 미노출. 실제 AWS 프록시는 별도 검증",
+      "phase": 3
+    },
+    {
+      "case_id": "UP-09-DIRECT-UPLOADS",
+      "category": "file_access",
+      "method": "GET",
+      "path": "/uploads/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "공개 uploads 경로와 디렉터리 목록 미노출. 실제 AWS 프록시는 별도 검증",
+      "phase": 3
+    }
+  ],
+  "cleanup_cases": [
+    {
+      "case_id": "AWS-UP-CLEANUP-P1",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "AWS-UP-SETUP-P1",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "AWS-UP-SETUP-P1",
+      "note": "이번 실행에서 생성한 시험 게시글·첨부·공유 정리"
+    },
+    {
+      "case_id": "AWS-UP-CLEANUP-P2",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "AWS-UP-SETUP-P2",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "AWS-UP-SETUP-P2",
+      "note": "이번 실행에서 생성한 시험 게시글·첨부·공유 정리"
+    }
+  ]
+}

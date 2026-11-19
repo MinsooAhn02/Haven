@@ -1,0 +1,336 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-waf-verify-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "AWS-WAF-SETUP-A-POST",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "capture_post_id": true,
+      "critical": true,
+      "note": "WAF 검증용 A 시험 게시글 생성"
+    },
+    {
+      "case_id": "SEC-58-BENIGN-EDIT",
+      "phase": 3,
+      "category": "waf_false_positive",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "auth_role": "member_a",
+      "input_reference": "waf_fp_benign_edit_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 9,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-WAF-SETUP-A-POST",
+      "note": "정상 입력 9종(한국어·따옴표·SQL 설명·HTML 설명·경로·URL·코드·긴 한국어·이모지) 저장. WAF 규칙 매칭이 없어야 오탐 0"
+    },
+    {
+      "case_id": "SEC-12-XSS-ENCODED-EDIT",
+      "phase": 3,
+      "category": "xss",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "auth_role": "member_a",
+      "input_reference": "waf_xss_encoded_edit_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 5,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-WAF-SETUP-A-POST",
+      "note": "본문 XSS 변형 5종(엔티티·대소문자·SVG·javascript: 링크·URL 인코딩). WAF 탐지 여부와 화면 이스케이프는 별도 기록"
+    },
+    {
+      "case_id": "SEC-14-FILENAME-XSS-UPLOAD",
+      "phase": 3,
+      "category": "xss",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "waf_upload_filename_xss_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 2,
+      "verification_mode": "manual_required",
+      "post_reference": "AWS-WAF-SETUP-A-POST",
+      "note": "HTML 모양 첨부 파일명 2종 업로드(앱은 < > 허용). WAF 탐지 여부와 첨부 목록 이스케이프는 별도 기록"
+    },
+    {
+      "case_id": "SEC-02-PASSWORD-SQLI",
+      "phase": 3,
+      "category": "injection",
+      "method": "POST",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": "waf_login_password_sqli_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "로그인 password SQLi 3종(없는 아이디 사용, 로그인 실패 3회)"
+    },
+    {
+      "case_id": "SEC-13-LOGIN-REFLECTED-XSS",
+      "phase": 3,
+      "category": "xss",
+      "method": "POST",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": "waf_login_reflected_xss_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 2,
+      "verification_mode": "manual_required",
+      "note": "로그인 실패 시 username 재표시 XSS 2종(로그인 실패 2회). 재표시 이스케이프는 별도 기록"
+    },
+    {
+      "case_id": "SEC-12-Q-MIXEDCASE",
+      "phase": 3,
+      "category": "xss",
+      "method": "GET",
+      "path": "/accounts/login/?q=%3CScRiPt%3Ealert(1)%3C%2FsCrIpT%3E",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 XSS: 대소문자 섞기"
+    },
+    {
+      "case_id": "SEC-12-Q-SVG",
+      "phase": 3,
+      "category": "xss",
+      "method": "GET",
+      "path": "/accounts/login/?q=%3Csvg%20onload%3Dalert(1)%3E",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 XSS: SVG onload"
+    },
+    {
+      "case_id": "SEC-12-Q-IMG",
+      "phase": 3,
+      "category": "xss",
+      "method": "GET",
+      "path": "/accounts/login/?q=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 XSS: img onerror"
+    },
+    {
+      "case_id": "SEC-12-Q-JSURI",
+      "phase": 3,
+      "category": "xss",
+      "method": "GET",
+      "path": "/accounts/login/?q=javascript%3Aalert(1)",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 XSS: javascript: URI"
+    },
+    {
+      "case_id": "SEC-12-Q-ENTITY",
+      "phase": 3,
+      "category": "xss",
+      "method": "GET",
+      "path": "/accounts/login/?q=%26lt%3Bscript%26gt%3Balert(1)%26lt%3B%2Fscript%26gt%3B",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 XSS: HTML 엔티티"
+    },
+    {
+      "case_id": "SEC-12-Q-DOUBLE",
+      "phase": 3,
+      "category": "xss",
+      "method": "GET",
+      "path": "/accounts/login/?q=%253Cscript%253Ealert(1)%253C%252Fscript%253E",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 XSS: 이중 URL 인코딩"
+    },
+    {
+      "case_id": "SEC-56-Q-SLEEP",
+      "phase": 3,
+      "category": "injection",
+      "method": "GET",
+      "path": "/accounts/login/?q=1%27%20AND%20SLEEP(5)--%20",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 SQLi: 시간 지연형"
+    },
+    {
+      "case_id": "SEC-56-Q-UNION-COMMENT",
+      "phase": 3,
+      "category": "injection",
+      "method": "GET",
+      "path": "/accounts/login/?q=1%20UNION%2F**%2FSELECT%20username%2Cpassword%20FROM%20auth_user--",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 SQLi: 주석 끼운 UNION"
+    },
+    {
+      "case_id": "SEC-56-Q-ADMIN-COMMENT",
+      "phase": 3,
+      "category": "injection",
+      "method": "GET",
+      "path": "/accounts/login/?q=admin%27--%20",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 SQLi: 주석형(로그인 P04와 같은 형태)"
+    },
+    {
+      "case_id": "WAF-PATH-ENV",
+      "phase": 3,
+      "category": "waf_path",
+      "method": "GET",
+      "path": "/.env",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "설정 파일 탐색(KnownBadInputs 기대)"
+    },
+    {
+      "case_id": "WAF-PATH-TRAVERSAL",
+      "phase": 3,
+      "category": "waf_path",
+      "method": "GET",
+      "path": "/static/%2e%2e/%2e%2e/etc/passwd",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "경로 조작(인코딩한 ..). Nginx가 루트 밖 경로를 400으로 거부할 것으로 예상. WAF 탐지를 함께 기록"
+    },
+    {
+      "case_id": "WAF-Q-LFI",
+      "phase": 3,
+      "category": "waf_query",
+      "method": "GET",
+      "path": "/accounts/login/?file=..%2F..%2F..%2Fetc%2Fpasswd",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 LFI"
+    },
+    {
+      "case_id": "WAF-Q-SSRF",
+      "phase": 3,
+      "category": "waf_query",
+      "method": "GET",
+      "path": "/accounts/login/?url=http%3A%2F%2F169.254.169.254%2Flatest%2Fmeta-data%2F",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "note": "쿼리 SSRF(EC2 메타데이터 주소)"
+    }
+  ],
+  "cleanup_cases": [
+    {
+      "case_id": "AWS-WAF-CLEANUP-SETUP",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "post_reference": "AWS-WAF-SETUP-A-POST",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "after_case": "AWS-WAF-SETUP-A-POST",
+      "note": "이번 실행에서 생성한 시험 게시글·첨부 정리"
+    }
+  ]
+}

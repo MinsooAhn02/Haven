@@ -34,9 +34,9 @@
 - [x] WAF 전용 CloudWatch 로그 그룹 생성 및 30일 보존 설정
 - [x] WAF 로깅 연동 및 민감 헤더 마스킹 설정
 - [x] IAM 권한 검증 (CloudWatch·EC2·WAF 조회, SSM 접속 거부)
-- [ ] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석 — 부분 완료: 로그 수집과 시험 요청(SQLi·XSS·PROPFIND·정상 2건)의 Count 동작 확인(11/13 수동), 요청 CLI로 Count 재시험·로그 자동 대조 4건 PASS(11/17, 아래 "WAF Count 재시험"). 누적 Count 로그의 오탐 분석은 Block 대상 선정 때 수행
-- [ ] WAF·Nginx·Django 로그 상관분석 — 부분 완료: WAF↔Django는 WAF 로그의 X-Amzn-Trace-Id 헤더 Root 기준 자동 연결 완료(11/16, 11건 MATCHED). Nginx는 요청 식별자 기록(구현 민성) 후 재검증(기한 11/27)
-- [ ] AWS 환경에서 보안 fixture 재실행 — 부분 완료: 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, HTTP 9/9 일치, 자동 정리 완료). 1~3회차 전체 fixture는 미실행
+- [x] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석 — 시험 요청 Count 동작 확인(11/13 수동, 11/17 요청 CLI 재시험 4건 PASS), 누적 Count 로그 분석(11/18, 아래 "누적 Count 로그 분석"): 첨부 업로드의 `SizeRestrictions_BODY` 오탐 확인. 로그인 `SQLi_BODY` 8건·User-Agent 없는 요청의 출처는 팀 확인 필요
+- [x] WAF·Nginx·Django 로그 상관분석 — WAF↔Django는 Trace Root 기준 자동 연결(11/16). Nginx는 #143 적용 뒤 재검증 완료(11/19, 요청 40건 WAF·Nginx·앱 모두 1건씩 연결, 아래 "Nginx 요청 식별자 재검증")
+- [ ] AWS 환경에서 보안 fixture 재실행 — 부분 완료: 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, 11/16), 2회차 보안 회귀 25건(`cases_aws_security_phase2.json`, 11/19, HTTP 32/32 일치·로그 32/32 MATCHED). 공유 경계·업로드 등 나머지 로컬 fixture는 AWS 변환 전
 - [ ] Count 결과를 바탕으로 Block 전환 대상 선정
 - [ ] Block 적용 전후 정상 기능 및 차단 결과 비교
 - [ ] 발견 문제의 수정 후 재시험과 정상 회귀를 확인한다.
@@ -134,6 +134,47 @@ python request_verify.py correlate-cloudwatch --run-json output_aws_cleanup_03/r
 - 요청 4 = 응답 4, 로그 수집 WAF 4건·앱 48건(`collection_complete: true`), 상관분석 종료 코드 0
 - 가림: 이번 시험과 11/16 시험의 WAF 로그에서 Cookie 헤더가 있는 요청 14건 모두 `REDACTED`. Authorization 헤더는 보낸 요청이 없어 실제 로그로는 미확인(설정은 확인)
 - 범위: 시험 요청 기준의 관찰이며 방어율이 아니다. 11/13과 달리 `SQLiExtendedPatterns_QUERYARGUMENTS`는 걸리지 않았다(시험 문자열 차이로 보임). PROPFIND는 요청 CLI가 GET·POST만 지원해 재시험하지 않았다. WAF 로그는 URI·쿼리 값을 가리지 않으므로 원본 로그는 커밋하지 않는다.
+
+#### 2회차 보안 회귀 시험 AWS 실행 (2026-11-19)
+
+- 결과 보고서: `시험결과/2026-11-19_AWS_01.md` — 25건(실행 32건) HTTP 32/32 일치, 로그 32/32 MATCHED, WAF 공격형 16건 중 14건 Count(미탐: `admin' -- `), 정상·거부 요청 24건 오탐 0. 정리 5건 완료(1건 `recover`).
+
+#### 누적 Count 로그 분석 (2026-11-18)
+
+- 방법: CloudWatch Logs Insights, 로그 그룹 `aws-waf-logs-haven`. 규칙 그룹마다 처음 걸린 규칙 기준으로 집계(최소 건수). 접속 IP는 집계에서 뺐다.
+- 범위: 2026-11-13 21:00 ~ 11-18 16:15 KST (시작 시각을 UTC로 잘못 넣어 11/13 12:00~21:00 KST 9시간이 빠짐. 이 구간에는 11/13 수동 Count 시험이 있음)
+- 전체 요청 8,753건(모두 ALLOW, 그중 요청 CLI 70건), 규칙에 걸린 요청 1,494건
+
+| 규칙 (그룹) | 건수 | 출처·대상 | 판단 |
+|---|---:|---|---|
+| `ExploitablePaths_URIPATH` (KnownBadInputs) | 684 | `/.env`·`/.aws/config` 등 없는 경로 탐색 | 스캐너, 정탐 |
+| `NoUserAgent_HEADER` (Common) | 534 | 대부분 해외 스캐너. 일부 KR에서 `/`·`/posts/`·`/accounts/login/` 반복(같은 순간 2건씩) | 대부분 정탐, **KR 반복 요청은 팀 점검 스크립트인지 확인 필요** |
+| `UserAgent_BadBots_HEADER` (Common) | 120 | zgrab·masscan·360Spider | 정탐 |
+| `RestrictedExtensions_URIPATH`, `GenericLFI_*`, `GenericRFI_*` (Common) | 98 | `.bak`·`/.aws/credentials`·경로 조작 | 정탐 |
+| `SizeRestrictions_BODY` (Common) | 27 | **KR 브라우저의 `POST /posts/{id}/attachments/`(11/16~17, 게시글 9개)** | **오탐: 8KB 넘는 정상 첨부 업로드** |
+| `CrossSiteScripting_BODY` (Common) | 21 | `/`·`/xml`·`/soap`·`/api`에 curl 등 | 정탐 |
+| `ReactJSRCE_BODY`, `PROPFIND_METHOD`, `Host_localhost_HEADER` (KnownBadInputs) | 14 | `POST /` 등 | 정탐 |
+| `SQLi_BODY` (SQLi) | 8 | **KR 브라우저의 `POST /accounts/login/`·`/signup/`(11/16 11:16~11:35, 11/17 12:42 KST)** | **팀원 시험인지 평범한 입력인지 확인 필요** |
+| 기타 (`EC2MetaDataSSRF_BODY`, CLI 재시험 2건) | 4 | | |
+
+- 실제 기능 주소(`/`, `/accounts/`, `/posts/`, `/admin/`)에 걸린 요청 중 팀원 사용으로 보이는 것은 위 굵은 글씨 3종류뿐이다.
+- Block 판단 시사점: KnownBadInputs는 스캐너 경로에만 걸렸다. Common을 통째로 Block하면 8KB 넘는 첨부 업로드가 막히므로 `SizeRestrictions_BODY`는 Count로 남겨야 한다. SQLi는 로그인 8건의 정체를 확인한 뒤 판단한다.
+
+#### Nginx 요청 식별자 재검증 (2026-11-19, #143)
+
+- 근거 로그: 2회차 보안 회귀 시험 AWS 실행(run_id `f28910cd`, 09:12 KST)에서 `collect-logs`로 수집한 `aws-waf-logs-haven`·`/haven/web`. 새 요청 없음
+- `/haven/web`의 `nginx-access` 스트림 114줄 모두 `trace= rid= cid= run= client= rt=` 형식
+
+| 확인 | 결과 |
+|---|---|
+| CLI 요청 40건이 WAF·Nginx·앱 로그에 1건씩 | 40/40 · 40/40 · 40/40 |
+| Nginx `trace`·`run` = CLI가 보낸 Trace Root·run_id | 40/40 |
+| Nginx `rid`·`trace` = 앱 `request_id`·`trace_id` | 40/40 |
+| Nginx 상태 = 앱 `status` | 40/40 |
+| WAF `X-Amzn-Trace-Id` Root = Nginx `trace` | 52/52 (준비 요청 포함) |
+
+- #143 리뷰 의견(PR 댓글): Trace Root 대소문자 처리가 Nginx와 앱이 다름, Root가 2개인 헤더를 앱은 null·Nginx는 첫 값으로 기록, Trace는 클라이언트가 정할 수 있어 `rid`·시각과 함께 대조해야 함, `client=`는 접속 IP라 공유 시 가림, `test-wsl.sh` 새 시험 11개는 미실행
+- 조장 시험 요청 단건(11/18 17:46, trace `1-6afd65d2-…`)의 WAF 확인은 위 40건 재검증으로 대신했다.
 
 ## 인계·완료 기준
 
@@ -338,3 +379,18 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - **병합됨:** #130(`1dc05a9`)과 함께 계정 번호 가림도 끝났다(`권혁민/waf/` 원본 JSON 2개와 TODO 명령이 `${ACCOUNT_ID}`로 바뀌었다). 11/17 코멘트의 "결정을 기다립니다"는 처리됐다. 로그인 실패 제한 2차 시험은 요찬이 PC·휴대폰으로 진행했고 요청 CLI는 쓰지 않았다(#140).
 - **Nginx 요청 식별자 재검증(기한 11/27):** #143은 조장이 리뷰 전에 병합했고 11/18 17:45 운영 적용을 마쳤다. 접근 로그 `trace= rid= cid= run= client= rt=` 중 `trace`·`rid`·`cid`가 앱 로그의 `trace_id`·`request_id`·`client_request_id`와 같은 것을 1건 확인했다(`X-Haven-Request-ID: minsung-test-1`, 17:46 KST, trace `1-6afd65d2-004c498b686b533b17a7907b`, `/accounts/login/`). WAF 로그에서 같은 trace가 찾아지는지 확인하고 #143 코드를 리뷰해 결과를 남긴다.
 - **남은 것:** 누적 Count 로그 오탐 분석, WAF Block 판단. WAF 로그에는 11/18 16:07~16:42 로그인 시험의 접속 IP가 남아 있으니 WAF 결과를 공유할 때 그 항목은 가린다.
+
+## 혁민's reply · 2026-11-19
+
+조장 11/18 저녁 코멘트에 대한 답변입니다.
+
+1. **Nginx 요청 식별자 재검증:** 완료했습니다. 위 "Nginx 요청 식별자 재검증 (2026-11-19, #143)"에 결과를, #143 PR 댓글에 리뷰 의견을 남겼습니다. 요청 40건이 WAF·Nginx·앱 로그에서 모두 같은 요청으로 이어졌습니다.
+2. **누적 Count 로그 오탐 분석:** 위 "누적 Count 로그 분석 (2026-11-18)"에 남겼습니다. 첨부 업로드가 `SizeRestrictions_BODY`에 걸리는 오탐을 확인했습니다. 아래 두 가지는 팀 확인이 필요합니다.
+   - 11/16 11:16~11:35, 11/17 12:42(KST) 로그인·회원가입 POST 8건이 `SQLi_BODY`에 걸렸습니다. 이때 SQL 문자열을 일부러 넣은 시험이었는지 알려 주시면 SQLi 규칙 Block 판단에 반영하겠습니다.
+   - User-Agent 없이 `/`·`/posts/`·`/accounts/login/`을 주기적으로 요청하는 팀 점검 스크립트가 있는지 확인 부탁드립니다. Common 규칙 Block 시 403을 받습니다.
+3. **WAF Block 판단:** 업로드 시험을 AWS에서 실행해 `SizeRestrictions_BODY` 오탐을 요청 CLI 결과로 재현한 뒤 근거 문서로 정리하겠습니다(11/27).
+4. **MFA 근거:** 11/17 답글 1번에 CLI 근거가 있습니다(`list-mfa-devices` → `2026-11-12T06:51:24+00:00`). 근거가 없는 것은 비밀번호 변경(본인 진술)입니다. 현황판·운영기록의 "MFA 근거 없음" 정정 부탁드립니다.
+5. **`aws login`(CLI 로그인):** 11/16 이후 `aws login --profile hyeokmin` → `aws sts get-caller-identity`로 여러 번 성공했습니다(CloudWatch 수집에 사용).
+6. **로그인 실패 제한 시험 참여:** 2차 시험은 요찬님이 PC·휴대폰으로 끝냈다고 하셔서, 제 참여 항목을 닫아도 되는지 확인 부탁드립니다.
+7. **인스턴스 ID 가림:** `권혁민/tests/test_cloudwatch_app_prefix.py`의 로그 스트림 이름은 시험용 값이라 가짜 ID로 바꿔도 시험이 그대로 통과합니다. 한 번에 가리기로 정하시면 바로 반영하겠습니다.
+8. **접속 IP:** 누적 분석과 Nginx 재검증 기록에는 접속 IP를 넣지 않았습니다.

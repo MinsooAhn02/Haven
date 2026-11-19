@@ -16,6 +16,14 @@
           {% if user.is_authenticated %}
             <li><a class="nav-link" href="{% url 'posts:list' %}">내 기록</a></li>
             <li><a class="nav-link" href="{% url 'posts:shared' %}">공유받은 기록</a></li>
+
+            {% if perms.adminpanel.manage_account_status and not user.is_superuser %}
+            <li><a class="nav-link" href="{% url 'adminpanel:accounts' %}">계정 관리</a></li>
+            {% endif %}
+            {% if perms.adminpanel.view_account_status_events and not user.is_superuser %}
+            <li><a class="nav-link" href="{% url 'adminpanel:account_events' %}">계정 변경 이력</a></li>
+            {% endif %}
+
             <li><span class="nav-link">현재 사용자: {{ user.username }}</span></li>
             <li>
               <form method="post" action="{% url 'accounts:logout' %}" class="inline-form">

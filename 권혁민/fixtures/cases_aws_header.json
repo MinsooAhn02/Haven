@@ -101,7 +101,7 @@
       "note": "우회: Log4j 난독화(lower 함수) 문자열. 미탐 여부 확인"
     },
     {
-      "case_id": "HDR-JAVA-DESER",
+      "case_id": "HDR-JAVA-DESER-B64",
       "phase": 3,
       "category": "waf_header",
       "method": "GET",
@@ -118,7 +118,27 @@
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "X-Api-Version": "rO0ABXNyABFqYXZhLnV0aWwuSGFzaE1hcAUH2sHDFmDRAwAC"
       },
-      "note": "KnownBadInputs: 헤더에 Java 직렬화 객체 시작 문자열(base64)"
+      "note": "KnownBadInputs 범위 확인: 헤더에 Java 직렬화 객체 시작 문자열(base64). 1차 실행에서 미매칭"
+    },
+    {
+      "case_id": "HDR-JAVA-RUNTIME",
+      "phase": 3,
+      "category": "waf_header",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "X-Api-Version": "(java.lang.Runtime).getRuntime().exec(\"haven-waf-test\")"
+      },
+      "note": "KnownBadInputs: 헤더에 Java 런타임 실행 문자열(AWS 문서 예시 형태, 실행되지 않음)"
     },
     {
       "case_id": "HDR-HOST-LOCALHOST",

@@ -79,7 +79,8 @@ def test_prepare_adds_headers_and_none_removes_user_agent():
     prepared = requests.Session().prepare_request(
         requests.Request("GET", TARGET + case["path"], headers=headers)
     )
-    assert "User-Agent" not in prepared.headers
+    # urllib3가 기본 User-Agent를 넣지 않도록 생략 표시가 전달되어야 한다.
+    assert prepared.headers["User-Agent"] == rv.SKIP_HEADER
 
 
 def test_host_header_override_keeps_target_url():

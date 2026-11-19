@@ -25,6 +25,7 @@ import threading
 import os
 import warnings
 import requests
+from urllib3.util import SKIP_HEADER
 import subprocess
 from contextvars import ContextVar
 from functools import wraps
@@ -1872,7 +1873,9 @@ def prepare_case_request(s: requests.Session, case: dict, fixture_root: Path, ta
     headers = {RUN_ID_HEADER: run_id}
     if case["method"] == "GET":
         # 검증된 시험 헤더만 덧붙인다. 값이 None이면 해당 헤더를 보내지 않는다(User-Agent 전용).
-        headers.update(case.get("request_headers", {}))
+        # urllib3는 User-Agent가 없으면 기본값을 넣으므로 SKIP_HEADER로 생략을 지시한다.
+        for name, value in case.get("request_headers", {}).items():
+            headers[name] = SKIP_HEADER if value is None else value
         return None, headers, None
 
     # 다중 페이로드로 확장된 케이스는 선택된 payload를 사용한다.

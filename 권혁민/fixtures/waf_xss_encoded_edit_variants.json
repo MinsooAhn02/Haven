@@ -1,0 +1,54 @@
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "title": "인코딩 XSS 1",
+          "body": "&lt;script&gt;alert('haven-waf-test')&lt;/script&gt;"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "title": "대소문자 XSS",
+          "body": "<ScRiPt>alert('haven-waf-test')</sCrIpT>"
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "title": "SVG XSS",
+          "body": "<svg/onload=alert('haven-waf-test')>"
+        }
+      }
+    },
+    {
+      "id": "P04",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "title": "링크 XSS",
+          "body": "<a href=\"javascript:alert('haven-waf-test')\">링크</a>"
+        }
+      }
+    },
+    {
+      "id": "P05",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "title": "URL 인코딩 XSS",
+          "body": "%3Cscript%3Ealert('haven-waf-test')%3C%2Fscript%3E"
+        }
+      }
+    }
+  ]
+}

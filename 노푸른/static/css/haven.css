@@ -42,3 +42,13 @@ input:focus, textarea:focus, a:focus-visible, button:focus-visible { outline: 3p
 .error-code { color: #8b2424; font-weight: 700; }
 .record-body { line-height: 1.8; overflow-wrap: anywhere; }
 @media (max-width: 36rem) { .auth-card, .panel, .error-card { margin: 1rem auto; padding: 1.25rem; } h1 { font-size: 1.5rem; } .header-inner, .record-row { align-items: flex-start; flex-direction: column; padding-top: .75rem; padding-bottom: .75rem; } }
+@media (max-width: 36rem) {
+  .site-header .nav-list {
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+  }
+
+  .site-header .nav-list > li {
+    flex-shrink: 0;
+  }
+}

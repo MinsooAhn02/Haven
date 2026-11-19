@@ -1,0 +1,37 @@
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "sec58.signup.one",
+          "password1": "P@ssw0rd!2026",
+          "password2": "P@ssw0rd!2026-mismatch"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "sec58_signup_two",
+          "password1": "it's-my-pass-2026",
+          "password2": "it's-my-pass-2026-mismatch"
+        }
+      }
+    },
+    {
+      "id": "P03",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "sec58-signup-three",
+          "password1": "Select2026!",
+          "password2": "Select2026!-mismatch"
+        }
+      }
+    }
+  ]
+}

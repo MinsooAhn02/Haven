@@ -1,0 +1,60 @@
+﻿<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>반응형 메뉴 시험</title>
+  <link rel="stylesheet" href="../static/css/haven.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="#">Haven 기록</a>
+      <nav aria-label="주요 메뉴 (로그인)">
+        <ul class="nav-list">
+          <li><a class="nav-link" href="#">내 기록</a></li>
+          <li><a class="nav-link" href="#">공유받은 기록</a></li>
+          <li><a class="nav-link" href="#">계정 관리</a></li>
+          <li><a class="nav-link" href="#">계정 변경 이력</a></li>
+          <li><span class="nav-link">현재 사용자: 테스트사용자</span></li>
+          <li>
+            <form class="inline-form" onsubmit="return false">
+              <button class="logout-button" type="submit">로그아웃</button>
+            </form>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <h1>모바일 메뉴 시험</h1>
+    <p>위 메뉴는 로그인 및 관리 권한이 있는 경우의 예시입니다. 아래 메뉴는 비로그인 상태의 예시입니다.</p>
+    <p>화면 너비를 375px로 설정하고 메뉴 글자가 모두 보이는지, 가로 스크롤이 생기는지 확인하세요.</p>
+    <p id="viewport-status" aria-live="polite"></p>
+  </main>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="#">Haven 기록</a>
+      <nav aria-label="주요 메뉴 (비로그인)">
+        <ul class="nav-list">
+          <li><a class="nav-link" href="#">로그인</a></li>
+          <li><a class="nav-link" href="#">회원가입</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <script>
+    function updateStatus() {
+      const width = document.documentElement.clientWidth;
+      const overflow = document.documentElement.scrollWidth > width;
+      document.getElementById('viewport-status').textContent =
+        `현재 화면 너비: ${width}px · 가로 넘침: ${overflow ? '있음' : '없음'} (글자 잘림은 직접 확인하세요)`;
+    }
+    window.addEventListener('resize', updateStatus);
+    updateStatus();
+  </script>
+</body>
+</html>

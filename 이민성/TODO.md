@@ -601,6 +601,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 | 오후 | 운영 관리자 계정 | ✅ `operator` 삭제(요찬 요청), `op_minsung`·`op_pureun`·`op_yochan` 생성(`op_minchul`은 만들지 않음) |
 | 15:0x~15:2x | 개인 이메일 2차 기록 정리: mirror 백업(bundle 검증) → 새 mirror에서 filter-repo(파일·메시지 속 개인 메일 도메인 → 예시 주소, 커밋 작성자 메일 → 각자 GitHub noreply, 바꾸기 규칙·코드는 저장소 밖) → force push | ✅ 브랜치 기록의 개인 메일 0건, 작성자 전부 noreply, 오전에 가린 값 0건, 브랜치 8개 GitHub = 정리본. PR 기록은 남기기로(팀 결정). 처음 규칙이 큰 파일에서 너무 느려 멈췄고, 앞부분 길이를 64자로 제한한 규칙으로 3.6초에 끝남. 팀 새 clone·noreply 설정 공지 |
 | 15:56~15:58 | 운영 배포 `0c1b636`(main #162): db-1 백업 `20261119T065600Z` → web-1 `deploy.sh` 2회 | ✅ 2회 `OK  deployed`, migration 없음, healthz ok. 바뀐 것은 `base.html` 운영 관리자 메뉴(#159). `op_minsung` 표시·일반 회원 미표시 확인 |
+| 17:07~17:1x | 운영 배포 `5d0e370`(main #169): db-1 백업 `20261119T080741Z` → web-1 `deploy.sh` 2회 | ✅ 2회 `OK  deployed`, migration 없음, healthz ok. 바뀐 것은 `haven.css` 좁은 화면 메뉴 줄바꿈(#169), 시험 `test_nav_menu.py`(#167). 좁은 화면·PC 폭·일반 회원 화면 정상 확인 |
 
 - 네 시험 결과는 `network/연결확인표.md`에 반영. 캡처의 계정 번호·인스턴스 ID·IP는 가림
 - 남은 4회차(조장): RST-01(오늘 21시), WAF Block(혁민이 Count 유지를 원해 판단 뒤), SG 재시험·최종 구성도·종료 대상 목록, 최종 DB+첨부 복원, `destroy.sh` 보완

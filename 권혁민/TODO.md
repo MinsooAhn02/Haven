@@ -36,7 +36,7 @@
 - [x] IAM 권한 검증 (CloudWatch·EC2·WAF 조회, SSM 접속 거부)
 - [ ] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석 — 부분 완료: 로그 수집과 시험 요청(SQLi·XSS·PROPFIND·정상 2건)의 Count 동작 확인(11/13 수동), 요청 CLI로 Count 재시험·로그 자동 대조 4건 PASS(11/17, 아래 "WAF Count 재시험"). 누적 Count 로그의 오탐 분석은 Block 대상 선정 때 수행
 - [ ] WAF·Nginx·Django 로그 상관분석 — 부분 완료: WAF↔Django는 WAF 로그의 X-Amzn-Trace-Id 헤더 Root 기준 자동 연결 완료(11/16, 11건 MATCHED). Nginx는 요청 식별자 기록(구현 민성) 후 재검증(기한 11/27)
-- [ ] AWS 환경에서 보안 fixture 재실행 — 부분 완료: 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, HTTP 9/9 일치, 자동 정리 완료). 1~3회차 전체 fixture는 미실행
+- [ ] AWS 환경에서 보안 fixture 재실행 — 부분 완료: 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, 11/16), 2회차 보안 회귀 25건(`cases_aws_security_phase2.json`, 11/19, HTTP 32/32 일치·로그 32/32 MATCHED). 공유 경계·업로드 등 나머지 로컬 fixture는 AWS 변환 전
 - [ ] Count 결과를 바탕으로 Block 전환 대상 선정
 - [ ] Block 적용 전후 정상 기능 및 차단 결과 비교
 - [ ] 발견 문제의 수정 후 재시험과 정상 회귀를 확인한다.
@@ -134,6 +134,10 @@ python request_verify.py correlate-cloudwatch --run-json output_aws_cleanup_03/r
 - 요청 4 = 응답 4, 로그 수집 WAF 4건·앱 48건(`collection_complete: true`), 상관분석 종료 코드 0
 - 가림: 이번 시험과 11/16 시험의 WAF 로그에서 Cookie 헤더가 있는 요청 14건 모두 `REDACTED`. Authorization 헤더는 보낸 요청이 없어 실제 로그로는 미확인(설정은 확인)
 - 범위: 시험 요청 기준의 관찰이며 방어율이 아니다. 11/13과 달리 `SQLiExtendedPatterns_QUERYARGUMENTS`는 걸리지 않았다(시험 문자열 차이로 보임). PROPFIND는 요청 CLI가 GET·POST만 지원해 재시험하지 않았다. WAF 로그는 URI·쿼리 값을 가리지 않으므로 원본 로그는 커밋하지 않는다.
+
+#### 2회차 보안 회귀 시험 AWS 실행 (2026-11-19)
+
+- 결과 보고서: `시험결과/2026-11-19_AWS_01.md` — 25건(실행 32건) HTTP 32/32 일치, 로그 32/32 MATCHED, WAF 공격형 16건 중 14건 Count(미탐: `admin' -- `), 정상·거부 요청 24건 오탐 0. 정리 5건 완료(1건 `recover`).
 
 ## 인계·완료 기준
 

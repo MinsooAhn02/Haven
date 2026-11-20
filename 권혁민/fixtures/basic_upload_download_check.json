@@ -1,0 +1,10 @@
+{
+  "csrf_mode": "valid",
+  "fields": {},
+  "file": {
+    "field_name": "attachment",
+    "local_fixture_path": "sample_download_check.txt",
+    "filename": "haven_sec41_check.txt",
+    "content_type": "text/plain"
+  }
+}

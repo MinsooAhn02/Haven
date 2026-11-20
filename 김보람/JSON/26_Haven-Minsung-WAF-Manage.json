@@ -10,7 +10,10 @@
         "wafv2:UpdateWebACL",
         "wafv2:AssociateWebACL"
       ],
-      "Resource": "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/webacl/haven-*/*"
+      "Resource": [
+        "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/webacl/haven-*/*",
+        "arn:aws:wafv2:ap-northeast-2:${ACCOUNT_ID}:regional/managedruleset/*/*"
+      ]
     },
     {
       "Sid": "ListWAFInSeoul",

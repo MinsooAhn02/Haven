@@ -511,9 +511,9 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 | 경고 | 처리 |
 |---|---|
 | security.W004 `SECURE_HSTS_SECONDS` | **조치 완료**(3600초 = 1시간). 문제 없으면 4회차 이후 늘릴지 요찬과 결정 |
-| security.W008 `SECURE_SSL_REDIRECT` | 예외 유지(11/16과 같음, ALB 80 → 443 301) |
-| security.W005 `SECURE_HSTS_INCLUDE_SUBDOMAINS` | 의도한 예외: 하위 도메인을 쓰지 않음, 켜면 되돌리기 어려움(앱계약 1.2.1) |
-| security.W021 `SECURE_HSTS_PRELOAD` | 의도한 예외: preload 목록은 빼는 데 몇 달 걸려 과제 기간에 맞지 않음(앱계약 1.2.1) |
+| security.W008 `SECURE_SSL_REDIRECT` | 예외 유지(11/16과 같음, ALB 80 → 443 301). 재검토: ALB 80 전환이 없어지거나 구조가 바뀔 때(조장 승인 11/16) |
+| security.W005 `SECURE_HSTS_INCLUDE_SUBDOMAINS` | 의도한 예외: 하위 도메인을 쓰지 않음, 켜면 되돌리기 어려움(앱계약 1.2.1). 만료: 과제 종료(12/02)까지, 하위 도메인을 쓰게 되면 재검토(조장 승인 11/18, 만료 추가 11/20) |
+| security.W021 `SECURE_HSTS_PRELOAD` | 의도한 예외: preload 목록은 빼는 데 몇 달 걸려 과제 기간에 맞지 않음(앱계약 1.2.1). 만료: 과제 종료(12/02)까지(조장 승인 11/18, 만료 추가 11/20) |
 
 **다음:** 아래 오후 기록
 

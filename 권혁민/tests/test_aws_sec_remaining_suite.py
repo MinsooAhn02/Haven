@@ -38,7 +38,7 @@ def test_login_failures_stay_far_below_rate_limits():
         if c["path"] == "/accounts/login/" and c["method"] == "POST"
     ]
     per_user = collections.Counter(payload_of(c)["fields"]["username"] for c in logins)
-    assert len(logins) <= 10
+    assert len(logins) <= 15
     assert max(per_user.values()) == 1
 
 

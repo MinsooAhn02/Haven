@@ -92,6 +92,8 @@ def test_blocked_creation_marks_cleanup_as_expect_absent():
     assert creations == {"SEC-06", "SEC-07", "SEC-10"}
     absent = {c["post_reference"] for c in suite["cleanup_cases"] if c.get("expect_absent")}
     assert absent == creations
+    for case in suite["cleanup_cases"]:
+        assert case["expected_waf"] == "ALLOW" and case["verification_mode"] == "http_only"
 
 
 def test_unknown_case_in_profile_is_rejected():

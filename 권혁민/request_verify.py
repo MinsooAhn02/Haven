@@ -651,6 +651,9 @@ def apply_block_profile(suite: dict, profile: object, stage: int) -> dict:
         if case.get("post_reference") in blocked_creations:
             raise ConfigError(f"{case['case_id']}: 차단을 기대한 게시글 생성에 기대는 시험이 있습니다")
     for case in suite.get("cleanup_cases", []):
+        # 정리 요청(글 삭제·공유 해제)도 Block에 걸리면 안 된다.
+        case["expected_waf"] = "ALLOW"
+        case["verification_mode"] = "http_only"
         if case.get("post_reference") in blocked_creations:
             case["expect_absent"] = True
     return suite

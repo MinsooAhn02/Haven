@@ -244,6 +244,23 @@
       "note": "SEC-58: 가입 정상 입력 3종. 비밀번호 확인을 일부러 다르게 해 계정을 만들지 않음. WAF 규칙 매칭 없어야 함"
     },
     {
+      "case_id": "SEC-58-POST-SPECIAL-CHARS",
+      "phase": 3,
+      "category": "waf_fp",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "post_reference": "AWS-REM-SETUP-A-POST",
+      "auth_role": "member_a",
+      "input_reference": "waf_post_special_chars_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 3,
+      "verification_mode": "manual_required",
+      "note": "SEC-58: 글 제목·본문에 !@#가 들어가도 SQLi_BODY에 걸리는지(P01 본문 !@#$, P02 제목·본문 !@#, P03 !·@·#가 떨어져 있음). 로그인·가입 밖의 오탐 범위 확인"
+    },
+    {
       "case_id": "SEC-52-NOT-FOUND",
       "phase": 3,
       "category": "info_leak",

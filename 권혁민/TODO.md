@@ -190,7 +190,7 @@ python request_verify.py correlate-cloudwatch --run-json output_aws_cleanup_03/r
 
 #### 남은 SEC 자동 시험·WAF 오탐/미탐 정리 (2026-11-19~20)
 
-- 결과 보고서: `시험결과/2026-11-20_AWS_05.md` — SEC-01~60 중 자동 CLI로 가능한 항목 AWS 실행 완료(새 실행 5회, HTTP 119/119 일치, 로그 대조 135/135 MATCHED, 정리 완료). 앱 방어(세션 고정·쿠키 속성·로그아웃 재사용·첨부/공유 ID 조작·프록시 헤더·CRLF) 모두 PASS.
+- 결과 보고서: `시험결과/2026-11-20_AWS_05.md` — SEC-01~60 중 자동 CLI로 가능한 항목 AWS 실행 완료(새 실행 6회, HTTP 153/153 일치, 로그 대조 173/173 MATCHED, 정리 완료). 앱 방어(세션 고정·쿠키 속성·로그아웃 재사용·첨부/공유 ID 조작·프록시 헤더·CRLF) 모두 PASS.
 - WAF: 헤더 공격 7/8 탐지, 본문 8KB 뒤 미탐. **비밀번호에 `!@#`가 이어지면 `SQLi_BODY` 오탐**(재현 확인). 11/16·17 8건도 같은 원인(시험용 더미 비밀번호). WAF 로그 `matchedData`에 본문(비밀번호 포함)이 남는 문제(SEC-53) 발견.
 - 다음: WAF Block 판단안(`waf/WAF_Block_판단.md`) 확정 후 PR. SQLi는 로그인·가입 경로 `SQLi_BODY` 예외를 두고 Block 제안.
 

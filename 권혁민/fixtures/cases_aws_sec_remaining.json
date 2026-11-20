@@ -308,6 +308,23 @@
       "verification_mode": "manual_required",
       "post_reference": "AWS-REM-SETUP-A-POST",
       "note": "SEC-60: 같은 XSS 문자열을 TXT 내용 앞(P01)과 8KB 뒤(P02)에 둠. WAF가 P01만 매칭하면 '본문 8KB 뒤 미검사' 확인"
+    },
+    {
+      "case_id": "SEC-58-UPLOAD-PDF-XMP",
+      "phase": 3,
+      "category": "waf_fp",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "post_reference": "SEC-26-A-CREATE-OWNER-FIELDS",
+      "auth_role": "member_a",
+      "input_reference": "waf_upload_pdf_xmp_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "NOT_APPLICABLE",
+      "max_requests": 2,
+      "verification_mode": "manual_required",
+      "note": "SEC-58: 정상 PDF 업로드 오탐 확인. P01 메타데이터 없는 PDF(대조), P02 XMP 메타데이터(xmlns:x=\"adobe:ns:meta/\")가 앞부분에 있는 PDF. 11/13 팀원 PDF 업로드 2건이 CrossSiteScripting_BODY에 걸린 원인 재현"
     }
   ],
   "cleanup_cases": [

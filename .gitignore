@@ -8,3 +8,7 @@ __pycache__/
 # Personal team-lead handoff notes and local agent entry point
 /.haven-local/
 /AGENTS.md
+
+# WAF 적용 전 get-web-acl 백업(계정 번호·ID 포함) 저장소에 올리지 않기
+waf-before-*.json
+*-before-*.json

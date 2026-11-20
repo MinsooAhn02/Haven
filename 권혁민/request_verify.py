@@ -606,6 +606,59 @@ def aws_cleanup_reserve(cases: list, cleanup_cases: list) -> int:
     return max(8, len(cleanup_cases) * 4 + share_steps * 3 + 5)
 
 
+def apply_block_profile(suite: dict, profile: object, stage: int) -> dict:
+    """WAF Block 전후 비교용: 확장된 시험의 기대값만 Block 단계 기준으로 바꾼다.
+
+    목록에 있고 stage 이하에서 막히는 요청은 앱 미도달(WAF 403·BLOCK)을 기대하고,
+    나머지는 원래 앱 기대값에 WAF ALLOW를 더한다. 판정은 http_only로 바꾼다.
+    """
+    if not isinstance(profile, dict) or profile.get("schema_version") != 1 or not isinstance(profile.get("suites"), dict):
+        raise ConfigError("기대값 프로필 형식 오류")
+    if stage not in (1, 2, 3):
+        raise ConfigError("--block-stage는 1, 2, 3 중 하나여야 합니다")
+    entry = profile["suites"].get(suite["suite_id"])
+    if not isinstance(entry, dict) or not isinstance(entry.get("block"), dict):
+        raise ConfigError(f"기대값 프로필에 {suite['suite_id']} 항목이 없습니다")
+    block = entry["block"]
+
+    cases = {case["case_id"]: case for case in suite["cases"]}
+    unknown = sorted(set(block) - set(cases))
+    if unknown:
+        # 시험 묶음이 바뀌었는데 프로필을 갱신하지 않은 경우를 막는다.
+        raise ConfigError(f"기대값 프로필의 케이스가 시험 묶음에 없습니다: {', '.join(unknown)}")
+
+    blocked = set()
+    for cid, rule in block.items():
+        if not isinstance(rule, dict) or rule.get("stage") not in (1, 2, 3):
+            raise ConfigError(f"{cid}: 기대값 프로필 stage 오류")
+        if rule["stage"] <= stage:
+            blocked.add(cid)
+
+    for case in suite["cases"]:
+        if case["case_id"] in blocked:
+            case["expected_app"] = {"http_status": 403}
+            case["expected_waf"] = "BLOCK"
+            if case.get("capture_post_id"):
+                # 막히면 게시글이 생기지 않는다. 번호를 찾지 않고 정리 때 없음만 확인한다.
+                case["blocked_creation"] = True
+        else:
+            case["expected_waf"] = "ALLOW"
+        case["verification_mode"] = "http_only"
+        case["expectation_profile"] = f"{profile.get('profile_id', 'block')}:stage{stage}"
+
+    blocked_creations = {cid for cid in blocked if cases[cid].get("capture_post_id")}
+    for case in suite["cases"]:
+        if case.get("post_reference") in blocked_creations:
+            raise ConfigError(f"{case['case_id']}: 차단을 기대한 게시글 생성에 기대는 시험이 있습니다")
+    for case in suite.get("cleanup_cases", []):
+        # 정리 요청(글 삭제·공유 해제)도 Block에 걸리면 안 된다.
+        case["expected_waf"] = "ALLOW"
+        case["verification_mode"] = "http_only"
+        if case.get("post_reference") in blocked_creations:
+            case["expect_absent"] = True
+    return suite
+
+
 def validate_aws_cleanup_suite(suite: dict) -> None:
     """AWS 공유 환경에서 안전하게 정리 가능한 케이스만 허용한다."""
     cases = suite["cases"]
@@ -2460,11 +2513,27 @@ def execute_cleanup(cases: list, attempted: set[str], sessions: dict, prepped: d
                         marker,
                     )
 
+                    if found_id is None and case.get("expect_absent"):
+                        # Block 비교: 생성 요청이 WAF에서 막혀 게시글이 없는 것이 정상이다.
+                        record.update(
+                            transport_status="SKIPPED",
+                            skip_reason="creation_blocked_absent_verified",
+                            verified_post_marker=marker,
+                        )
+                        results.append(record)
+                        print(f"복구 {case['case_id']}: 차단으로 생성되지 않음(표식 없음 확인)", file=sys.stderr)
+                        continue
+
                     if found_id is None:
                         raise ExecutionError(
                             "고유 표식의 게시글을 찾지 못했습니다. "
                             "삭제 여부를 별도로 확인해야 합니다"
                         )
+
+                    if case.get("expect_absent"):
+                        # 차단을 기대했는데 게시글이 있다면 정리는 하되 실패로 남긴다.
+                        complete = False
+                        record["unexpected_post_created"] = True
 
                     # 응답에서 얻은 ID와 목록에서 찾은 ID가
                     # 다르면 다른 게시글을 삭제하지 않도록 중단한다.
@@ -2669,6 +2738,14 @@ def run(args) -> int:
     # 실행 전에 모든 확장을 끝내므로 ID 충돌도 전송 전에 발견된다.
     suite = expand_suite_variants(suite, root)
 
+    # Block 전후 비교: 같은 시험 묶음에 Block 단계 기대값만 덮어쓴다.
+    profile_path = getattr(args, "expect_profile", None)
+    block_stage = getattr(args, "block_stage", None)
+    if (profile_path is None) != (block_stage is None):
+        raise ConfigError("--expect-profile과 --block-stage는 함께 지정해야 합니다")
+    if profile_path is not None:
+        suite = apply_block_profile(suite, load_json(profile_path), block_stage)
+
     cleanup_cases = suite.get("cleanup_cases", [])
     if {case["case_id"] for case in suite["cases"]} & {case["case_id"] for case in cleanup_cases}:
         raise ConfigError("확장된 시험 ID와 cleanup ID가 충돌합니다")
@@ -2698,6 +2775,9 @@ def run(args) -> int:
             "target": target, "suite_id": suite["suite_id"], "selected_phase": phase,
             "total_suite_cases": total_cases, "selected_cases": selected_cases,
             "execution_cases": execution_cases, "cleanup_cases": len(cleanup_cases),
+            "block_stage": block_stage,
+            "expected_waf_block": sum(case.get("expected_waf") == "BLOCK" for case in suite["cases"]) if block_stage else None,
+            "expected_blocked_creations": sum(bool(case.get("blocked_creation")) for case in suite["cases"]) if block_stage else None,
             "authenticated_roles": sorted(roles), "minimum_login_requests": 2 * len(roles),
             "minimum_http_requests_excluding_extra_preparation_and_cleanup": execution_cases + 2 * len(roles),
             "share_lookup_case_count": sum(
@@ -3218,7 +3298,15 @@ def _execute_run(args, target: str, root: Path, suite: dict, total_cases: int, s
                     created_attachment_ids[case["case_id"]] = new_ids.pop()
                     record["created_attachment_id"] = created_attachment_ids[case["case_id"]]
 
-                if case.get("capture_post_id"):
+                if case.get("blocked_creation"):
+                    if not record["http_expectation_match"]:
+                        # 막히지 않았다면 게시글이 생겼을 수 있다. 표식 기록을 남긴 채 멈추고 정리로 넘긴다.
+                        raise ExecutionError("차단을 기대한 게시글 생성이 차단되지 않았습니다")
+                    if aws_mode:
+                        state["pending_post_creation"] = None
+                    record["creation_blocked"] = True
+
+                elif case.get("capture_post_id"):
                     if not check_http_expected(
                         detail, case["expected_app"], target_origin=target
                     ):
@@ -4791,6 +4879,8 @@ def create_parser():
     r.add_argument("--manual-checkpoints", action="store_true", help="계정 상태 변경 등 수동 체크포인트 허용")
     r.add_argument("--dry-run", action="store_true", help="입력·출력 폴더 생성·HTTP 없이 선택한 시험 계획만 검증")
     r.add_argument("--prompt-seed-password", action="store_true", help="로컬 127.0.0.1:8000 시험 계정의 공통 비밀번호를 한 번 가려서 입력")
+    r.add_argument("--expect-profile", type=Path, default=None, help="WAF Block 전후 비교용 기대값 프로필(JSON)")
+    r.add_argument("--block-stage", type=int, choices=[1, 2, 3], default=None, help="기대값 프로필의 Block 단계")
     
     rec = commands.add_parser(
         "recover",

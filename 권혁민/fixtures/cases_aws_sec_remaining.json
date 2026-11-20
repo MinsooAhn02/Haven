@@ -256,7 +256,7 @@
         "http_status": 302
       },
       "expected_waf": "NOT_APPLICABLE",
-      "max_requests": 3,
+      "max_requests": 5,
       "verification_mode": "manual_required",
       "note": "SEC-58: 글 제목·본문에 !@#가 들어가도 SQLi_BODY에 걸리는지(P01 본문 !@#$, P02 제목·본문 !@#, P03 !·@·#가 떨어져 있음). 로그인·가입 밖의 오탐 범위 확인"
     },

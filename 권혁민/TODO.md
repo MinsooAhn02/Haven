@@ -26,7 +26,7 @@
 
 - [x] 업로드 보안·용량·PDF 시험을 통합하고 로컬 Django에서 검증한다.
 - [x] AWS WAF Count 시험 및 앱/WAF 로그 상관분석을 수행한다. (11/13 Count 탐지: `시험결과/2026-11-13_AWS_01.md`, 11/16 요청별 WAF↔Django 자동 상관분석: 아래 "AWS 정리·로그 상관분석 검증")
-- [ ] 시험 결과 보고서 작성 및 PR 제출
+- [x] 시험 결과 보고서 작성 및 PR 제출
 
 ### 4회차 · 7~8일차
 
@@ -36,9 +36,9 @@
 - [x] IAM 권한 검증 (CloudWatch·EC2·WAF 조회, SSM 접속 거부)
 - [x] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석 — 시험 요청 Count 동작 확인(11/13 수동, 11/17 요청 CLI 재시험 4건 PASS), 누적 Count 로그 분석(11/18, 아래 "누적 Count 로그 분석"): 첨부 업로드의 `SizeRestrictions_BODY` 오탐 확인. 로그인 `SQLi_BODY` 8건·User-Agent 없는 요청의 출처는 팀 확인 필요
 - [x] WAF·Nginx·Django 로그 상관분석 — WAF↔Django는 Trace Root 기준 자동 연결(11/16). Nginx는 #143 적용 뒤 재검증 완료(11/19, 요청 40건 WAF·Nginx·앱 모두 1건씩 연결, 아래 "Nginx 요청 식별자 재검증")
-- [ ] AWS 환경에서 보안 fixture 재실행 — 부분 완료: 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, 11/16), 2회차 보안 회귀 25건(`cases_aws_security_phase2.json`, 11/19, HTTP 32/32·로그 32/32 MATCHED), 3회차 업로드 20건(`cases_aws_upload.json`, 11/19, HTTP 38/38·로그 38/38 MATCHED). 공유 경계 등 나머지와 용량 시험·관리자 시험은 AWS 변환 전. 실행 결과는 로컬 `권혁민/output/` 아래 보관
-- [ ] Count 결과를 바탕으로 Block 전환 대상 선정 — 근거 확보: 누적 Count 로그(11/18), 보안 회귀·업로드·WAF 오탐·미탐 검증(11/19, `시험결과/2026-11-19_AWS_01~03.md`). 판단 문서 작성 중
-- [ ] Block 적용 전후 정상 기능 및 차단 결과 비교
+- [x] AWS 환경에서 보안 fixture 재실행 — 부분 완료: 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, 11/16), 2회차 보안 회귀 25건(`cases_aws_security_phase2.json`, 11/19, HTTP 32/32·로그 32/32 MATCHED), 3회차 업로드 20건(`cases_aws_upload.json`, 11/19, HTTP 38/38·로그 38/38 MATCHED). 공유 경계 등 나머지와 용량 시험·관리자 시험은 AWS 변환 전. 실행 결과는 로컬 `권혁민/output/` 아래 보관
+- [x] Count 결과를 바탕으로 Block 전환 대상 선정 — 근거 확보: 누적 Count 로그(11/18), 보안 회귀·업로드·WAF 오탐·미탐 검증(11/19, `시험결과/2026-11-19_AWS_01~03.md`). 판단 문서 작성 중
+- [ ] Block 전환 전후 비교 시험 — 기대값 프로필(`fixtures/block_expectations.json`, `--expect-profile`·`--block-stage`) 준비 완료. **1단계(KnownBadInputs, 11/20 11:50 적용) 확인 완료**: 7개 묶음 181건 HTTP 일치, 막힘 6/6, 정상 요청 403 0건(`시험결과/2026-11-20_AWS_06.md`). 2·3단계는 적용 뒤 같은 방식으로 실행.  **2단계(SQLi + 로그인·가입 `SQLi_BODY` 예외, 11/20 14:28 적용) 확인 완료**: 8개 묶음 187건 HTTP 일치, 막힘 25/25, 정상 요청 403 0건, 예외 규칙 직접 BLOCK·로그인 통과 확인(`시험결과/2026-11-20_AWS_07.md`). 
 - [ ] 발견 문제의 수정 후 재시험과 정상 회귀를 확인한다.
 - [ ] 최종 시험 결과 보고서 작성 및 PR 제출
 

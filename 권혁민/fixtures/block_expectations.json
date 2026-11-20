@@ -1,0 +1,345 @@
+{
+  "schema_version": 1,
+  "profile_id": "haven-waf-block-2026-11-20",
+  "basis": "waf/WAF_Block_판단.md(2026-11-20) 단계·예외를 각 시험 묶음의 Count 실행 count_rule_ids에 적용해 만든 목록. stage 이상에서 WAF BLOCK(403)을 기대한다. 목록에 없는 요청은 원래 앱 기대값 + WAF ALLOW",
+  "stages": {
+    "1": "KnownBadInputs Block",
+    "2": "+ SQLi Block (로그인·가입 SQLi_BODY 예외)",
+    "3": "+ Common Block (SizeRestrictions_BODY·NoUserAgent_HEADER Count, 첨부 업로드 CrossSiteScripting_BODY 예외)"
+  },
+  "suites": {
+    "haven-aws-waf-count-001": {
+      "suite_file": "cases_aws_waf_count.json",
+      "evidence_run": "2710825f",
+      "block": {
+        "WAF-SQLI-QUERY-COUNT": {
+          "stage": 2,
+          "count_rules": [
+            "SQLi_QUERYARGUMENTS"
+          ]
+        },
+        "WAF-XSS-QUERY-COUNT": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_QUERYARGUMENTS"
+          ]
+        }
+      }
+    },
+    "haven-aws-sec-phase2-001": {
+      "suite_file": "cases_aws_security_phase2.json",
+      "evidence_run": "f28910cd",
+      "block": {
+        "SEC-01-P02": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-01-P03": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-01-P05": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-01-P06": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-01-P07": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-01-P08": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-03": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_URIPATH",
+            "SQLi_URIPATH"
+          ]
+        },
+        "SEC-04": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-05": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_QUERYARGUMENTS",
+            "SQLi_QUERYARGUMENTS"
+          ]
+        },
+        "SEC-06": {
+          "stage": 2,
+          "count_rules": [
+            "CrossSiteScripting_BODY",
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-07": {
+          "stage": 2,
+          "count_rules": [
+            "CrossSiteScripting_BODY",
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-09": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_BODY"
+          ]
+        },
+        "SEC-10": {
+          "stage": 2,
+          "count_rules": [
+            "CrossSiteScripting_BODY",
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-11-PREP": {
+          "stage": 2,
+          "count_rules": [
+            "CrossSiteScripting_BODY",
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        }
+      }
+    },
+    "haven-aws-upload-001": {
+      "suite_file": "cases_aws_upload.json",
+      "evidence_run": "ccbf418c",
+      "block": {
+        "UP-03-INVALID-FILENAMES-P01": {
+          "stage": 3,
+          "count_rules": [
+            "GenericLFI_BODY"
+          ]
+        }
+      }
+    },
+    "haven-aws-waf-verify-001": {
+      "suite_file": "cases_aws_waf_verify.json",
+      "evidence_run": "a51bb5ff",
+      "block": {
+        "SEC-12-XSS-ENCODED-EDIT-P01": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_BODY"
+          ]
+        },
+        "SEC-12-XSS-ENCODED-EDIT-P02": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_BODY"
+          ]
+        },
+        "SEC-12-XSS-ENCODED-EDIT-P03": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_BODY"
+          ]
+        },
+        "SEC-12-XSS-ENCODED-EDIT-P04": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_BODY"
+          ]
+        },
+        "SEC-12-XSS-ENCODED-EDIT-P05": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_BODY"
+          ]
+        },
+        "SEC-02-PASSWORD-SQLI-P01": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-02-PASSWORD-SQLI-P02": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-02-PASSWORD-SQLI-P03": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_BODY",
+            "SQLi_BODY"
+          ]
+        },
+        "SEC-13-LOGIN-REFLECTED-XSS-P01": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_BODY"
+          ]
+        },
+        "SEC-13-LOGIN-REFLECTED-XSS-P02": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_BODY"
+          ]
+        },
+        "SEC-12-Q-MIXEDCASE": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_QUERYARGUMENTS"
+          ]
+        },
+        "SEC-12-Q-SVG": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_QUERYARGUMENTS"
+          ]
+        },
+        "SEC-12-Q-IMG": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_QUERYARGUMENTS"
+          ]
+        },
+        "SEC-12-Q-JSURI": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_QUERYARGUMENTS"
+          ]
+        },
+        "SEC-12-Q-ENTITY": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_QUERYARGUMENTS"
+          ]
+        },
+        "SEC-12-Q-DOUBLE": {
+          "stage": 3,
+          "count_rules": [
+            "CrossSiteScripting_QUERYARGUMENTS"
+          ]
+        },
+        "SEC-56-Q-SLEEP": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_QUERYARGUMENTS",
+            "SQLi_QUERYARGUMENTS"
+          ]
+        },
+        "SEC-56-Q-UNION-COMMENT": {
+          "stage": 2,
+          "count_rules": [
+            "SQLiExtendedPatterns_QUERYARGUMENTS",
+            "SQLi_QUERYARGUMENTS"
+          ]
+        },
+        "WAF-PATH-ENV": {
+          "stage": 1,
+          "count_rules": [
+            "ExploitablePaths_URIPATH"
+          ]
+        },
+        "WAF-Q-LFI": {
+          "stage": 3,
+          "count_rules": [
+            "GenericLFI_QUERYARGUMENTS"
+          ]
+        },
+        "WAF-Q-SSRF": {
+          "stage": 3,
+          "count_rules": [
+            "EC2MetaDataSSRF_QUERYARGUMENTS",
+            "GenericRFI_QUERYARGUMENTS"
+          ]
+        }
+      }
+    },
+    "haven-aws-cleanup-smoke-001": {
+      "suite_file": "cases_haven_aws.json",
+      "evidence_run": "cb5c3f96",
+      "evidence_note": "이 실행 결과에는 규칙 ID 열이 없음(초기 CLI). 모두 일반 기능 요청이라 차단 대상 없음으로 둠",
+      "block": {}
+    },
+    "haven-aws-header-001": {
+      "suite_file": "cases_aws_header.json",
+      "evidence_run": "74d936ee",
+      "block": {
+        "HDR-LOG4J-UA": {
+          "stage": 1,
+          "count_rules": [
+            "Log4JRCE_HEADER"
+          ]
+        },
+        "HDR-LOG4J-XAPI": {
+          "stage": 1,
+          "count_rules": [
+            "Log4JRCE_HEADER"
+          ]
+        },
+        "HDR-LOG4J-OBFUSCATED": {
+          "stage": 1,
+          "count_rules": [
+            "Log4JRCE_HEADER"
+          ]
+        },
+        "HDR-JAVA-RUNTIME": {
+          "stage": 1,
+          "count_rules": [
+            "JavaDeserializationRCE_HEADER"
+          ]
+        },
+        "HDR-HOST-LOCALHOST": {
+          "stage": 1,
+          "count_rules": [
+            "Host_localhost_HEADER"
+          ]
+        },
+        "HDR-BADBOT-UA": {
+          "stage": 3,
+          "count_rules": [
+            "UserAgent_BadBots_HEADER"
+          ]
+        }
+      }
+    },
+    "haven-aws-session-attach-001": {
+      "suite_file": "cases_aws_session_attach.json",
+      "evidence_run": "54020bc6",
+      "block": {}
+    },
+    "haven-aws-sec-remaining-001": {
+      "suite_file": "cases_aws_sec_remaining.json",
+      "evidence_run": "871d8b56",
+      "block": {}
+    }
+  }
+}

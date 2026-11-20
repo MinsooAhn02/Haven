@@ -46,7 +46,7 @@ Team2 · Haven 프로젝트 · 작성 구민철 (읽기 전용 정리)
 | 22 | Haven-EC2-Web-CloudWatch-Write | haven-ec2-web-role | 11/20 web-role 연결과 저장본 대조 | 11/20 | **부분 확인** | 보람 대조기록·4회차 11/20. 내용은 30번과 같음. 공통 역할(`haven-ec2-ssm-role`)에서 제거된 것은 11/13 기록 기준이고 11/20에 다시 확인하지 않음 |
 | 23 | Haven-Minsung-CloudWatch-Logs-Manage | minsung | 11/20 AWS 저장본 재조회 대조 | 11/20 | **일치(재조회)** | 보람 대조기록 11/20 |
 | 25 | Haven-Hyeokmin-WAF-Manage | hyeokmin | 기존 5개 대조 → 6번째 추가 후 저장·재조회 JSON 대조 | 11/13 | **일치(재조회)** | 3회차 223~225행 |
-| 26 | Haven-Minsung-WAF-Manage | minsung | 11/13 저장본 대조 일치 → 11/20 변경(managedruleset ARN 추가), 제공된 AWS JSON과 권한 내용 대조 | 11/20 | **변경 후 재조회 미확인** (UNKNOWN) | 보람 대조기록 11/20, #190. WAF Block 적용 중 `UpdateWebACL` 권한 거부 대응. 저장 후 재조회와 Block 전환 성공은 미확인 |
+| 26 | Haven-Minsung-WAF-Manage | minsung | 11/13 저장본 대조 일치 → 11/20 변경(managedruleset ARN 추가), 제공된 AWS JSON과 권한 내용 대조 | 11/20 | **변경 후 재조회 미확인** (UNKNOWN) | 보람 대조기록 11/20, #190. 조장 확인: Block 1단계 적용(11:46:57) 뒤에 변경했고, 2·3단계 적용은 11/20 완료(조장 운영기록). 바뀐 저장본의 재조회는 미확인 |
 | 27 | Haven-Minchul-SG-Read | minchul | 11/13 콘솔 대조(권한 6개) → 11/16 4개로 줄인 뒤 저장·재조회 대조 | 11/16 | **일치(재조회)** + 구민철 실행 확인 | 3회차 196·267행. 아래 2.3 |
 | 28 | Haven-EC2-Web-SES-Send | haven-ec2-web-role | 저장 화면과 대조, 수신 identity 추가분만 반영 | 11/13 | **일치(재조회)** | 3회차 215~216행 |
 | 29 | Haven-EC2-SSM-Parameters-Read | haven-ec2-web-role | 11/20 AWS 저장본 재조회 대조 | 11/20 | **일치(재조회)** | 보람 대조기록 11/20. 07번과 이름·내용 같음(아래 07번) |

@@ -34,7 +34,7 @@
 ### 4회차 · 7~8일차
 
 - [ ] 확인된 네트워크/SG 문제를 수정하고 허용·직접 접근 거부·재시작을 재시험한다. 구성도·실제 자원/SG·CLI 결과·종료 대상을 정리한다.
-- [ ] (11/12 추가) WAF: 혁민이 Count로 구성한 Web ACL을 ALB에 연결하고, 혁민 판단(규칙별 Count 결과·정상 요청 영향)에 따라 Block 적용, 문제 시 Count로 되돌림. 연결·적용 직후 healthz·로그인 확인. 선행: 보람 WAF 쓰기 권한(민성 정책에 wafv2 없음). 4회차 안, 11/27까지 마무리 목표
+- [ ] (11/12 추가) WAF: 혁민이 Count로 구성한 Web ACL을 ALB에 연결하고, 혁민 판단(규칙별 Count 결과·정상 요청 영향)에 따라 Block 적용, 문제 시 Count로 되돌림. 연결·적용 직후 healthz·로그인 확인. 선행: 보람 WAF 쓰기 권한(민성 정책에 wafv2 없음). 4회차 안, 11/27까지 마무리 목표 → 11/20 1~3단계 적용 완료, 3단계 전후 비교(혁민)·24시간 관찰 남음
 - [ ] (11/19 추가) 시험 메일 DMARC: Route 53에 `_dmarc` TXT(`p=none`으로 시작) 추가 → 시험 메일 재발송 → 헤더 `dmarc=pass`·받은편지함 도착 확인. 사용자 지정 MAIL FROM은 선택(SES 권한은 보람). 추가한 기록은 종료 대상 목록에 (운영기록 11/19 결정)
 - [ ] (11/19 이관) `test-wsl.sh` 새 시험 11개(#143): VMware에 Ubuntu 24.04 시험 전용 VM(스냅샷) → 깨뜨린 커밋은 VM 안에서만 만들어 `bash test-wsl.sh <bundle> <GOOD> <BAD>` → PASS/FAIL 기록
 - [ ] (11/20 결정) 최종 DB+첨부 복원은 **11/26**. 복원 실행은 민성, 구민철 입회(결과 대조: 공유 기록 조회 비교·첨부 sha256 비교, 복원본은 사이트에 연결하지 않음). 사이트 중단 시간 미리 공지
@@ -55,7 +55,7 @@
 | 1 | 완료 | 설계: `network/설계.md`(VPC·서브넷·라우팅·SG·출구/비용, 리전·D6는 김보람 권장, 팀장 승인 대기). SG CLI: Windows·Python 3.13.2, `sg_audit`에서 `python network_audit.py fixture --fixture fixtures\<이름>.json --baseline baseline.json --output-dir out\<이름>` 실행. 기대/실제 종료 코드 일치: pass 0(AUD-01), fail_public_db 1(AUD-02, SG-01), unknown_role 3(AUD-09, SG-06), error_access_denied 2(AUD-08). 덮어쓰기·없는 파일 시 ERROR(2) 확인 | PR 링크(https://github.com/MinsooAhn02/Haven/pull/2). 결과 요약 `sg_audit/README.md` 시험 결과. fixture는 가상 데이터라 가림 대상 없음. 리뷰 보완(팀장): 기대 자산 누락 UNKNOWN, 입력·출력 오류 ERROR(2), 부분 수집 결과 보존, unittest 5개 통과 | 김보람: 리전·D6 승인, 생성 자원·NAT 운영 기간(설계.md 5·6장). 권혁민: 기대 접근표(설계.md 4.3). 안민수: 메일 방식 회신 요청, EC2 OS(AMI) 후보 합의(이민성 제안). 미완료: live 모드·AUD-03~07·10·11(3회차 이후) |
 | 2 | 완료 (11/12 NET-06·06-b 통과, 세부 확인 일부 남음) | **11/09 준비(DRY_RUN만):** 환경: Windows Git Bash, aws-cli 2.39.6. 구축 스크립트 `infra/`(build·nat-up·nat-down·destroy) 작성. `bash -n` 6개 OK, `DRY_RUN=1 bash build.sh` → 1/8–8/8, nat-up 1/4–4/4 종료 0, nat-down·destroy(목록·--delete) 미리보기 종료 0. 거부 시험: 프로파일 빈 값 → VPC 생성 전 중단(1), DRY_RUN=2 → 중단(1), destroy --yes → 거절(1). SG 규칙 10줄 설계 4절과 양방향 대조 일치(`infra/SG수작업비교.md`). 연결 확인표 기대값 작성(`network/연결확인표.md`), 실제값은 구축 후.<br>**11/10 EC2 중지·시작(결정 4번):** `ec2-stop.sh`(web→db), `ec2-start.sh`(db→web, 공인 IP·SSM 확인), `night.sh`(ec2-stop + nat-down), `morning.sh`(nat-up + ec2-start, 평일 09~21시만). `DRY_RUN=1` 4개 종료 0. 가짜 aws 시험 `bash test/ec2-fake-test.sh` → **PASS 20 / FAIL 0**(일부러 실패: 서버 0대·2대·ID 불일치·중지 시간 초과·공인 IP·nat-up 실패·시간 밖 → 모두 멈춤(1)). 설명 `infra/EC2시작중지설명.md`, `infra/test/faketest설명.md`<br>**11/10 실제 구축 (팀 IAM 사용자 minsung, 서울):** `build.sh` 7단계에서 nat-up 확인이 Windows `\r` 때문에 오탐으로 멈춤 → `common.sh`에 `aws()` 래퍼(`tr -d '\r'`) 추가 → `nat-up.sh` RST-02 통과 → 남은 8단계만 `build-ec2.sh`(새로 작성, build.sh 8단계와 같음)로 EC2 2대 생성. 모양 확인: 서브넷 자동 공인 IP 끔, rt-private `0.0.0.0/0 → nat-`, SG 규칙 10줄 설계와 일치·전체 허용 outbound 없음, web-1·db-1 t3.small·공인 IP 없음·IMDSv2 필수·SSM 프로파일, gp3 20GB 암호화. 연결확인표 1차: SSM-01~04, NET-02-a/b/c, NET-04-c, OUT-01~04·06·07·09 ✅, OUT-08 ⚠️ 남은 위험, RST-02 ✅. 21:02 `night.sh` → RST-03 ✅(태그된 NAT·EIP 없음)<br>**11/11:** 09:02 `morning.sh` → 새 NAT, 사설 IP 그대로, SSM Online. `test-ec2.sh`(새로 작성)로 시험용 EC2 haven-test-net04 09:09 생성 → 09:23 삭제. **일부러 막힌 걸 확인한 시험:** 시험용 EC2 → db-1:5432, db-1:22, web-1:80 모두 timeout(exit=124) = NET-04·04-b·02-d ✅. 서버 준비(민수 스크립트, 민성 실행): db-setup·web-setup → 첫 배포 `deploy.sh f39e8e64` 중 GitHub SSH 22 timeout(sg-web outbound에 22 없음 = 설계대로 막힘, OUT-13) → 포트를 열지 않고 SSH-over-443으로 해결(민수 #48, OUT-14) → migrate 20건 OK·`haven_app` 점검 OK·healthz `ok` = NET-03 ✅. 재배포 `b068ba5f`(posts.0002_attachment migrate OK, healthz ok). OUT-12 apt 주소 web-1·db-1 모두 `http://` ✅<br>**11/12:** 11/11 21:14 `night.sh` → 09:03 `morning.sh` 뒤 NET-06·06-b ✅(haven·nginx·postgresql active, healthz ok 안·밖, `db ok`). web-1 CloudWatch Agent 설치(nginx access·error·앱 로그 → `/haven/web`, 앱 로그는 rsyslog로 `/var/log/haven/app.log` + logrotate 7일) → 내 PC에서 표시 요청 도착 확인 = OUT-10 web-1 ✅(db-1 미설정). 설치 절차를 `infra/server/cw-agent-setup.sh`로 정리, 가짜 시험 `test/cw-fake-test.sh`. 12:24 web-1 실제 실행에서 스크립트 버그 2개 발견(Agent 상태 확인이 파이프 141로 오판, 설정 원본이 적용 뒤 사라짐) → 수정, 가짜 시험 22개로 늘려 두 버그를 되살리면 FAIL 확인. 12:42 수정 판 web-1 2회 실행 OK(2회차 재시작 없음), CloudWatch 도착 1건씩·중복 없음<br>**남은 것:** NET-03-b, NET-05 정식, OUT-05·11, OUT-10 db-1, RST-01 | PR 링크([#27](…)), PR 링크((https://github.com/MinsooAhn02/Haven/pull/34)). 11/10~11 실행분 PR 작성 예정. 증거: `network/연결확인표.md`(계정 번호·인스턴스 ID·IP 가림). AWS 조회·스크립트 실행은 민성 Git Bash, 서버 안 시험은 SSM 세션(11/10 민수, 11/11 민성). | 안민수: web-1/db-1 사설 IP 전달 완료, 첫 배포·재배포 healthz 결과 전달, NET-06 결과 11/12 아침. 김보람: 3회차 ALB·ACM·Route 53 권한 요청(11/11). 노푸른: 브라우저 접속은 ALB 연결 뒤(현재 web-1 안에서만 응답) |
 | 3 | 진행 중 (ALB·HTTPS 완료. SG live 모드는 0.3.1까지 완료·실제 AWS PASS 11(11/16, #116, 구민철 짝 리뷰 통과). 남은 것: 구민철 실행·대조(11/23)) | 도메인 `orchestration-haven.cloud` 확정(11/11). Route 53 공개 호스팅 영역 1개, 네임서버 4개가 구글 DNS(8.8.8.8) 응답과 일치 확인. `infra/build-alb.sh` 작성(ACM DNS 검증 → 대상 그룹 /healthz → ALB → 443 TLS1.2+·80→301 → apex Alias → healthy·NET-01·01-b 확인). 가짜 시험 `test/alb-fake-test.sh` 39개(일부러 실패: ALB 중복·web-1 꺼짐·호스팅 영역 0/2개·기존 A 레코드·권한 없음·인증서 시간 초과/FAILED·unhealthy·302·가짜 도메인 리다이렉트). 시험이 실제로 버그를 잡는지 스크립트를 일부러 망가뜨려 확인(가드 3곳 제거 → 해당 시험 FAIL). 민성 Windows Git Bash 11:32: 가짜 시험 PASS 39 / FAIL 0, `DRY_RUN=1 bash build-alb.sh` 1/5~5/5 종료 0(실제 state ID로 명령만 출력). 권한: ELB·ACM 읽기부터 AccessDenied(11:1x) → 보람님 추가 → 11:36 1차 실행: 인증서 2초 만에 발급, 대상 그룹까지 만들고 ALB에서 `ec2:GetSecurityGroupsForVpc` 없음으로 멈춤 → 스크립트에 "이 스크립트가 만든 것(state 기록과 같은 ID)만 이어서 쓰기" 추가(가짜 시험 F1~F13) → 보람님 권한 추가 → 11:47 2차: 대상 그룹·인증서 재사용, ALB·리스너·도메인 연결, healthy, NET-01 OK, NET-01-b는 **Windows curl이 `/dev/null`을 몰라서** 확인 단계만 실패 → 고침(가짜 curl도 Windows처럼 바꿔 W1 시험 추가, 옛 코드로 되돌리면 13개 FAIL 확인) → 11:58 3차: 전부 재사용(새로 만든 것 없음), **NET-01 200 ok·인증서 OK, NET-01-b 301 → https, 실제 DNS 접속 OK**. 가짜 시험 최종 PASS 59 / FAIL 0(민성 Git Bash). 남은 것: live SG 읽기 수집·AUD 대조, WAF·ALB 접근 로그(설계 7절) | 증거: 연결확인표 NET-01·01-b, `~/alb-1111.log`(계정 번호·ARN 가려서 첨부). PR 작성 예정 | 노푸른: `https://orchestration-haven.cloud` 접속 가능(11/11 11:59~, 평일 09~21시, 밤에는 EC2가 꺼져 502/503). 안민수: ALB 켜 둠(11/11 결정), CSRF_TRUSTED_ORIGINS가 이 도메인인지 실제 로그인으로 확인 요청. 김보람: ALB 요금 시작(11:47~) 비용 확인 |
-| 4 | 진행 중 (WAF ALB 연결 11/13, OUT-10 db-1 로그 수집 11/16. 남은 것: Nginx 요청 ID 11/27, WAF Block, 네트워크/SG 재시험·구성도·종료 대상 정리) | 아래 11/13 낮·11/16 오전 코멘트 | #116(db-1 로그 수집) | — |
+| 4 | 진행 중 (WAF ALB 연결 11/13, OUT-10 db-1 로그 수집 11/16. 남은 것: Nginx 요청 ID 11/27, WAF Block(✅ 11/20 적용, 3단계 전후 비교·관찰 남음), 네트워크/SG 재시험·구성도·종료 대상 정리) | 아래 11/13 낮·11/16 오전 코멘트 | #116(db-1 로그 수집) | — |
 
 ## 지금 할 일 (11/16 12:10 갱신, 현황판 `TASK_TODO.html` 민성 카드 기준)
 
@@ -69,7 +69,7 @@
 | ~백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번)~ | ✅ 11/13 10:03 백업 `20261113T010301Z` → 격리 복원 DB 줄 수 일치·업로드 7개 sha256 일치 (아래 11/13 코멘트) |
 | ~15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부)~ | ✅ 11/13 11:38~11:42 허용 1·거부 4 (아래 11/13 코멘트). 보람 기록 반영은 보람에게 전달 |
 | ALB·WAF 밤 처리 결정 → destroy.sh 정리 순서 | #57 약 $4.55/주 |
-| WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤. 연결 상태 조회 권한(`GetWebACLForResource`)은 ✅ 11/16 12:15 확인: `get-web-acl-for-resource` → `haven-web-acl`(ALB에 연결 유지) |
+| WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤 → ✅ 11/20 1~3단계 적용(11:46·14:28·15:41, 아래 11/20 오후 코멘트). 연결 상태 조회 권한(`GetWebACLForResource`)은 ✅ 11/16 12:15 확인: `get-web-acl-for-resource` → `haven-web-acl`(ALB에 연결 유지) |
 | ~가상 운영 관리자 계정 생성(make_operator.py)~ | ✅ 11/19 생성·APP-07·09 통과 → `operator` 삭제(요찬 요청), 사람별 `op_` 3개 생성 |
 | ~로그인 실패 제한 수치 결정~ | ✅ 11/12 결정: 15분·계정 5번·IP 30번(#75). 구현은 요찬(4회차) → 혁민 점검 → 배포. 실제 IP는 X-Forwarded-For 뒤에서 두 번째(nginx가 ALB IP를 붙임) |
 | ~OUT-10 db-1 PostgreSQL 로그 수집~ | ✅ 11/16 11:04 db-1 실행(`cw-agent-setup-db.sh`), 11:08 `/haven/db` 도착, 11:13 앱 접속 기록(IP·TLS) 확인, 12:04 1시간 로그 양 +176줄 / 약 28KB. PR #116 병합(main `f60e1c6`). 병합 뒤 짝 리뷰 ✅ 끝(혁민 11/16 PR 댓글: 기록 범위·조회, 보람 `김보람/1~4회차/3회차.md` 11/16: 권한·보존 30일·비용) |
@@ -617,7 +617,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 | 20:53~20:55 | NAT만 지우는 `nat-down.sh` 대신 `night.sh`를 실행 | ❌ EC2가 먼저 꺼져(web-1 20:53, db-1 20:54) 점검 프로그램도 멈춤. NAT 삭제(20:55)·EIP 해제·RST-03은 정상 |
 
 - NAT가 없는 동안의 기록이 없고, SSM Offline도 서버가 꺼져서인지 NAT가 없어서인지 구분되지 않아 **RST-01은 미완료**로 둔다.
-- 11/20 순서: 20:40 점검 프로그램 시작 → 20:45 PC에서 **`nat-down.sh`만** → 경로 확인·SSM `PingStatus` 5분마다 → `ConnectionLost` 확인 뒤 `night.sh` → 다음 날 아침 로그 확인.
+- 11/20 순서: 20:40 점검 프로그램 시작 → 20:45 PC에서 **`nat-down.sh`만** → 경로 확인·SSM `PingStatus` 5분마다 → `ConnectionLost` 확인 뒤 `night.sh` → 11/23(월) 아침 로그 확인(주말에는 서버를 켜지 않음).
 - S3 시험 파일 `db-backups/_rst01-test-20261119.txt`는 삭제 권한이 없어 남김(복원 영향 없음).
 
 **정리**
@@ -625,3 +625,20 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - SG 3회차 실행·대조는 구민철이 11/19에 앞당겨 끝냄(#175). 4회차 "SG 재시험"은 FAIL이 없어 고칠 것 없음.
 - 최종 DB+첨부 복원은 11/26(조장 결정). 구민철 입회는 화면 대조가 아니라 복원 결과 대조로 한다(복원본을 사이트에 연결하려면 서버 설정을 바꿔야 해서).
 
+## 민성's comment · 2026-11-20 오후 · WAF Block 적용 (1~3단계)
+
+혁민 판단안(`권혁민/waf/WAF_Block_판단.md`, #188) 5절대로 Git Bash에서 적용했다. 자세한 근거와 혁민 시험 결과는 `docs/조장_운영기록/2026-11-20.md` "WAF Block 적용".
+
+| 시각 | 한 일 | 결과 |
+|---|---|---|
+| 11:3x | `get-web-acl` 원본·규칙·VisibilityConfig 백업(저장소 밖), 단계별 규칙 파일 3개 생성(저장소 밖 스크립트, 버전·Count 상태 확인) | ✅ 1·2·3단계 모두 기대 구성 |
+| 11:36 | 적용 전 | healthz 200, `/.env` 404 |
+| 11:38쯤 | 1단계 적용 시도 | ❌ `AccessDenied`: 26번 `UpdateWebACL`에 `managedruleset` ARN 없음 → 보람 추가(11:4x), 변경 없음 |
+| 11:46:57 | 1단계 KnownBadInputs Block | ✅ healthz 200, `/.env` 403, Log4j 헤더 403, test3 로그인·글 목록 정상. 혁민 비교 정상 요청 403 0건 |
+| 14:28:22 | 2단계 SQLi Block + 로그인·가입 `SQLi_BODY` 예외(우선순위 11) | ✅ 쿼리 SQLi 302 → 403, healthz 200. 혁민: 글 본문 SQLi 403, `!@#` 비밀번호 앱 400 유지 |
+| 15:41:16 | 3단계 Common Block(3개 Count 유지) + 업로드 XSS 예외(우선순위 10) | ✅ 쿼리 XSS·LFI 302 → 403, healthz 200, PDF(22.7KB)·1.5MB txt 업로드 성공, 2MiB 초과는 앱 안내(WAF 통과) |
+
+- 예외 규칙 우선순위는 판단안의 "그룹 + 1"이 KnownBadInputs(2)와 겹쳐 10·11로 넣었다.
+- 되돌리기: 앞 단계 규칙 파일(또는 백업 원본)을 같은 방법으로 다시 넣는다. 파일은 조장 PC 홈 폴더(저장소 밖).
+- 결정(11/20): WAF `matchedData` 비밀번호 조각은 위험 수용, 30일이 지난 로그는 WAF는 혁민·CloudWatch `/haven/web`·`/haven/db`는 조장이 저장소 밖에 개인 보관(삭제 날짜 정하지 않음).
+- 남은 것: 3단계 전후 비교(혁민), 24시간 관찰, `NoUserAgent_HEADER` Block(점검 스크립트 User-Agent 뒤), 3단계 시험 글 삭제 확인.

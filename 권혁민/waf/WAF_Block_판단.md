@@ -6,7 +6,7 @@
 | 작성일 | 2026-11-20 (초안 11-19) |
 | 대상 | Web ACL `haven-web-acl` (서울 리전, ALB 연결), 관리형 규칙 그룹 3개 |
 | 적용 담당 | 이민성 (조장 결정 11/12: 혁민 = 판단, 민성 = Block 적용) |
-| 상태 | **3단계 모두 적용 완료(2026-11-20).** 1단계 KnownBadInputs 11:50, 2단계 SQLi + 로그인·가입 예외 14:28:22, 3단계 Common + 업로드 예외 15:41:16. 단계마다 전후 비교 시험에서 막혀야 할 요청만 막혔고 정상 요청 403은 0건(`시험결과/2026-11-20_AWS_06~08.md`). 남은 일: 5-4 관찰, `NoUserAgent_HEADER` 후속(8절 3번) |
+| 상태 | **3단계 모두 적용 완료(2026-11-20).** 1단계 KnownBadInputs 11:46:57, 2단계 SQLi + 로그인·가입 예외 14:28:22, 3단계 Common + 업로드 예외 15:41:16. 단계마다 전후 비교 시험에서 막혀야 할 요청만 막혔고 정상 요청 403은 0건(`시험결과/2026-11-20_AWS_06~08.md`). 남은 일: 5-4 관찰 |
 
 ---
 
@@ -16,7 +16,7 @@
 |---|---|---|---|
 | **KnownBadInputs** | Count | **Block** | 스캐너 경로·헤더 공격(Log4j·Java 실행 문자열·`Host: localhost`)을 모두 잡았고 정상 요청 매칭 0건 |
 | **SQLi** | Count | **Block + 예외 1개** | SQL 공격 변형을 잘 잡는다. 단 **비밀번호에 `!@#`가 이어지면 `SQLi_BODY`가 오탐**하므로, **로그인·가입 주소에서만 `SQLi_BODY`를 Block하지 않는다** |
-| **Common** | Count | **Block + 예외 3개** | XSS·LFI·SSRF·악성 봇은 잘 잡는다. **`SizeRestrictions_BODY`(정상 첨부 업로드를 막음)** 와 **`NoUserAgent_HEADER`(팀 점검 스크립트)** 는 Count 유지. **`CrossSiteScripting_BODY`는 첨부 업로드 주소에서만 Block하지 않는다**(메타데이터가 든 정상 PDF를 막음) |
+| **Common** | Count | **Block + 예외 3개** | XSS·LFI·SSRF·악성 봇은 잘 잡는다. **`SizeRestrictions_BODY`(정상 첨부 업로드를 막음)** 와 **`NoUserAgent_HEADER`(점검 스크립트 미확인, 조장 결정 11/20)** 는 Count 유지. **`CrossSiteScripting_BODY`는 첨부 업로드 주소에서만 Block하지 않는다**(메타데이터가 든 정상 PDF를 막음) |
 
 - 기본 동작(어떤 규칙에도 안 걸린 요청)은 지금처럼 **Allow**를 유지한다.
 - **한 번에 다 바꾸지 않고 KnownBadInputs → SQLi → Common 순서로 나눠 적용**하고, 단계마다 같은 시험을 다시 돌려 확인한다(5·6절).
@@ -70,7 +70,7 @@
 | 규칙 | 관찰 | 제안 |
 |---|---|---|
 | **`SizeRestrictions_BODY`** | 누적 로그: 팀원의 **정상 첨부 업로드 27건**. 시험: **정확히 2 MiB 정상 업로드(앱 302)** 에서 재현. 본문이 8KB를 넘으면 무조건 걸림 | **Count 유지 (예외)** |
-| **`NoUserAgent_HEADER`** | 534건 대부분 해외 스캐너. KR에서 User-Agent 없이 주기적으로 요청한 것은 **팀 점검 스크립트**(조장 확인 11/19). 시험에서도 User-Agent 없는 요청을 탐지 | **점검 스크립트에 User-Agent를 붙인 뒤 Block.** 그 전까지 Count 유지 |
+| **`NoUserAgent_HEADER`** | 534건 대부분 해외 스캐너. KR에서 User-Agent 없이 주기적으로 요청한 것은 **팀 점검 스크립트**(조장 확인 11/19). 시험에서도 User-Agent 없는 요청을 탐지 | **Count 유지(조장 결정 11/20, 이유: 점검 스크립트 미확인).** 관찰 중 User-Agent 없는 요청 패턴이 보이면 조장에게 알리고 다시 판단 |
 | `UserAgent_BadBots_HEADER` | zgrab·masscan·360Spider 등 120건, 시험의 Nmap User-Agent 탐지. 일반 Chrome User-Agent 0 | Block |
 | `CrossSiteScripting_QUERYARGUMENTS` | 쿼리 XSS 변형, 재표시 XSS 탐지. 정상 쿼리 0 | Block |
 | **`CrossSiteScripting_BODY`** | 본문 XSS 변형 11/11, 파일명 XSS, **브라우저 수동 시험의 XSS 글·첨부 7/7** 탐지. 정상 글(HTML 태그 설명 포함) 0. **그러나 XMP 메타데이터가 앞부분에 있는 정상 PDF 업로드가 걸림**(11/13 팀원 업로드 2건, 재현 시험 1/1). 메타데이터 없는 PDF는 안 걸림 | **Block하되 첨부 업로드 주소(`/posts/<번호>/attachments/`)는 예외.** 글 작성·수정 등 다른 주소의 본문 XSS는 Block |
@@ -241,8 +241,8 @@
 
 1. ~~로그인 `SQLi_BODY` 8건~~ → **원인 확인(비밀번호의 `!@#` 오탐), 2회 재현.** 3-2의 예외로 반영.
 2. ~~PDF 업로드 `CrossSiteScripting_BODY`~~ → **11/13 누락 구간 재집계에서 발견, 재현 확인.** 3-3의 업로드 예외로 반영.
-3. **`NoUserAgent_HEADER`:** 팀 점검 스크립트 담당자가 요청에 User-Agent를 붙이면 Count 예외를 풀고 Block한다(3단계 뒤 별도로).
-4. **WAF 로그 조회 권한·보관 기간(7절):** 조장·민성 결정 필요.
+3. ~~`NoUserAgent_HEADER`~~ → **Count 유지(조장 결정 11/20, 이유: 점검 스크립트 미확인).** 5-4 관찰에서 User-Agent 없는 요청 패턴이 보이면 조장에게 알리고 다시 판단한다.
+4. ~~WAF 로그 조회 권한·보관 기간~~ → **결정됨(7절):** 보관 30일 + 혁민 개인 보관(12/13 전), 조회 권한은 필요한 담당자만.
 
 ---
 

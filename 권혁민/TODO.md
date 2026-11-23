@@ -34,13 +34,16 @@
 - [x] WAF 전용 CloudWatch 로그 그룹 생성 및 30일 보존 설정
 - [x] WAF 로깅 연동 및 민감 헤더 마스킹 설정
 - [x] IAM 권한 검증 (CloudWatch·EC2·WAF 조회, SSM 접속 거부)
-- [x] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석 — 시험 요청 Count 동작 확인(11/13 수동, 11/17 요청 CLI 재시험 4건 PASS), 누적 Count 로그 분석(11/18, 아래 "누적 Count 로그 분석"): 첨부 업로드의 `SizeRestrictions_BODY` 오탐 확인. 로그인 `SQLi_BODY` 8건·User-Agent 없는 요청의 출처는 팀 확인 필요
+- [x] ALB 연결 후 WAF Count 로그 수집 및 오탐 분석 — 시험 요청 Count 동작 확인(11/13 수동, 11/17 요청 CLI 재시험 4건 PASS), 누적 Count 로그 분석(11/18, 아래 "누적 Count 로그 분석"): 첨부 업로드의 `SizeRestrictions_BODY` 오탐 확인. 로그인 `SQLi_BODY` 8건은 비밀번호 `!@#` 오탐으로 재현 확인(#188), User-Agent 없는 KR 요청은 `NoUserAgent_HEADER` Count 유지(조장 결정 11/20)
 - [x] WAF·Nginx·Django 로그 상관분석 — WAF↔Django는 Trace Root 기준 자동 연결(11/16). Nginx는 #143 적용 뒤 재검증 완료(11/19, 요청 40건 WAF·Nginx·앱 모두 1건씩 연결, 아래 "Nginx 요청 식별자 재검증")
-- [x] AWS 환경에서 보안 fixture 재실행 — 부분 완료: 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, 11/16), 2회차 보안 회귀 25건(`cases_aws_security_phase2.json`, 11/19, HTTP 32/32·로그 32/32 MATCHED), 3회차 업로드 20건(`cases_aws_upload.json`, 11/19, HTTP 38/38·로그 38/38 MATCHED). 공유 경계 등 나머지와 용량 시험·관리자 시험은 AWS 변환 전. 실행 결과는 로컬 `권혁민/output/` 아래 보관
-- [x] Count 결과를 바탕으로 Block 전환 대상 선정 — 근거 확보: 누적 Count 로그(11/18), 보안 회귀·업로드·WAF 오탐·미탐 검증(11/19, `시험결과/2026-11-19_AWS_01~03.md`). 판단 문서 작성 중
+- [x] AWS 환경에서 보안 fixture 재실행 — 게시글·첨부·공유·해제 스모크 9건(`cases_haven_aws.json`, 11/16), 2회차 보안 회귀 25건(`cases_aws_security_phase2.json`, 11/19, HTTP 32/32·로그 32/32 MATCHED), 3회차 업로드 20건(`cases_aws_upload.json`, 11/19, HTTP 38/38·로그 38/38 MATCHED). 남은 SEC 자동 시험 7회(11/19~20, HTTP 189/189·로그 213/213, #188)까지 완료. 계정 용량·관리자 업로드 시험은 AWS에서 제외(`시험결과/2026-11-19_AWS_02.md` 2절). 실행 결과는 로컬 `권혁민/output/` 아래 보관
+- [x] Count 결과를 바탕으로 Block 전환 대상 선정 — 근거 확보: 누적 Count 로그(11/18), 보안 회귀·업로드·WAF 오탐·미탐 검증(11/19, `시험결과/2026-11-19_AWS_01~03.md`). 판단안 `waf/WAF_Block_판단.md` 완료(#188)
 - [x] Block 전환 전후 비교 시험 — 기대값 프로필(`fixtures/block_expectations.json`, `--expect-profile`·`--block-stage`) 준비 완료. **1단계(KnownBadInputs, 11/20 11:46:57 적용) 확인 완료**: 7개 묶음 181건 HTTP 일치, 막힘 6/6, 정상 요청 403 0건(`시험결과/2026-11-20_AWS_06.md`). 2·3단계는 적용 뒤 같은 방식으로 실행.  **2단계(SQLi + 로그인·가입 `SQLi_BODY` 예외, 11/20 14:28 적용) 확인 완료**: 8개 묶음 187건 HTTP 일치, 막힘 25/25, 정상 요청 403 0건, 예외 규칙 직접 BLOCK·로그인 통과 확인(`시험결과/2026-11-20_AWS_07.md`). **3단계(Common + 업로드 `CrossSiteScripting_BODY` 예외, 11/20 15:41 적용) 확인 완료**: 8개 묶음 187건 HTTP 일치, 막힘 44/44, 정상 요청 403 0건, 업로드 예외 직접 확인(`시험결과/2026-11-20_AWS_08.md`). **Block 전환 완료.**
 - [ ] 발견 문제의 수정 후 재시험과 정상 회귀를 확인한다. — 앱 결함은 발견되지 않음. WAF 오탐 3건은 예외 규칙으로 처리하고 Block 1~3단계 재시험 완료(정상 요청 403 0건). 최종 배포 뒤 같은 묶음 재실행 남음(배포 일정 미정, `시험결과/최종_시험결과.md` 8절)
 - [ ] 최종 시험 결과 보고서 작성 및 PR 제출 — 초안 작성(`시험결과/최종_시험결과.md`, 11/23). 남은 칸: 24시간 관찰(11/24), 최종 배포 뒤 재시험
+- [ ] 24시간 관찰(판단안 5-4) — 1차 11/23: 정상 요청 BLOCK 0건(`시험결과/최종_시험결과.md` 4-2절). 11/24 오후 마무리
+- [ ] WAF 로그 개인 보관 — 11/27, 저장소·OneDrive 동기화 폴더 밖. `matchedData`는 문서에 옮기지 않음
+- [ ] 종료 때 WAF 정리(A안) — 12/02 이후 팀 승인 시. ALB 연결 해제(민성) 뒤 Web ACL 삭제, 실패하면 로그 설정 제거 뒤 재시도. 로그 그룹 삭제는 12/11 압축 보관 확인 뒤 별도 승인
 
 #### IAM 권한 검증 결과 (2026-11-13)
 
@@ -210,7 +213,7 @@ python request_verify.py correlate-cloudwatch --run-json output_aws_cleanup_03/r
 | 1 | 로컬 검증 완료·PR 병합 완료 | Windows 11, Python 3.13.1 / `python -m pytest -q tests`: 45 passed in 14.74s / `python -m pytest -q tests -k probe`: 5 passed, 40 deselected in 6.57s / 실제 Django·AWS WAF 검증은 미실행 | 테스트 실행 출력 확인 | Django URL·폼·인증/CSRF·로그 계약 및 시험 데이터 초기화 방법 확인 후 앱 연동 시험 |
 | 2 | 로컬 Django HTTP 시험 완료·추가 검증 대기 | 2026-11-10 / Django + PostgreSQL (`haven_verify`) / `--phase 2`: 87개 논리 케이스, 109/109 HTTP 기대값 일치, 전체 137요청, 오류 0건, 복구 완료 | `시험결과/2026-11-10_로컬_02.md` 파일 확인. 세부내용은 로컬 `output_django_phase2_01/results.json`로 보관 | DB·브라우저 검증, 앱/WAF 로그 상관분석, AWS 환경 재시험 |
 | 3 | 로컬 Django HTTP 통합 완료·AWS 미검증 | 2026-11-11 / 로컬 통합 시험 당시 pytest 237 통과. 이후 PR #62 리뷰 반영 후 pytest 251 통과. 통합 HTTP 시험 기록은 153개 논리 케이스·197/197 일치. / 1~3회차 통합 153개 케이스, HTTP 197/197 일치, 전체 요청 231건, 복구 완료·오류 0건 | `output_django_phase3_full_02/results.json` 로컬 보관, 보고서 작성 예정 | WAF Count·로그 상관분석, 저장소 잔여 파일 확인, AWS 재시험 |
-| 4 | WAF Count 구성·탐지 확인, AWS 정리·WAF↔Django 상관분석 검증 완료, Count 재시험 완료, Block 판단 대기 | 2026-11-16 / `https://orchestration-haven.cloud` / run_id `cb5c3f96` / `run` → `collect-logs` → `correlate-cloudwatch` / 본시험 HTTP 9/9 일치, 자동 정리 완료(오류 0), 요청 20 = 응답 20, 본시험 9·삭제 1·삭제 후 확인 GET 1 모두 MATCHED(WAF ALLOW·앱 MATCH), 확인 GET PASS, 종료 코드 3(manual_required 10건) / 2026-11-17 Count 재시험 run_id `2710825f`: 정상 2·SQLi 1·XSS 1 모두 MATCHED·PASS, 정상 요청 Count 0건, 종료 코드 0 / pytest 400 passed | 로컬 `output_aws_cleanup_03`·`_logs_03`·`_corr_03`, `output_aws_waf_count_01`·`_logs_01`·`_corr_01` 보관(원본 로그 미커밋). 정리 검증은 HTTP_ONLY, DB 행·첨부 파일 물리 삭제는 미검증 | 누적 Count 로그 오탐 분석 → Block 대상 선정 → 민성 적용, Nginx 식별자 재검증(11/27) |
+| 4 | WAF Count 구성·탐지 확인, AWS 정리·WAF↔Django 상관분석 검증 완료, Count 재시험 완료, Block 1~3단계 전환·전후 비교 완료(11/20, #194·#199·#207) | 2026-11-16 / `https://orchestration-haven.cloud` / run_id `cb5c3f96` / `run` → `collect-logs` → `correlate-cloudwatch` / 본시험 HTTP 9/9 일치, 자동 정리 완료(오류 0), 요청 20 = 응답 20, 본시험 9·삭제 1·삭제 후 확인 GET 1 모두 MATCHED(WAF ALLOW·앱 MATCH), 확인 GET PASS, 종료 코드 3(manual_required 10건) / 2026-11-17 Count 재시험 run_id `2710825f`: 정상 2·SQLi 1·XSS 1 모두 MATCHED·PASS, 정상 요청 Count 0건, 종료 코드 0 / pytest 400 passed | 로컬 `output_aws_cleanup_03`·`_logs_03`·`_corr_03`, `output_aws_waf_count_01`·`_logs_01`·`_corr_01` 보관(원본 로그 미커밋). 정리 검증은 HTTP_ONLY, DB 행·첨부 파일 물리 삭제는 미검증 | 24시간 관찰(11/24), 최종 배포 뒤 재시험, WAF 로그 보관(11/27), 종료 때 WAF 정리(12/02 이후). 전체 결과는 `시험결과/최종_시험결과.md` |
 
 세부 기능/시험은 [기본 명세](../docs/구현명세/기본프로젝트_구현명세.md)를 따른다. 비밀값과 원본 민감 로그는 기록하지 않는다.
 
@@ -452,5 +455,5 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
    - **User-Agent 없는 KR 요청 패턴(알림):** 11/20 19:12, 11/21 11:11, 11/22 12:19, 11/23 08:56에 `/favicon.ico`·`/posts/`·`/accounts/login/` 6~8건이 0.1초 안에 한꺼번에 왔고(11/23 06:55 `/` 1건 별도), 모두 ALLOW입니다. 자동 요청이지만 간격이 일정하지 않고 하루 한 번쯤이라 상태 점검보다는 다른 도구의 요청일 수 있습니다(확인하지 않음). Block이었다면 5회 모두 403이었으므로 Count 유지가 맞다고 봅니다.
    - 같은 구간에 User-Agent 없이 온 해외 `.php`·`/.git/config` 탐색은 ALLOW로 통과했습니다(Count 유지의 비용, 앱 응답은 확인하지 않음).
 4. **④ GitGuardian 4건과 시험용 비밀번호:** #188의 4건은 모두 `fixtures/waf_login_special_chars_variants.json` 3·4·5·7줄(P01·P02·P03·P05)입니다. 아이디는 운영 DB에 없는 `sec58.special.*`이고 AWS 실행에서 로그인 400으로 끝나, 실제 계정 정보가 아닙니다. `Haven2026!@#`은 재현용으로 새로 만든 값입니다. `qwer1234!@#$`는 11/16·17 다른 팀원의 브라우저 시험값으로, 그때 가입한 시험 계정이 남아 있을 수 있습니다. 관리자 권한이 없는 시험 계정뿐이고 사이트에 비밀번호 변경·계정 삭제 기능이 없어 따로 조치하지 않았습니다. GitGuardian 경고는 대시보드에서 "시험 값"으로 닫아 주시면 됩니다.
-5. **⑤ WAF 로그 개인 보관:** 12/13 전에(다음 주 예정) 저장소·팀 채팅 밖에 보관하겠습니다. `matchedData`는 문서에 옮기지 않습니다.
+5. **⑤ WAF 로그 개인 보관:** 11/27에(그 뒤로는 작업하지 않으므로, 기한 12/13보다 앞당김) 저장소·팀 채팅 밖에 보관하겠습니다. `matchedData`는 문서에 옮기지 않습니다.
 6. **⑥ 종료 때 WAF 정리:** 12/02 이후 팀 승인과 ALB 연결 해제(민성) 뒤 순서대로 진행하겠습니다.

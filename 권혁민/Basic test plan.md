@@ -183,7 +183,7 @@ python scripts/request_verify.py correlate --run-json <results.json> --waf-log <
 - [x] 규칙/버전·예외·비용·보존과 가림 증거 기록 후 PR 제출. — `waf/WAF_Block_판단.md`(비용은 보람 계산)
 
 ### 4회차 — Block 전환·재시험·인계 마감
-- [ ] 앱·정책 결함 수정 후 동일 조건 재시험 및 정상 회귀 확인. — Block 1~3단계 재시험 완료, 최종 배포 뒤 재실행 남음
+- [x] 앱·정책 결함 수정 후 동일 조건 재시험 및 정상 회귀 확인. — Block 1~3단계 재시험, 11/24 최종 배포 뒤 재실행 완료(`시험결과/최종_시험결과.md` 8절)
 - [x] 검토·승인된 규칙만 Block 전환 후 regression·confirmation 비교. — `2026-11-20_AWS_06~08.md`
 - [x] 오탐·차단·UNKNOWN/ERROR·분모·제한사항과 필요 시 rollback 결과 정리. — `시험결과/최종_시험결과.md`. rollback은 오탐 0건이라 하지 않음(절차만 판단안 5-3)
 - [ ] 개인 TODO 최종 검증·PR 제출, main 통합 후 개인 브랜치 갱신.

@@ -219,7 +219,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 13번 [민성 EC2 삭제 IAM 정책](JSON/13_Minsung_TerminateInstances_Policy.json)의 태그 조건 재확인. 정책 JSON 조건은 일치하나 **AWS 사용자 실제 연결 여부는 미확인**.
 - [x] 민성님 요청 `haven-sg-test` SG 정리용 `ec2:DeleteSecurityGroup` 정책을 [15번 JSON](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)으로 추가. 서울 리전, `Project=Haven` 태그 SG만 허용하도록 제한.
 - [x] 위 추가 작업을 [PR #42](https://github.com/MinsooAhn02/Haven/pull/42)에 기록. AWS IAM 변경은 콘솔에서 별도 적용 필요.
-- [ ] **남은 확인:** 13·15번은 AWS 고객 관리형 `Haven-Minsung-Delete-Policy`(34번 통합 기록)에 반영·연결됨. SG 삭제 허용/거부는 11/13 민성님 시험 완료. **14번 SSM 정책의 별도 연결 확인과 EC2 영구 삭제 권한의 시험용 허용·운영용 거부 시험은 미확인**이므로 담당자 검증 필요.
+- [ ] **남은 확인:** 13·15번은 AWS 고객 관리형 `Haven-Minsung-Delete-Policy`(34번 통합 기록)에 반영·연결됨. SG 삭제 허용/거부는 11/13 민성님 시험 완료. **14번 SSM 정책 연결 및 AWS 저장본과 GitHub JSON 일치 확인 완료(11/20).** **EC2 영구 삭제 권한의 시험용 허용·운영용 거부 시험은 미확인**이므로 담당자 검증 필요.
 - [x] **11/13 민성님 SG 삭제 시험 완료:** `Project=Haven`·`Name=haven-sg-test` 태그를 갖춘 시험용 SG를 생성하여 `--dry-run` 권한 확인 후 실제 삭제 성공(허용 1건). 운영용 SG 3개와 기본 SG 1개는 `--dry-run`에서 삭제 거부 4건 확인. 현재 정책은 두 태그 조건을 모두 요구하며, 다른 정책을 통한 삭제 우회 가능성은 별도 미검증([3회차 기록](1~4회차/3회차.md)).
 
 ## 2026-11-10 민수님 추가 지시 — 시험용 EC2 삭제 범위 제한 (최신)

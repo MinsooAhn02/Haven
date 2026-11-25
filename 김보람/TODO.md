@@ -80,9 +80,9 @@
 - [ ] 민수님 본인 MFA 등록·비밀번호 변경·CloudShell 서울 리전 생성 및 SSM 허용/거부 시험
 - [x] [06_DB_S3_Backup_Policy.json](JSON/06_DB_S3_Backup_Policy.json)에 `s3:PutObject`·`s3:GetObject` 초안 반영, 확정 버킷 이름 규칙 `haven-backup-${ACCOUNT_ID}` 반영
 - [x] AWS 공통 EC2 Role에 `Haven-EC2-S3-Backup-Restore` 인라인 정책 연결(권한 정책 생성·연결 화면 확인)
-- [ ] 실제 S3 버킷 생성 여부, 백업·복원 동작 및 Web/DB 공통 Role의 접근 범위 검증
+- [x] 실제 S3 버킷 생성 여부, 백업·복원 동작 및 Web/DB 공통 Role의 접근 범위 검증
 - [x] AWS에 적용한 EC2 SSM 읽기 인라인 정책을 [07_EC2_SSM_Parameter_Read_Policy.json](JSON/07_EC2_SSM_Parameter_Read_Policy.json) 템플릿으로 기록해 PR #29 반영 (계정 ID 변수는 실제 적용 전 치환)
-- [ ] 민성님에게 서버 Role/프로파일 및 적용·검증 상태 인계
+- [x] 민성님에게 서버 Role/프로파일 및 적용·검증 상태 인계
 - [ ] 서버 구축 후 실제 허용·거부 시험, 다른 리전/잔여 과금 자원 확인
 
 **상태 구분:** IAM 정책 *생성*은 실제 사용자 *권한 연결* 및 *정상 작동 검증*과 다름. 완료되지 않은 작업은 완료 표시하지 않음. 11/09 Discord 일일 보고 시 위 현황과 [2회차 상세 기록](1~4회차/2회차.md)을 참조.
@@ -209,7 +209,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] 민성님 `RunInstances` 시험 결과 확인: 태그 없는 요청 거부, 공인 IP 자동 할당 명시적 거부, 기본 SG의 Haven 태그 부재에 따른 접근 거부 확인. **시험 명령과 실제 구축 스크립트의 조건을 구분함.**
 - [x] 민성님·민수님 역할 전달 설정 확인: `minsung`에 `iam:PassRole` 정책 연결, EC2용 역할 `haven-ec2-ssm-role` 및 `haven-ec2-ssm-profile` 연결, 역할에 `AmazonSSMManagedInstanceCore` 적용 확인.
 - [x] 추가 요청 정책 2개를 개인 브랜치에 문서화하고 [PR #42](https://github.com/MinsooAhn02/Haven/pull/42)에 함께 제출: [13번 EC2 종료(삭제) 권한](JSON/13_Minsung_TerminateInstances_Policy.json), [14번 민성 SSM 세션 접속 권한](JSON/14_Minsung_SessionManager_Policy.json).
-- [ ] **AWS 실적용 확인:** 위 13·14번 정책이 `minsung`에게 실제 연결·저장됐는지 확인. GitHub PR만으로 AWS 정책은 바뀌지 않음.
+- [x] **AWS 실적용 확인:** 위 13·14번 정책이 `minsung`에게 실제 연결·저장됐는지 확인. GitHub PR만으로 AWS 정책은 바뀌지 않음.
 - [ ] **담당자 검증 대기:** 민성님의 Haven 서버 SSM 접속·비대상 접근 거부 시험, EC2 종료 권한 시험(실제 영구 삭제 전 민수님 승인), 21시 NAT/EIP 정리 결과 및 비용 확인.
 - **권한 범위 최신 확인:** 초기에는 `Project=Haven`, `Owner=minsung` 태그 조건만으로 운영 서버도 삭제 대상이 될 수 있었으나, **11/10 이후 AWS 실제 `Haven-Minsung-Delete-Policy`에는 `Name=haven-test*` 조건도 추가**되어 시험용 EC2로 제한됨. [13번 정책](JSON/13_Minsung_TerminateInstances_Policy.json)·[34번 통합 정책](JSON/34_Haven-Minsung-Delete-Policy.json) 참조. 단, 시험용 EC2 삭제 허용·운영 EC2 삭제 거부 실환경 시험은 미확인.
 
@@ -328,7 +328,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 
 - [x] [AWS 자원 현황 및 종료 확인 목록](AWS_자원현황_종료확인목록_2026-11-11.md) 작성: EC2 2·Haven VPC 1·서브넷 4·보안 그룹 3·NAT 1·ALB 1·EBS 2(40 GiB)·S3 1·EIP/공인 IPv4 3 및 연결 대상·Route 53 1·SES 확인됨/DKIM SUCCESS(민성 보고)·WAF 조회 0개.
 - [x] 기본 VPC·기본 서브넷·기본 SG와 Haven 자원을 구분하여 기록.
-- [ ] 종료 전에 담당자 확인 필요: IGW/라우팅, S3 Gateway Endpoint, ACM 인증서, ALB 대상 그룹/리스너, EBS 스냅샷, CloudWatch 로그, S3 백업 객체, 다른 리전의 자원.
+- [x] 종료 전에 담당자 확인 필요: IGW/라우팅, S3 Gateway Endpoint, ACM 인증서, ALB 대상 그룹/리스너, EBS 스냅샷, CloudWatch 로그, S3 백업 객체, 다른 리전의 자원.
 - **이 단계는 자원 현황 초안 및 인계 목록 작성 완료이며 실제 자원 삭제/변경 또는 종료 승인 아님.**
 
 ## 민성's comment · 2026-11-12 · 4회차 추가 업무 (조장 결정)

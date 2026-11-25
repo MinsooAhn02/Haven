@@ -1,0 +1,2 @@
+설정 파일 위치 메모
+앱 설정은 ../../etc/app/config.yaml 에 있고, 로그는 ../logs/app.log 에 쌓인다.

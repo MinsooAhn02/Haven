@@ -1,0 +1,2 @@
+Database study notes
+A SELECT statement picks columns, the FROM clause names a table, and WHERE filters rows. UNION merges results. A SELECT statement picks columns, the FROM clause names a table, and WHERE filters rows. UNION merges results. A SELECT statement picks columns, the FROM clause names a table, and WHERE filters rows. UNION merges results. A SELECT statement picks columns, the FROM clause names a table, and WHERE filters rows. UNION merges results. A SELECT statement picks columns, the FROM clause names a table, and WHERE filters rows. UNION merges results. 

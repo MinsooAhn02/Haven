@@ -6,7 +6,7 @@
 | 작성일 | 2026-11-20 (초안 11-19) |
 | 대상 | Web ACL `haven-web-acl` (서울 리전, ALB 연결), 관리형 규칙 그룹 3개 |
 | 적용 담당 | 이민성 (조장 결정 11/12: 혁민 = 판단, 민성 = Block 적용) |
-| 상태 | **3단계 모두 적용 완료(2026-11-20).** 1단계 KnownBadInputs 11:46:57, 2단계 SQLi + 로그인·가입 예외 14:28:22, 3단계 Common + 업로드 예외 15:41:16. 단계마다 전후 비교 시험에서 막혀야 할 요청만 막혔고 정상 요청 403은 0건(`시험결과/2026-11-20_AWS_06~08.md`). 5-4 관찰 완료(11/24, 시험 아닌 요청 BLOCK 0건). **남은 일: 10절 탐색 오탐 판단(11/27 전, 조장)** |
+| 상태 | **3단계 모두 적용 완료(2026-11-20).** 1단계 KnownBadInputs 11:46:57, 2단계 SQLi + 로그인·가입 예외 14:28:22, 3단계 Common + 업로드 예외 15:41:16. 단계마다 전후 비교 시험에서 막혀야 할 요청만 막혔고 정상 요청 403은 0건(`시험결과/2026-11-20_AWS_06~08.md`). 5-4 관찰 완료(11/24, 시험 아닌 요청 BLOCK 0건). **4단계 2026-11-25 09:24:47 적용(조장, 10절 결정):** `GenericLFI_BODY` Count, `SQLiExtendedPatterns_BODY`는 글 작성·수정·첨부 업로드 주소만 예외. 재시험 완료(10-4절): 탐색 오탐 9종 해소, 8개 묶음 막힘 43/43, 정상 요청 403 0건 |
 
 ---
 
@@ -18,6 +18,7 @@
 | **SQLi** | Count | **Block + 예외 1개** | SQL 공격 변형을 잘 잡는다. 단 **비밀번호에 `!@#`가 이어지면 `SQLi_BODY`가 오탐**하므로, **로그인·가입 주소에서만 `SQLi_BODY`를 Block하지 않는다** |
 | **Common** | Count | **Block + 예외 3개** | XSS·LFI·SSRF·악성 봇은 잘 잡는다. **`SizeRestrictions_BODY`(정상 첨부 업로드를 막음)** 와 **`NoUserAgent_HEADER`(점검 스크립트 미확인, 조장 결정 11/20)** 는 Count 유지. **`CrossSiteScripting_BODY`는 첨부 업로드 주소에서만 Block하지 않는다**(메타데이터가 든 정상 PDF를 막음) |
 
+- **11/25 4단계(10절):** Common `GenericLFI_BODY`도 Count로 두고, SQLi `SQLiExtendedPatterns_BODY`는 글 작성·수정·첨부 업로드 주소에서만 Block하지 않는다. 글 본문 `<script>`는 계속 Block한다.
 - 기본 동작(어떤 규칙에도 안 걸린 요청)은 지금처럼 **Allow**를 유지한다.
 - **한 번에 다 바꾸지 않고 KnownBadInputs → SQLi → Common 순서로 나눠 적용**하고, 단계마다 같은 시험을 다시 돌려 확인한다(5·6절).
 - WAF 로그에 요청 본문(비밀번호 포함)이 남는 문제가 있어 **로그 조회 권한·보관 기간을 함께 정한다**(7절).
@@ -64,6 +65,7 @@
 
 - 비밀번호를 받는 곳은 이 두 주소뿐이다(앱 URL 확인. 비밀번호 변경 화면은 없고 운영자 화면도 같은 로그인을 쓴다).
 - **남는 위험:** 글 본문에 `abc123!@#`처럼 쓰면 걸릴 수 있다고 보았으나, 2단계 시험에서 글 본문 5종(`qwer1234!@#$` 포함)은 `SQLi_BODY`에 걸리지 않았다(`2026-11-20_AWS_07.md` 4절). 오탐은 로그인 본문 구조에서 생기는 것으로 보이며 그 위치는 예외로 처리했다. Block 뒤 관찰에서 `/posts/` 주소의 `SQLi_BODY` BLOCK은 계속 따로 본다(5-4).
+- **11/25 추가 예외(10절):** Block 뒤 탐색에서 영어 SQL 설명 글이 `SQLiExtendedPatterns_BODY`에 걸려, 이 규칙도 Count로 두고 예외 규칙 `haven-sqli-ext-body-except-posts`가 글 작성·수정·첨부 업로드가 아닌 주소에서만 Block한다. 로그인·가입 SQLi는 이 규칙이 계속 막는다(10-4).
 
 ### 3-3. Common (`Version_1.23`) → **Block + 예외 3개**
 
@@ -74,7 +76,7 @@
 | `UserAgent_BadBots_HEADER` | zgrab·masscan·360Spider 등 120건, 시험의 Nmap User-Agent 탐지. 일반 Chrome User-Agent 0 | Block |
 | `CrossSiteScripting_QUERYARGUMENTS` | 쿼리 XSS 변형, 재표시 XSS 탐지. 정상 쿼리 0 | Block |
 | **`CrossSiteScripting_BODY`** | 본문 XSS 변형 11/11, 파일명 XSS, **브라우저 수동 시험의 XSS 글·첨부 7/7** 탐지. 정상 글(HTML 태그 설명 포함) 0. **그러나 XMP 메타데이터가 앞부분에 있는 정상 PDF 업로드가 걸림**(11/13 팀원 업로드 2건, 재현 시험 1/1). 메타데이터 없는 PDF는 안 걸림 | **Block하되 첨부 업로드 주소(`/posts/<번호>/attachments/`)는 예외.** 글 작성·수정 등 다른 주소의 본문 XSS는 Block |
-| `GenericLFI_*`·`GenericRFI_*`·`EC2MetaDataSSRF_*` | `../` 파일명, `?file=../../etc/passwd`, `?url=169.254.169.254` 탐지. 정상 글(`/etc/hosts`·`C:\Users` 언급) 0 | Block |
+| `GenericLFI_*`·`GenericRFI_*`·`EC2MetaDataSSRF_*` | `../` 파일명, `?file=../../etc/passwd`, `?url=169.254.169.254` 탐지. 정상 글(`/etc/hosts`·`C:\Users` 언급) 0 | Block. **단 `GenericLFI_BODY`는 11/25부터 Count**(10절: 본문 `../` 오탐). 파일명 `../`은 앱이 400으로 거부 |
 | `RestrictedExtensions_*` | `.bak`·`.php.bak` 등 스캐너 63건 | Block |
 | `SizeRestrictions_QUERYSTRING`·`_URIPATH`·`_Cookie_HEADER` | 관찰·시험에서 매칭 없음. Haven의 주소·쿠키는 짧음 | Block (전후 비교에서 정상 기능 재확인) |
 
@@ -113,6 +115,7 @@
 | 1 | KnownBadInputs | `OverrideAction: None`, `RuleActionOverrides` 제거 | `/.env`·Log4j 헤더가 WAF 403이고 앱·Nginx 로그 없음. 정상 기능 회귀 |
 | 2 | SQLi + 예외 규칙 | `OverrideAction: None`, `RuleActionOverrides`는 `SQLi_BODY` Count 하나. **SQLi 그룹 바로 뒤에 예외 규칙 추가**(아래) | 글·쿼리의 SQLi가 WAF 403. **`qwer1234!@#$` 로그인은 403 없이 앱 400**, 정상 로그인 성공 |
 | 3 | Common + 예외 규칙 | `OverrideAction: None`, `RuleActionOverrides`는 아래 3개만. **Common 그룹 바로 뒤에 업로드 예외 규칙 추가**(아래) | 글의 XSS·LFI·SSRF가 WAF 403. **2 MiB 정상 업로드와 메타데이터 PDF 업로드 302 유지** |
+| 4 (11/25) | Common `GenericLFI_BODY` Count 추가, SQLi `SQLiExtendedPatterns_BODY` Count 추가 + 예외 규칙 `haven-sqli-ext-body-except-posts` | 레이블 `awswaf:managed:aws:sql-database:SQLiExtendedPatterns_Body` AND NOT 글 작성·수정·첨부 업로드 주소 → Block (조장 운영기록 11/25) | 탐색 오탐 9종 302·400, `<script>` 403 유지, 8개 묶음 막힘 43건(10-4) |
 
 **2단계 SQLi 그룹의 `RuleActionOverrides`:**
 
@@ -250,13 +253,14 @@
 
 - 관찰 기간은 약 1주이고 사용자는 팀원·시험 계정뿐이다. 실제 사용자가 생기면 오탐 분석을 다시 해야 한다.
 - 누적 로그 집계는 규칙 그룹마다 첫 매칭 규칙만 셌다(최소 건수). 빠졌던 11/13 12:00~21:00 KST 구간은 11/20에 다시 집계했다(요청 1,354건).
-- `!@#` 오탐은 시험한 모양(비밀번호 10종, 글 3종)으로만, PDF 오탐은 시험용 PDF 2종으로만 범위를 확인했다. 다른 특수문자 조합이나 다른 파일 내용에도 비슷한 오탐이 있을 수 있어 5-4 관찰로 보완한다. → 11/24 탐색 시험에서 다른 모양의 오탐 10종을 찾았다(10절).
+- `!@#` 오탐은 시험한 모양(비밀번호 10종, 글 3종)으로만, PDF 오탐은 시험용 PDF 2종으로만 범위를 확인했다. 다른 특수문자 조합이나 다른 파일 내용에도 비슷한 오탐이 있을 수 있어 5-4 관찰로 보완한다. → 11/24 탐색 시험에서 다른 모양의 오탐 10종을 찾았고, 그중 9종은 11/25 4단계로 풀었다(10절).
+- **남긴 오탐·미탐(11/24 조장 결정):** 글 본문에 `<script>`를 글자로 쓰면 403이다(10-1, 유지). 10-3의 미탐 7종은 WAF로 막지 않고 앱 처리에 맡긴다.
 - 시험 결과는 이번 시험 요청 기준의 관찰이며 방어율이 아니다.
 - 화면 이스케이프(XSS)처럼 사람이 확인한 항목은 브라우저 수동 확인(`_AWS_04.md`)을 근거로 했다.
 
-## 10. Block 뒤 탐색에서 찾은 오탐·미탐 (2026-11-24, 판단 필요)
+## 10. Block 뒤 탐색에서 찾은 오탐·미탐 (2026-11-24 발견, 11/25 적용)
 
-24시간 관찰 구간 안(11/24 15:40~16:22)에 오탐·미탐 경계를 찾으려고 정상 입력 46종과 공격 50종을 보냈다(`시험결과/최종_시험결과.md` 4-2절). 실제 사용자는 없으므로 아래 오탐은 시험 입력으로 재현한 것이다. **3단계 설정을 그대로 둘지, 일부 규칙을 완화할지 11/27 전에 정해야 한다.**
+24시간 관찰 구간 안(11/24 15:40~16:22)에 오탐·미탐 경계를 찾으려고 정상 입력 46종과 공격 50종을 보냈다(`시험결과/최종_시험결과.md` 4-2절). 실제 사용자는 없으므로 아래 오탐은 시험 입력으로 재현한 것이다. **조장이 10-2 제안대로 정했다(PR #226 코멘트, 11/24): `GenericLFI_BODY` B, `SQLiExtendedPatterns_BODY` C, `<script>` A, 미탐은 기록만.** 11/25 09:24:47에 적용(4단계)했고, 재시험 결과는 10-4절이다.
 
 ### 10-1. 오탐 (정상 입력이 403)
 
@@ -276,8 +280,7 @@
 | `SQLiExtendedPatterns_BODY` | A 유지 / B 규칙만 Count / C 글 작성·수정·첨부 업로드 주소만 예외(3-2절과 같은 방식: 규칙은 Count, 사용자 규칙 "레이블 `awswaf:managed:aws:sql-database:SQLiExtendedPatterns_Body` AND NOT 글·첨부 주소 → Block") | **C** | 로그인 SQLi 공격(`admin' OR …` 등)은 지금 이 규칙이 막고 있어서 모든 주소를 Count로 바꾸면 아깝다. 글·첨부는 ORM으로 글자만 저장한다 |
 | 글 본문 `<script>` | A 유지 / B 글 주소도 XSS 예외 | **A (유지)** | 저장형 XSS는 앱 이스케이프가 막지만(SEC-09·10, 결함 주입 7/7), CSP가 없어서 2차 방어선이 WAF뿐이다. `<script>`를 글자로 쓰는 메모는 드물다 |
 
-**바꾸기로 하면 할 일 (하루 안에 가능):** 규칙 변경(조장) → 탐색 오탐 입력 10종 재실행으로 302·400 확인 → 최종 재시험 8개 묶음 재실행. 이때 기존 시험에서 이 두 규칙이 막던 요청(업로드 묶음 경로 1건, 보안 회귀의 글 작성·수정 SQLi, 공유 칸)은 앱 응답으로 바뀌므로 `block_expectations.json`의 3단계 기대값을 함께 고친다.
-**그대로 두기로 하면:** 위 표를 "알려진 오탐"으로 9절 한계에 남기고 발표에서 설명한다.
+**적용 뒤 확인(10-4):** 기존 시험에서 결과가 바뀐 것은 업로드 묶음의 `../escape.txt` 1건(403 → 앱 400)뿐이다. 보안 회귀의 글 작성·수정 SQLi는 XSS 문자열도 들어 있어 `haven-xss-body-except-upload`로, 공유 칸 SQLi는 `haven-sqli-body-except-auth`로 계속 403이다. 그래서 `block_expectations.json` 3단계 기대값은 이 1건만 고쳤다(막힘 44 → 43).
 
 ### 10-3. 미탐 (공격 입력이 통과) → 제안: 그대로 두고 기록
 
@@ -287,3 +290,16 @@
 | 경로 조작 4종 | 잘못된 UTF-8(`%c0%ae`), `/etc/passwd%00.png`, `file:///etc/passwd`, `/proc/self/environ` | 앱이 쓰지 않는 파라미터(`?file=`) |
 
 사용자 규칙을 더 만들면 새 오탐이 생길 수 있고, 앱이 같은 입력을 안전하게 처리하므로 4절 목록에 더해 기록만 한다.
+
+### 10-4. 4단계 적용 뒤 재시험 (2026-11-25)
+
+| 시험 | run_id | 시각(KST) | 결과 |
+|---|---|---|---|
+| 탐색 오탐 재확인 `fixtures/cases_aws_waf_fp.json` | `277f9622` | 10:10 | 11건 PASS. 10-1의 오탐 9종(글 5·첨부 2·로그인 2)이 302·400이고 WAF ALLOW(Count 레이블만 남음). 글 본문 `<script>` 1종은 403(`haven-xss-body-except-upload`) |
+| 최종 재시험 8개 묶음(`--block-stage 3`) | header `061a34f8`, waf_count `301dc292`, session_attach `2bb86e75`, haven_aws `6cff73bb`, upload `cbc9f375`, sec_remaining `e44813af`, security_phase2 `505dae5b`, waf_verify `e637a850` | 10:16~10:26 | HTTP 187/187, 로그 대조 204/209, 막힘 43/43, 정상 요청 403 0건 |
+
+- 결과가 바뀐 것은 업로드 묶음 `UP-03-INVALID-FILENAMES-P01`(`../escape.txt`) 1건이다. 403에서 앱 400으로 바뀌었다.
+- 로그인 SQLi(SEC-01 6건, SEC-02 3건)는 새 예외 규칙 `haven-sqli-ext-body-except-posts`가 막았다. 로그인·가입 SQLi 차단이 유지된다.
+- 로그 대조에서 PASS가 아닌 5건은 11/24와 같은 이유다. 글 생성이 막혀 정리를 생략한 4건, ALB가 WAF보다 먼저 거부한 경로 조작 1건이다.
+- 첫 오탐 재확인 실행(`a8d44c8d`)은 로그인 비밀번호 1종을 잘못 옮겨(역슬래시 1개) 근거로 쓰지 않았다.
+- 한계: 오탐 재확인은 10-1의 입력 10종 기준이다. 같은 규칙에 걸리는 다른 모양의 입력은 다시 찾지 않았다.

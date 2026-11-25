@@ -22,7 +22,7 @@
 │   ├── cases_basic_*.json        # 로컬 기본 시험(공유·업로드·용량·본문 크기 등)
 │   ├── cases_*_inactive.json     # 소유자·수신자 비활성(수동 체크포인트)
 │   ├── cases_haven_aws.json      # AWS 게시글·첨부·공유·해제 스모크
-│   ├── cases_aws_*.json          # AWS 묶음(보안 회귀·업로드·WAF 오탐/미탐·헤더·세션/첨부·남은 SEC)
+│   ├── cases_aws_*.json          # AWS 묶음(보안 회귀·업로드·WAF 오탐/미탐·헤더·세션/첨부·남은 SEC·탐색 오탐 회귀)
 │   ├── block_expectations.json   # WAF Block 단계별 기대값 프로필
 │   ├── waf_*_variants.json 등    # 입력 변형(variants)·POST 입력
 │   └── sample_*                  # 무해한 첨부 샘플(TXT·PDF)
@@ -168,7 +168,7 @@ python request_verify.py correlate --run-json output_body_01/results.json --waf-
 `cases_haven_template.json`에 1~3회차 시험을 통합했다.
 
 - 논리 케이스 153개, 실제 HTTP 시험 197건
-- 당시 pytest 251개 통과 (PR #62 리뷰 M1~M8 보강, 11/20 기준 전체 511개)
+- 당시 pytest 251개 통과 (PR #62 리뷰 M1~M8 보강, 11/25 기준 전체 513개)
 - 로컬 Django 시험 HTTP 기대값 197/197 일치, 복구 완료
 - 이 파일은 DB를 초기화한 로컬 환경 기준이다. AWS 운영 사이트는 아래 "AWS 운영 시험"의 `cases_aws_*.json`으로 시험했다
 
@@ -305,10 +305,11 @@ python request_verify.py run ... --expect-profile fixtures/block_expectations.js
 ```
 
 - 프로필에 적힌 케이스는 해당 단계에서 `expected_waf=BLOCK`, HTTP 403을 기대한다. 나머지는 `ALLOW`와 원래 앱 응답을 기대한다.
-- 단계는 누적이다(1 KnownBadInputs → 2 SQLi → 3 Common). 기대 막힘 수는 6 → 25 → 44건이었다.
+- 단계는 누적이다(1 KnownBadInputs → 2 SQLi → 3 Common). 기대 막힘 수는 6 → 25 → 44건이었다. 11/25 4단계(`GenericLFI_BODY` Count, `SQLiExtendedPatterns_BODY` 글·첨부 주소 예외)부터 3단계 프로필은 43건이다(프로필의 `revision_note`).
 - 막혀야 할 글 작성은 글이 생기지 않으므로(`blocked_creation`), 정리 단계는 표식 글이 없는지만 확인한다(`expect_absent`, `creation_blocked_absent_verified`).
 - 프로필을 쓰면 판정이 `http_only`가 되어 로그 대조 뒤 CLI가 PASS/FAIL을 낸다. `--dry-run`으로 단계별 기대 막힘 수를 먼저 확인한다.
-- 결과: `시험결과/2026-11-20_AWS_06~08.md`.
+- 프로필 없이 케이스에 `expected_waf`(`BLOCK`·`ALLOW`)와 `verification_mode: http_only`를 직접 적어도 로그 대조 뒤 PASS/FAIL이 나온다(예: `cases_aws_waf_fp.json`).
+- 결과: `시험결과/2026-11-20_AWS_06~08.md`, 4단계는 `시험결과/최종_시험결과.md` 9절.
 
 ## 5. 한계와 주의
 
@@ -329,7 +330,7 @@ python request_verify.py run ... --expect-profile fixtures/block_expectations.js
 - [x] 팀의 경로/인증/로그 필드 합의 후 `TODO.md`에 시험 환경·명령·결과 기록
 - [x] `Hyeokmin`에 commit/push 및 `main` 대상 PR 제출
 
-## 7. AWS WAF 구성 (2026-11-12 구성, 11/20 Block 전환)
+## 7. AWS WAF 구성 (2026-11-12 구성, 11/20 Block 전환, 11/25 4단계)
 
 ### 구성 완료
 
@@ -356,5 +357,6 @@ python request_verify.py run ... --expect-profile fixtures/block_expectations.js
 - [x] 실제 WAF Count 로그 수집 및 오탐 분석 (11/13~19)
 - [x] WAF·Nginx·Django 로그 상관분석 (11/16 WAF↔Django 자동, 11/19 Nginx 포함)
 - [x] Block 전환 대상 선정 및 적용 전후 검증 (`waf/WAF_Block_판단.md`, 11/20 조장 적용, `시험결과/2026-11-20_AWS_06~08.md`)
+- [x] Block 뒤 탐색 오탐 조정·재시험 (판단안 10절, 11/25 조장 적용, `fixtures/cases_aws_waf_fp.json`, `시험결과/최종_시험결과.md` 9절)
 
-현재 설정(11/20 이후): 세 규칙 그룹 모두 Block, 기본 동작 Allow. Count로 남긴 규칙은 `SizeRestrictions_BODY`·`NoUserAgent_HEADER`이고, `SQLi_BODY`(로그인·가입 주소 예외)와 `CrossSiteScripting_BODY`(첨부 업로드 주소 예외)는 사용자 예외 규칙 2개가 대신 막는다. 자세한 내용은 판단안 3절.
+현재 설정(11/25 이후): 세 규칙 그룹 모두 Block, 기본 동작 Allow. Count로 남긴 규칙은 `SizeRestrictions_BODY`·`NoUserAgent_HEADER`·`GenericLFI_BODY`(11/25)다. 사용자 예외 규칙 3개가 아래 규칙을 주소에 따라 대신 막는다: `SQLi_BODY`(로그인·가입 주소 예외), `CrossSiteScripting_BODY`(첨부 업로드 주소 예외), `SQLiExtendedPatterns_BODY`(글 작성·수정·첨부 업로드 주소 예외, 11/25). 자세한 내용은 판단안 3절·10절.

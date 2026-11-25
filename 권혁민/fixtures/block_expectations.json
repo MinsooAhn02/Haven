@@ -5,7 +5,7 @@
   "stages": {
     "1": "KnownBadInputs Block",
     "2": "+ SQLi Block (로그인·가입 SQLi_BODY 예외)",
-    "3": "+ Common Block (SizeRestrictions_BODY·NoUserAgent_HEADER·GenericLFI_BODY Count, 첨부 업로드 CrossSiteScripting_BODY 예외) + SQLiExtendedPatterns_BODY 글 작성·수정·첨부 업로드 주소 예외(11/25 결정)"
+    "3": "+ Common Block (SizeRestrictions_BODY·NoUserAgent_HEADER·GenericLFI_BODY Count, 첨부 업로드 CrossSiteScripting_BODY 예외) + SQLiExtendedPatterns_BODY 글 작성·수정·첨부 업로드 주소 예외(11/24 결정, 11/25 적용)"
   },
   "suites": {
     "haven-aws-waf-count-001": {
@@ -137,7 +137,7 @@
       "suite_file": "cases_aws_upload.json",
       "evidence_run": "ccbf418c",
       "block": {},
-      "revision_note": "11/25 조장 결정(PR #226 코멘트)으로 GenericLFI_BODY를 Count로 바꿔 UP-03-INVALID-FILENAMES-P01(../escape.txt)은 3단계에서도 앱 400. 11/20 비교(AWS_08)에서는 GenericLFI_BODY로 403이었다"
+      "revision_note": "11/24 조장 결정(PR #226 코멘트)·11/25 적용으로 GenericLFI_BODY를 Count로 바꿔 UP-03-INVALID-FILENAMES-P01(../escape.txt)은 3단계에서도 앱 400. 11/20 비교(AWS_08)에서는 GenericLFI_BODY로 403이었다"
     },
     "haven-aws-waf-verify-001": {
       "suite_file": "cases_aws_waf_verify.json",

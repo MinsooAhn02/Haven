@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "suite_id": "haven-aws-waf-fp-001",
+  "suite_kind": "regression",
+  "cases": [
+    {
+      "case_id": "WAF-FP-SETUP-A-POST",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/new/",
+      "auth_role": "member_a",
+      "input_reference": "post_valid_record.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "verification_mode": "http_only",
+      "note": "재확인용 A 글",
+      "capture_post_id": true,
+      "critical": true
+    },
+    {
+      "case_id": "WAF-FP-EDIT-ALLOW",
+      "phase": 3,
+      "category": "waf_false_positive",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "auth_role": "member_a",
+      "input_reference": "waf_fp_edit_allow_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 5,
+      "verification_mode": "http_only",
+      "note": "P01 B14·P03 C06(GenericLFI_BODY Count), P02 B17·P04 C11·P05 C12(SQLiExtendedPatterns_BODY 글 수정 예외). 11/25 변경 뒤 302 기대",
+      "post_reference": "WAF-FP-SETUP-A-POST"
+    },
+    {
+      "case_id": "WAF-FP-EDIT-SCRIPT",
+      "phase": 3,
+      "category": "waf_false_positive",
+      "method": "POST",
+      "path": "/posts/{post_id}/edit/",
+      "auth_role": "member_a",
+      "input_reference": "waf_fp_edit_script_variants.json",
+      "expected_app": {
+        "http_status": 403
+      },
+      "expected_waf": "BLOCK",
+      "max_requests": 1,
+      "verification_mode": "http_only",
+      "note": "B12 <script> 설명. 11/25 결정 A(유지)로 계속 403 기대",
+      "post_reference": "WAF-FP-SETUP-A-POST"
+    },
+    {
+      "case_id": "WAF-FP-UPLOAD-ALLOW",
+      "phase": 3,
+      "category": "upload",
+      "method": "POST",
+      "path": "/posts/{post_id}/attachments/",
+      "auth_role": "member_a",
+      "input_reference": "waf_fp_upload_variants.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 2,
+      "verification_mode": "http_only",
+      "note": "P01 U01 경로 메모(GenericLFI_BODY Count), P02 U02 SQL 노트(SQLiExtendedPatterns_BODY 첨부 예외). 302 기대",
+      "post_reference": "WAF-FP-SETUP-A-POST"
+    },
+    {
+      "case_id": "WAF-FP-LOGIN-LFI",
+      "phase": 3,
+      "category": "waf_false_positive",
+      "method": "POST",
+      "path": "/accounts/login/",
+      "auth_role": "anonymous",
+      "input_reference": "waf_fp_login_lfi_variants.json",
+      "expected_app": {
+        "http_status": 400
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 2,
+      "verification_mode": "http_only",
+      "note": "없는 아이디(haven-waf-fp-user) 비밀번호 칸 ../·..\\ 2종(GenericLFI_BODY Count). 앱 400 기대"
+    }
+  ],
+  "cleanup_cases": [
+    {
+      "case_id": "WAF-FP-CLEANUP-SETUP",
+      "phase": 3,
+      "category": "crud",
+      "method": "POST",
+      "path": "/posts/{post_id}/delete/",
+      "auth_role": "member_a",
+      "input_reference": "post_empty_valid.json",
+      "expected_app": {
+        "http_status": 302
+      },
+      "expected_waf": "ALLOW",
+      "max_requests": 1,
+      "verification_mode": "http_only",
+      "note": "재확인 글·첨부 정리",
+      "post_reference": "WAF-FP-SETUP-A-POST",
+      "after_case": "WAF-FP-SETUP-A-POST"
+    }
+  ]
+}

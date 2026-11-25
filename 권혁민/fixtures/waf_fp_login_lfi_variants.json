@@ -1,0 +1,24 @@
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "haven-waf-fp-user",
+          "password": "my../pass1"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {
+          "username": "haven-waf-fp-user",
+          "password": "..\\\\win\\\\pw2"
+        }
+      }
+    }
+  ]
+}

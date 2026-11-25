@@ -62,6 +62,7 @@ def test_stages_are_cumulative(suite_file):
     ("cases_aws_upload.json", "UP-01-04-A-VALID-EXTRA-P02"),              # 2 MiB 정상 업로드
     ("cases_aws_waf_verify.json", "SEC-14-FILENAME-XSS-UPLOAD-P01"),      # 업로드 XSS 예외
     ("cases_aws_header.json", "HDR-NO-UA"),                               # NoUserAgent_HEADER Count
+    ("cases_aws_upload.json", "UP-03-INVALID-FILENAMES-P01"),             # GenericLFI_BODY Count(11/25) → 앱 400    
     ("cases_aws_header.json", "HDR-FP-BROWSER-UA"),                       # 정상
 ])
 def test_exceptions_and_normal_requests_are_never_blocked(suite_file, case_id):

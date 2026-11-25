@@ -1,0 +1,30 @@
+{
+  "variants": [
+    {
+      "id": "P01",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample_waf_fp_path_memo.txt",
+          "filename": "sample_waf_fp_path_memo.txt",
+          "content_type": "text/plain"
+        }
+      }
+    },
+    {
+      "id": "P02",
+      "payload": {
+        "csrf_mode": "valid",
+        "fields": {},
+        "file": {
+          "field_name": "attachment",
+          "local_fixture_path": "sample_waf_fp_sql_notes.txt",
+          "filename": "sample_waf_fp_sql_notes.txt",
+          "content_type": "text/plain"
+        }
+      }
+    }
+  ]
+}

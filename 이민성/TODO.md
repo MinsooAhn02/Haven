@@ -34,9 +34,9 @@
 ### 4회차 · 7~8일차
 
 - [ ] 확인된 네트워크/SG 문제를 수정하고 허용·직접 접근 거부·재시작을 재시험한다. 구성도·실제 자원/SG·CLI 결과·종료 대상을 정리한다.
-- [ ] (11/12 추가) WAF: 혁민이 Count로 구성한 Web ACL을 ALB에 연결하고, 혁민 판단(규칙별 Count 결과·정상 요청 영향)에 따라 Block 적용, 문제 시 Count로 되돌림. 연결·적용 직후 healthz·로그인 확인. 선행: 보람 WAF 쓰기 권한(민성 정책에 wafv2 없음). 4회차 안, 11/27까지 마무리 목표 → 11/20 1~3단계 적용 완료, 3단계 전후 비교 완료(혁민 #207, 정상 요청 403 0건), `NoUserAgent_HEADER` Count 유지(조장 결정 #208), 24시간 관찰 남음 → 11/24 WAF-08 되돌리기 시험 ✅(아래 11/24 코멘트)
-- [ ] (11/19 추가) 시험 메일 DMARC: Route 53에 `_dmarc` TXT(`p=none`으로 시작) 추가 → 시험 메일 재발송 → 헤더 `dmarc=pass`·받은편지함 도착 확인. 사용자 지정 MAIL FROM은 선택(SES 권한은 보람). 추가한 기록은 종료 대상 목록에 (운영기록 11/19 결정)
-- [ ] (11/19 이관) `test-wsl.sh` 새 시험 11개(#143): VMware에 Ubuntu 24.04 시험 전용 VM(스냅샷) → 깨뜨린 커밋은 VM 안에서만 만들어 `bash test-wsl.sh <bundle> <GOOD> <BAD>` → PASS/FAIL 기록
+- [ ] (11/12 추가) WAF: 혁민이 Count로 구성한 Web ACL을 ALB에 연결하고, 혁민 판단(규칙별 Count 결과·정상 요청 영향)에 따라 Block 적용, 문제 시 Count로 되돌림. 연결·적용 직후 healthz·로그인 확인. 선행: 보람 WAF 쓰기 권한(민성 정책에 wafv2 없음). 4회차 안, 11/27까지 마무리 목표 → 11/20 1~3단계 적용 완료, 3단계 전후 비교 완료(혁민 #207, 정상 요청 403 0건), `NoUserAgent_HEADER` Count 유지(조장 결정 #208), 24시간 관찰 남음 → 11/24 WAF-08 되돌리기 시험 ✅(아래 11/24 코멘트) → 11/25 09:24:47 4단계 적용(`GenericLFI_BODY` Count, `SQLiExtendedPatterns_BODY` 글·첨부 주소 예외 12번, 아래 11/25 코멘트), 혁민 재시험 대기
+- [x] (11/19 추가) 시험 메일 DMARC: Route 53에 `_dmarc` TXT(`p=none`으로 시작) 추가 → 시험 메일 재발송 → 헤더 `dmarc=pass`·받은편지함 도착 확인. 사용자 지정 MAIL FROM은 선택(SES 권한은 보람). 추가한 기록은 종료 대상 목록에 (운영기록 11/19 결정) → ✅ 11/25 09:32:10 추가, 시험 메일 `dmarc=pass`·받은편지함 도착(보람 확인), 보람에게 종료 목록 추가 요청(아래 11/25 코멘트)
+- [x] (11/19 이관) `test-wsl.sh` 새 시험 11개(#143): VMware에 Ubuntu 24.04 시험 전용 VM(스냅샷) → 깨뜨린 커밋은 VM 안에서만 만들어 `bash test-wsl.sh <bundle> <GOOD> <BAD>` → PASS/FAIL 기록 → ✅ 11/25 58 passed·0 failed(nginx 설정 실패 1건은 dpkg lock 때문에 다시 확인, 아래 11/25 코멘트)
 - [ ] (11/20 결정) 최종 DB+첨부 복원은 **11/26**. 복원 실행은 민성, 구민철 입회(결과 대조: 공유 기록 조회 비교·첨부 sha256 비교, 복원본은 사이트에 연결하지 않음). 사이트 중단 시간 미리 공지
 - [ ] 검증 결과를 아래에 기록하고 main 통합용 PR 제출
 
@@ -69,7 +69,7 @@
 | ~백업 → 격리 복원 연습 (`docs/인수인계/03` 2장 7번)~ | ✅ 11/13 10:03 백업 `20261113T010301Z` → 격리 복원 DB 줄 수 일치·업로드 7개 sha256 일치 (아래 11/13 코멘트) |
 | ~15번 SG 삭제 실제 시험 (haven-sg-test만 삭제, sg-web·sg-db·sg-alb 거부)~ | ✅ 11/13 11:38~11:42 허용 1·거부 4 (아래 11/13 코멘트). 보람 기록 반영은 보람에게 전달 |
 | ALB·WAF 밤 처리 결정 → destroy.sh 정리 순서 | #57 약 $4.55/주 |
-| WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤 → ✅ 11/20 1~3단계 적용(11:46·14:28·15:41, 아래 11/20 오후 코멘트). 연결 상태 조회 권한(`GetWebACLForResource`)은 ✅ 11/16 12:15 확인: `get-web-acl-for-resource` → `haven-web-acl`(ALB에 연결 유지). WAF-08 되돌리기 ✅ 11/24(3단계 → 2단계 → 3단계, 아래 11/24 코멘트) |
+| WAF ALB 연결 ✅ · Block 적용 | 연결 ✅ 11/13 12:0x(규칙 3개 Count, 기본 Allow). Block 전환은 4회차, 혁민 Count 관찰·판단 뒤 → ✅ 11/20 1~3단계 적용(11:46·14:28·15:41, 아래 11/20 오후 코멘트). 연결 상태 조회 권한(`GetWebACLForResource`)은 ✅ 11/16 12:15 확인: `get-web-acl-for-resource` → `haven-web-acl`(ALB에 연결 유지). WAF-08 되돌리기 ✅ 11/24(3단계 → 2단계 → 3단계, 아래 11/24 코멘트). 4단계 ✅ 11/25 09:24:47(아래 11/25 코멘트) |
 | ~가상 운영 관리자 계정 생성(make_operator.py)~ | ✅ 11/19 생성·APP-07·09 통과 → `operator` 삭제(요찬 요청), 사람별 `op_` 3개 생성 |
 | ~로그인 실패 제한 수치 결정~ | ✅ 11/12 결정: 15분·계정 5번·IP 30번(#75). 구현은 요찬(4회차) → 혁민 점검 → 배포. 실제 IP는 X-Forwarded-For 뒤에서 두 번째(nginx가 ALB IP를 붙임) |
 | ~OUT-10 db-1 PostgreSQL 로그 수집~ | ✅ 11/16 11:04 db-1 실행(`cw-agent-setup-db.sh`), 11:08 `/haven/db` 도착, 11:13 앱 접속 기록(IP·TLS) 확인, 12:04 1시간 로그 양 +176줄 / 약 28KB. PR #116 병합(main `f60e1c6`). 병합 뒤 짝 리뷰 ✅ 끝(혁민 11/16 PR 댓글: 기록 범위·조회, 보람 `김보람/1~4회차/3회차.md` 11/16: 권한·보존 30일·비용) |
@@ -670,3 +670,21 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - 결과: 앞 단계 규칙 파일로 약 2분 안에 되돌리고 다시 올릴 수 있음을 확인했다. Common Block이 꺼져 있던 시간은 약 2분 15초.
 - 현재 상태는 11/20 3단계와 같다(Common·SQLi·KnownBadInputs Block, 예외 규칙 우선순위 10·11).
 - 남은 것: 혁민 최종 시험 결과에 WAF-08 결과 기록 요청.
+## 민성's comment · 2026-11-25 · WAF 4단계 · DMARC · test-wsl · AWS 유지 결정
+
+| 시각 | 한 일 | 결과 |
+|---|---|---|
+| 09:23 | WAF 현재 상태 백업(`get-web-acl` 원본·규칙, 저장소 밖), 4단계 규칙 파일 생성(저장소 밖 스크립트: 지금 상태가 11/20 3단계와 다르거나, 이미 적용했거나, 우선순위가 겹치거나, 출력 파일이 있으면 멈춤) | ✅ 우선순위 0·1·2·10·11·12 기대 구성 |
+| 09:24:47 | WAF 4단계 적용(혁민 #226 10절, 조장 결정): Common `GenericLFI_BODY` Count 추가, SQLi `SQLiExtendedPatterns_BODY` Count 추가 + 예외 규칙 `haven-sqli-ext-body-except-posts`(우선순위 12: 레이블 `awswaf:managed:aws:sql-database:SQLiExtendedPatterns_Body` AND NOT `^/posts/(new\|[0-9]+/edit\|[0-9]+/attachments)/$` → Block) | ✅ healthz 200, 쿼리 LFI 403·쿼리 XSS 403 유지. test3로 `../`와 SELECT·FROM·WHERE·UNION 영어 문장이 든 글 작성·수정이 403 없이 저장됨, 확인 후 글 삭제 |
+| 09:32:10 | DMARC: Route 53 `_dmarc.orchestration-haven.cloud` TXT `"v=DMARC1; p=none"`(TTL 300, CREATE, `rua` 없음) | ✅ Route 53과 외부 DNS(8.8.8.8) 조회 일치 |
+| 09:3x | 시험 메일(web-1 `send_test_mail`, SES 등록 주소, 주소는 숨겨 입력) | ✅ 종료 코드 0, 헤더 `dkim=pass`(orchestration-haven.cloud)·`dmarc=pass (p=NONE)`, 받은편지함 도착(보람 확인, 11/16에는 스팸함) |
+| 09:51~09:59 | `test-wsl.sh`(VMware Ubuntu 24.04 시험 전용 VM·스냅샷, main `49cf0b5`, 깨뜨린 커밋은 VM 안에서만, GitHub 로그인 없음) | ✅ 58 passed, 0 failed. 깨뜨린 커밋 배포 → 건강 확인 실패 → `49cf0b5`로 복귀·healthz 200 |
+| 10:01:58 | nginx 잘못된 설정 1건 다시 확인(자동 업데이트 중지 뒤) | ✅ `unknown directive` → `nginx -t` 실패로 멈춤(종료 1), 이전 설정과 바이트 일치, `nginx -t` OK, 로그인 200 |
+
+- 한계: WAF 브라우저 확인은 적용 뒤만 봤다(적용 전 403은 보지 않음). 전후 비교는 혁민 재시험(탐색 10종·8개 묶음)이 근거다.
+- 한계: `test-wsl.sh`의 "실패해야 하는" 시험은 실패 이유를 확인하지 않는다. 첫 실행의 nginx 설정 시험은 Ubuntu 자동 업데이트의 dpkg lock 때문에 실패해 PASS로 찍혔다(의도한 이유 아님) → 그 1건만 다시 해 의도대로 확인했다. 나머지 실패 기대 12건은 로그에서 이유가 의도와 맞는 것을 확인했다. 시험 스크립트(안민수 폴더)는 고치지 않았다.
+- 시험 메일 첫 붙여넣기에서 받는 주소를 안내 문구 자리에 넣어 명령이 깨졌다(실행 안 됨, 메일 안 나감). 미완성 명령은 Ctrl+C로 취소했고 web-1 root 명령 기록에 주소 0건을 확인한 뒤 셸 기록을 비우고 나왔다.
+- 되돌리기: WAF는 오늘 백업한 3단계 규칙, DMARC는 같은 레코드 DELETE(둘 다 조장 PC 홈 폴더, 저장소 밖).
+- 결정(11/25): AWS는 심화 종료(2027/01/11)까지 일단 유지한다. 근거는 보람 #217(전체 $140 기준 $4.83 남음). 매일 비용 확인과 평일 `night.sh`는 계속, 12/10~11 로그 압축 보관도 그대로 한다.
+- 전달: 혁민에게 WAF 적용 알림(재시험 요청), 보람에게 종료 목록 `_dmarc` 추가 요청, 구민철에게 ASVS용 DEP-03·DEP-05·CI-02 증거 위치 전달.
+- 확인: 요찬 `applog_check.py`는 요찬에게 AWS 권한이 없어 조장이 실행한다. 조장 PC에서 `/haven/web` `FilterLogEvents` 가능(23번 정책). Git Bash에서는 `MSYS_NO_PATHCONV=1`이 필요하다(없으면 로그 그룹 이름이 Windows 경로로 바뀌어 거부됨).

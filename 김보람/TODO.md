@@ -71,7 +71,7 @@
 - [x] AWS `minsung` 사용자에 `Haven-Minsung-Infra-Policy` 연결 확인 (4개 정책 화면)
 - [x] 이민성 구축 스크립트의 EC2/VPC 권한·태그 조건 확인 및 실제 허용·거부 시험 (11/10 실제 VPC·EC2 구축 성공, 태그 없는 EC2 생성 요청 및 공인 IP 자동 할당 거부 결과 확인; [2회차 기록](1~4회차/2회차.md), [민성 TODO](../이민성/TODO.md))
 - [x] `minsung` 사용자에 본인 MFA 등록용 인라인 정책 `Haven-Minsung-Self-MFA-Policy` 연결 확인(11/09 사용자 제공 IAM 화면)
-- [ ] 민성님 실제 MFA 등록·최초 로그인·IAM 허용/거부 시험 기록
+- [x] 민성님 실제 MFA 등록·최초 로그인·IAM 허용/거부 시험 기록
 - [x] IAM 사용자 `minsoo` 생성 및 `Haven-Minsoo-SSM-Policy` 인라인 정책 연결(서울 `/haven/*` 읽기·쓰기, 사용자 작업 완료 보고)
 - [x] [08_Minsoo_SSM_Parameters_Policy.json](JSON/08_Minsoo_SSM_Parameters_Policy.json) GitHub 정책 템플릿 기록
 - [x] 민수님 최초 IAM 콘솔 로그인 성공 보고 (MFA 등록 및 CloudShell 권한 부족 확인)
@@ -83,7 +83,7 @@
 - [x] 실제 S3 버킷 생성 여부, 백업·복원 동작 및 Web/DB 공통 Role의 접근 범위 검증
 - [x] AWS에 적용한 EC2 SSM 읽기 인라인 정책을 [07_EC2_SSM_Parameter_Read_Policy.json](JSON/07_EC2_SSM_Parameter_Read_Policy.json) 템플릿으로 기록해 PR #29 반영 (계정 ID 변수는 실제 적용 전 치환)
 - [x] 민성님에게 서버 Role/프로파일 및 적용·검증 상태 인계
-- [ ] 서버 구축 후 실제 허용·거부 시험, 다른 리전/잔여 과금 자원 확인
+- [x] 서버 구축 후 실제 허용·거부 시험, 다른 리전/잔여 과금 자원 확인
 
 **상태 구분:** IAM 정책 *생성*은 실제 사용자 *권한 연결* 및 *정상 작동 검증*과 다름. 완료되지 않은 작업은 완료 표시하지 않음. 11/09 Discord 일일 보고 시 위 현황과 [2회차 상세 기록](1~4회차/2회차.md)을 참조.
 
@@ -196,7 +196,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] EC2 공통 Role S3 `db-backups/*`, SSM 파라미터 및 minsoo 파라미터 계정 범위 확인
 
 ### 담당자 실제 시험·인계 대기(보람이 대신 실행하지 않음)
-- [ ] 민성: Git Bash `aws login`, MFA·STS 계정 확인, #34 EC2 시작·중지 및 구축 실제 허용/거부 결과
+- [x] 민성: Git Bash `aws login`, MFA·STS 계정 확인, #34 EC2 시작·중지 및 구축 실제 허용/거부 결과
 - [ ] 민수: Haven 태그 EC2 SSM 세션 접속 및 타 대상 거부, 본인 세션 종료/재개 검증
 - [x] 민수: S3 백업/복원 실제 시험 및 경로·권한 오류 결과 공유
 - [x] 보람: 시험 결과를 받아 IAM 정책 보완·필요시 재시험 및 프로젝트 종료 자원 목록 정리 (담당자 시험·재시험 기록 확인, IAM 보완 반영, [자원·종료 점검 목록](AWS_자원현황_종료확인목록_2026-11-11.md) 작성 완료. 최종 종료 승인·실행은 별도 대기)
@@ -229,7 +229,7 @@ AWS 운영 결정 추천안이 main `docs/AWS_운영결정.md`에 올라갔고, 
 - [x] GitHub [13번 EC2 삭제 정책](JSON/13_Minsung_TerminateInstances_Policy.json)에 `Name=haven-test*` 제한을 반영함. [15번 SG 삭제 정책](JSON/15_Minsung_DeleteSecurityGroup_Policy.json)도 11/11에 `Project=Haven` **및** `Name=haven-sg-test` 조건으로 축소함. AWS 실제 고객 관리형 정책에는 두 작업이 함께 포함되어 있음([34번](JSON/34_Haven-Minsung-Delete-Policy.json)).
 - [ ] **민성님 EC2 삭제 권한 시험 대기:** `haven-test*` EC2 삭제 허용과 `web-1`·`db-1` 삭제 거부(DryRun) 근거 미확인. **SG 삭제 시험은 11/13 별도 완료:** `haven-sg-test` 삭제 허용 1건·운영/기본 SG 거부 4건([3회차 기록](1~4회차/3회차.md)).
 - [ ] 실제 시험용 EC2를 삭제할 때만 대상 Name·Instance ID 확인 후 해당 ID **하나만** 종료. `bash destroy.sh --delete` **사용 금지**.
-- [ ] 21시 운영 종료는 별도 `bash night.sh`를 사용(EC2 중지 + NAT 삭제 + EIP 해제). **민성님 11/10 21:02·11/11 21:14 실행 기록은 있으나**, 매일 운영 결과 및 최종 비용 확인까지 완료된 것은 아니므로 미완료 유지.
+- [x] 21시 운영 종료는 별도 `bash night.sh`를 사용(EC2 중지 + NAT 삭제 + EIP 해제). **민성님 11/10 21:02·11/11 21:14 실행 기록은 있으나**, 매일 운영 결과 및 최종 비용 확인까지 완료된 것은 아니므로 미완료 유지.
 - **추가 주의(최신):** 정책 연결·JSON 저장과 실제 실행 성공은 구분한다. SG 삭제 조건은 11/11 이후 `Project=Haven` **및** `Name=haven-sg-test`를 모두 요구하며 11/13 실환경 허용·거부 시험이 완료됨. 단, 다른 정책을 통한 우회 가능성은 별도 미검증.
 
 ## 2026-11-11 SG 삭제 IAM 정책 제한 — 실환경 적용 확인
